@@ -1,0 +1,6 @@
+.DS_Store
+
+# Extracted classic Mac OS files — contents live in HFS resource forks,
+# which git cannot store (they'd be committed as empty files).
+# The lossless originals are soundeffects-092.hqx / soundeffects-092.sit.
+SoundEffects 0.9.2 ƒ/
