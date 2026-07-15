@@ -472,3 +472,39 @@ Goal: a faithful *behavioral* prototype, not a skin. Suggested architecture:
 12. ~~Easter-egg trigger dates~~ — **done** (2026-07-14): single startup date check (`CODE 7 @ 0x086c`, one `SecondsToDate` trap in the whole binary) — Christmas = Dec 25 (STR# 138 #1), Alberto Ricci's birthday = **Sep 17** (STR# 138 #2), each shown as NoteAlert 146; no year check, no once-per-day guard. Full reconstruction in `disassembly/Easter-Eggs.md`. Also produced the reusable app-binary tooling (`CODE 0` jump-table resolver) that items 6, 7, 10 need.
 
 Each is a small, named code resource with a known ABI — good afternoon-sized disassembly targets, best verified against the original in an emulator as oracle.
+
+---
+
+## 15. Recreation status
+
+Where each piece stands as of 2026-07-14. The **investigation phase is complete**: every `[ASM]` question in §14 is closed and the module ABI is transcribed from SDK source. What remains is engineering plus a short effect-verification tail — no open research unknowns.
+
+**Confidence legend:** `SOURCE` = from the shipped Developer's Kit C source · `BINARY` = recovered by 68k disassembly (`disassembly/*.md`) · `DOC/RES` = from the manuals + resource-fork dumps, *not* byte-verified · `UNBUILT` = absent or non-functional in 0.9.2.
+
+| Subsystem | Confidence | Notes |
+|---|---|---|
+| Personality / behavior contract (§1) | Captured | Destructive-in-place, no Undo, first-person voice, keep-the-mangled-half. The identity; fully specified. |
+| Core data model / sample format (§2, §7.4) | SOURCE | Packed big-endian, 8-bit `XOR 0x80`, `GetSample8/16` exact (`ModGetSetSamples.c`). |
+| Module ABI — host⇄module (§7) | SOURCE | Full `GlueRec`, messages, `ModParamsRec`, result codes, declarative dialog schema; `Gain.c` = Amplify reference. |
+| Host DSP services | BINARY | Unit/Meters-Feet conversion (`Unit-Conversion.md`), Select Silence/Peak (`Select-Silence-Peak.md`), **resamplers** (`Host-Resamplers.md`). All recovered. |
+| Effect DSP — 10 of 38 | SOURCE/BINARY | Amplify (source) + Echo, Delay, Flanger, Noise, Smooth, Robotize, Weird Tempo, Downsample Bits, Resample Rate (binary). |
+| Effect DSP — ~28 of 38 | DOC/RES | Formulas/params from docs + resources; **not byte-verified** (Smooth proved docs can lie). Most are simple/low-risk; see build-order step 1 for the ones worth checking. |
+| Editing engine (selection, channels, waveform, zoom, chunks, clipboard) | DOC/RES | Behavior known; SPEC thin on waveform render (Dots/Lines + zoom math), the Chunk system, clipboard-as-sound, channel-column drag/trash/swap. |
+| Playback & recording (§6) | DOC/RES | Sound Manager-based; VOX record state machine + monitoring meter not specced to the sample. Faithful feel needs a modern audio backend. |
+| File formats (§10) | DOC | System 7 Sound resource, AIFF, Sound Designer II import — described, not byte-specced. Parsers needed. |
+| UI chrome (menus, DITLs, alerts, windows, CNTLs, icons) | RES | All declarative data dumpable from the resource fork; rendering/behavior unbuilt. §7.5 schema drives the plugin dialogs. |
+| Preferences (§9) | RES | Five pages, all items known from DITL 1001–1005. |
+| Easter eggs (§1.8) | BINARY | Dec 25 / Sep 17 startup check (`Easter-Eggs.md`). |
+| Mixer, Spectrum, Undo | UNBUILT | Mixer/Spectrum are unfinished shells (`Spectrum-Mixer.md`); Undo never worked. Leave broken for fidelity, or fork to finish. |
+
+### Remaining build order
+
+1. **Verify the risky doc-only effects** (short, targeted disassembly — same tooling): **Granular Synthesis** grain-envelope math (still `[ASM]`, the one genuinely unknown effect formula), **Sample Hose** / **Iterative Crossfade** tween details, **Dither** noise application, **IIR filters / Shelving** coefficient handling. Take the rest from docs.
+2. **Core editing engine + sample model** — the foundation: packed-buffer `getSample/setSample` (§2.2/§7.4), unequal-length channels, selection/loop, destructive edits, clipboard.
+3. **Effects runtime** — a plugin base class mirroring the `effect()` skeleton (§7.8) and the declarative dialog schema (§7.5); port the 10 confirmed effects, then the rest.
+4. **Audio I/O** — playback first, then recording + the VOX state machine (§6), on a modern backend.
+5. **File parsers** — System 7 Sound, AIFF, SD II import (§10).
+6. **UI shell** — System-7-look windows/menus/alerts driven by the resource dumps; schema-generated effect dialogs.
+7. **Leave Mixer/Spectrum/Undo non-functional** (fidelity) — or build them out as an explicit fork.
+
+Steps 2–6 are ordinary engineering against a now-complete spec; step 1 is a short verification pass. Nothing here requires guessing what the original did.
