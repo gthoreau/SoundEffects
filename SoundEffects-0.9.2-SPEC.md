@@ -169,7 +169,7 @@ space = play/pause toggle · F1–Fn = solo-play channel n · option-Fn = mute c
 
 ## 7. The effects engine (host ⇄ module contract)
 
-Modeled directly on the plug-in ABI (`Glue.h`, SDK manual) — keep this shape so the web prototype and the Eurorack firmware can share the plugin model.
+Modeled directly on the plug-in ABI — keep this shape so the web prototype and the Eurorack firmware can share the plugin model. **This section is `[SOURCE]`**: the full ABI is present as C headers and reference source in the shipped **SoundEffects Developer's Kit** (`SoundEffects 0.9.2 ƒ/SoundEffects Developer's Kit/Interfaces/*.h`, plus complete `Gain` and `EmptyEffect` example modules). The contract below is transcribed from that source, not inferred — treat it as authoritative and cross-check the disassembled modules against it.
 
 ### 7.1 Discovery & menu
 
@@ -185,21 +185,155 @@ At launch, scan the **Effects Folder** (next to the app, or in Preferences). Eac
 
 Menu templating: "<Name> Options…", "About <Name>…" `[RES: STR# 140]`.
 
-### 7.2 Module interface
+### 7.2 Module entry point & messages `[SOURCE: Glue.h]`
 
-```
-module.settings(sound, host, prefs) -> prefs' | HasNoSettings
-module.effect(sound, host, prefs)   -> NoError | Cancel | +err (data modified) | −err (data untouched)
-module.about()                       // help window: description text, copyright, version
+An effect file is a code resource whose `main` is the single entry point; the host passes it one of five messages. In practice modules link the SDK's `Glue.c`, which decodes the message and calls one of three routines the module author writes (`effect`, `settings`, `about`):
+
+```c
+pascal OSErr main(OSType message, ModParamsPtr modInfo, GluePtr glue68k, GluePtr gluePPC);
+
+// messages (OSType four-char codes):
+'Mrun'  kMsgRun          → effect(modInfo, glue, &prefs)          // run, no dialog
+'Mset'  kMsgSettings     → settings(modInfo, glue, &prefs)        // edit settings only
+'Msar'  kMsgSettingsRun  → settings(...) then effect(...)         // edit, then run
+'Minf'  kMsgAbout        → about(modAboutInfo)                    // show help/about
+'Mhvr'  kMsgHeadersVers  → store kHeadersVersion (=1) at *GluePtr, return noErr
+
+// the three (+1 helper) routines a module supplies:
+pascal OSErr effect  (ModParamsPtr modInfo, GluePtr glue, ModSettingsHandle *prefs);
+pascal OSErr settings(ModParamsPtr modInfo, GluePtr glue, ModSettingsHandle *prefs);
+pascal OSErr about   (ModAboutPtr  modInfo);
+       OSErr GetModSettings(ModParamsPtr, GluePtr, ModSettingsHandle *prefs);  // load-or-default
 ```
 
-- `prefs` is an opaque settings blob owned by the module; the host persists it in a global "SoundEffects Effect Prefs" store, keyed by module. Effects run with **last-used settings** via option-key or Redo Effect.
-- **Named setups**: settings dialogs may carry a "Setup:" popup with user-saved presets (Save setup as… / Delete setup…, with confirm dialog). Host-managed. `[RES: MENU 160, DITL 154/155]`
-- **Declarative settings dialogs**: a module hands the host an item list (checkbox, radio group, numeric field, decimal field, text field, units popup, unit-dependent field — always stored as bytes) and the host runs the whole dialog, including setups and unit conversion `[SOURCE: ModSetups.h]`. Reproduce this: it's a ready-made schema for web forms *and* for hardware encoder pages.
-- **Selection-extension policy** (the *doExtend* contract): when an effect may lengthen the sound beyond the selection, behavior is governed by a **global preference**: Extend Effect / Don't Extend / **Ask Each Time** → "This effect may output a sound longer than before. Do you want to limit the module's effect to the selection or extend it as needed?" (Extend / Limit) `[SOURCE + RES: ALRT 133]`.
-- **Progress protocol**: host shows the progress window (after a configurable delay in 60ths of a second — default page value; responsiveness preference Excellent/Good/Fair/Poor trades UI responsiveness vs effect speed). Module polls a flag and reports progress; Stop is offered only if the module says it can cancel — and cancelling mid-run **leaves the half-processed audio in place** (§1.2). Pause/Resume supported. Optional "beep after applying effects if more than 1 min elapsed."
-- **Host services available to modules** (the GlueRec, translated): progress (4 calls) · settings persistence (3) · settings dialog + setups (8) · machine info / doExtend ask / RNG seed (3) · unit conversions (2) · selection queries: bytesToProcess, maxChannelSize, maxSelectedSize, getPeak, sampleValueLimits (5+) · error alert display · **add/delete channel** · get/set channel pan · silence a range · resample bits/rate of a whole doc · **create new document** (2). Modules can and do restructure documents.
-- **Error voice**: module errors are indexed strings shown by the host; positive error = "data was modified", negative = "nothing changed". Keep the exact strings (§8 catalog + app strings in §11).
+- Effect code resources come in three flavors selected by CPU/FPU at load: **`EFCT`** (68k), **`EFCF`** (68881 FPU build), **`EFCP`** (PowerPC). `main` receives both a 68k and a PPC `GluePtr` so a fat module can pick.
+- **68k global storage** `[SOURCE: ModA4Globals.h]`: 68k modules reach their globals through **A4**, not A5 (they are foreign code loaded into the host's world). The SDK's `MAIN_SETUP_GLOBALS`/`MAIN_RESTORE_GLOBALS` macros (`SetCurrentA4`/`RememberA4` on CodeWarrior, `SetUpA4` on THINK C) bracket every entry; PPC builds compile them to no-ops. A prototype/firmware port doesn't need A4 but must preserve the *"module state is per-call, set up on entry"* model.
+- `prefs` is a module-owned `ModSettingsHandle` (opaque `struct ModSettingsRec` the author declares). The host persists it keyed by the module's **signature** (a Pascal string, e.g. Gain's `"\pSampleEffect"`). `settings` loads-or-defaults, shows the dialog, saves via `SaveEffectSettings`, and **leaves the handle allocated** so an immediately-following `effect` (the `'Msar'` path) can consume it; `effect` disposes it. Run-with-last-settings (option-key / Redo Effect) is just `'Mrun'` reusing the persisted blob.
+
+### 7.3 What the module sees: `ModParamsRec` `[SOURCE: Glue.h]`
+
+The host hands every routine a pointer to the live document/selection state (read-only fields must be changed through callbacks, not directly):
+
+| field | type | meaning |
+|---|---|---|
+| `version`, `refNum` | short | ABI version; the module's own resource-file refNum (do `UseResFile(refNum)` before `Get1Resource`) |
+| `name` | StringPtr | document title |
+| `parentWind` | WindowPtr | the document window |
+| `hands` | `SEChanHandle` | array of `{ Handle chan; unsigned long size; }` — **one per channel**; `size` is **bytes, not samples**. Access `(*modInfo->hands)[ch].chan` / `.size` |
+| `outModes` | ChanAttrsHandle | **read-only** per-channel output attrs (L/R pan routing) — use `ModGet/SetChannelPan` |
+| `selSt`, `selEnd` | unsigned long | selection start/end **in bytes** |
+| `loopSt`, `loopEnd` | unsigned long | loop region (Set Loop) |
+| `rate` | Fixed | sample rate, 16.16 fixed-point Hz |
+| `bps` | short | bits per sample (1–32) |
+| `numChans` | short | channel count |
+| `firstSelCh`, `lastSelCh` | short | selected channel range (**1-based**; loop `ch = firstSelCh-1 … lastSelCh-1`) |
+| `baseFreq` | Byte | MIDI base note for playback pitch |
+| `doExtend` | short | resolved extension policy for this run (see 7.6) |
+| `units` | short | current display-units code (`ModUnits.h`) |
+
+### 7.4 The sample model, exactly `[SOURCE: ModGetSetSamples.c]`
+
+This is *the* reason the originals sound the way they do; reproduce the integer path byte-for-byte. `frameSize = bps/8 + (bps%8 != 0)` bytes per sample; samples are packed big-endian; the effective value is sign-extended and right-aligned into a 32-bit signed register:
+
+```c
+// 8-bit: stored as offset-binary, converted to signed by XOR 0x80
+#define GetSample8(x)      ((signed char)(*(signed char *)(x) ^ 0x80))
+#define SetSample8(x, s)   *(signed char *)(x) = (SignedByte)(s) ^ 0x80
+
+// 9–32-bit: read min(frameSize,4) big-endian bytes into the HIGH bytes of a long,
+// then arithmetic-shift down to sign-extend and right-align:
+signed long GetSample16(Ptr p, short bps) {
+    signed long v; short n = min(frameSize, 4);
+    for (byte=0; byte<n; byte++) ((uchar*)&v)[byte] = ((uchar*)p)[byte];  // big-endian, top-justified
+    return v >> (sizeof(long)-n)*8;                                       // arithmetic (signed) shift
+}
+// SetSample16 writes back the top n bytes of the value. Sample value limits per bps
+// come from ModGetSampleValueLimits(bps, &min, &max); all effect math clamps to [min,max].
+```
+
+All DSP is integer. `s * gain / 100`, `(a+b)/2`, truncating divides, saturating clamps — the rounding scars and aliasing are the point. (This is also why disassembled surprises like **Smooth**'s center-excluding 2-point average or **Flanger**'s `fintrz` truncation matter: they are exactly this integer discipline, verified in the binary.)
+
+### 7.5 Declarative settings dialogs `[SOURCE: ModSetups.h]`
+
+Rather than draw its own dialog, a module hands the host an **`ItemInfoRec[]`** (one entry per DITL item: `{ short type; ProcPtr proc; long param; }`) and the host runs the entire modal dialog — fields, radio groups, unit conversion, and the named-setups popup — via `ModDoSettingsDialog`. The item types (this is the schema to reuse for web forms *and* hardware encoder pages):
+
+| `type` | `param` points to | notes |
+|---|---|---|
+| `type_ignore` | — | static/unused item |
+| `type_button` | ProcPtr action | see return convention below |
+| `type_checkBox` / `…NoSave` | `short` (0/1) | |
+| `type_radioButton` / `…NoSave` | `short` = active index (**1-based**); pass the *same* pointer to every button in a group | |
+| `type_unitsPopup` | `short` = `ModUnits.h` code | required if any unit-dependent field is present |
+| `type_editFieldUnitDependent` / `…NoSave` | `unsigned long` **in bytes** | host auto-converts to/from the popup's unit; the variable is **always bytes** |
+| `type_editFieldNumerical` / `…NoSave` | `long` | plain integer field |
+| `type_editFieldNumDecimal` / `…NoSave` | `double` | decimal field |
+| `type_editField` / `…NoSave` | StringPtr | raw text |
+| `type_customItem` | `SettCustomItemRec` | author-drawn item with init/hit/close + optional save/load |
+
+`NoSave` variants work identically but are not remembered in a saved setup. Button/custom procs return: **1** = OK-and-continue, **0** = dismiss as if OK, `kModCancel` = dismiss as Cancel, **−1** = "values now differ from the selected setup" (deselects the setups popup), any other value = cancel and report that error. **Named setups** (host-managed): the "Setup:" popup with Save setup as… / Delete setup… is driven by `ModGetSetupsNumber`/`ModGetSetup`/`ModGetSetupName`/`ModSetSetup`/`ModDeleteSetup`/`ModSetupCreateMenu`/`ModSetupSwitchCustom` `[RES: MENU 160, DITL 154/155]`. **Unit codes** `[SOURCE: ModUnits.h]`: `0 samples · 1 bytes · 2 seconds · 3 milliseconds · 4 meters · 5 feet` — exactly the table the app's converters implement (see `disassembly/Unit-Conversion.md`; meters=×344, feet=×1128).
+
+### 7.6 Host services — the `GlueRec` callbacks `[SOURCE: Glue.h]`
+
+The module calls back into the host through a `GlueRec*` (`glueVers` 1). Signatures verbatim, grouped:
+
+- **Progress**: `ModSetupProgress(modInfo,&timeToCallProgress,textStr)` · `ModShowProgress(cur,total,&timeToCallProgress,canCancel) → OSErr` (nonzero return = user cancelled; **half-processed audio stays**, §1.2) · `ModCloseProgress()` · `GetProgressWind()`. Delay before showing, and Excellent/Good/Fair/Poor responsiveness, are host prefs; the `timeToCallProgress` flag tells the module when to actually call.
+- **Settings persistence**: `LoadEffectSettings(signature,&hand)` · `SaveEffectSettings(signature,&hand)` · `GetEffectSettingsRefNum()`.
+- **Settings dialog + setups** (8): `ModDoSettingsDialog(modInfo,itemInfo,withSetups,custFilter,custItemHandler,initProc)` and the seven setup-management calls listed in 7.5.
+- **Environment**: `GetMachineInfo(&MachinePtr)` → a `MachineRec` of pre-resolved Gestalt flags (`hasFPU, hasColorQD, has32BitQD, hasQuickTime, hasSoundManager3, hasSoundInputDevice, hasStereoOutput, hasStereoInput, mixesStereoOutputToMono, hasPlayAndRecord, has16BitSoundIO, hasMultipleChannels`) · `AskDoExtend() → short` · `ModInitRandSeed()`.
+- **Dialog utilities**: `ApplWindowsUpdate(w)` · `ApplWindowsActivate(evt)` · `ModConvertToUnits(modInfo,destStr,srcVal,newUnits)` / `ModConvertToBytes(modInfo,srcStr,&destVal,newUnits)` — **these two are the `CODE 7` converters reverse-engineered in `disassembly/Unit-Conversion.md`.**
+- **Selection queries**: `GetBytesToProcess(modInfo) → long` · `ModMaxChSize(modData,&size)` (max over all channels) / `ModMaxRelChSize(modData,&size)` (max over *selected* channels) · `ModGetPeak(modData,&peak,&pos)` · `ModGetSampleValueLimits(bps,&min,&max)` · `ModGetOffsToSndHeader(sndH)` / `ModGetOffsToSndData(sndH)`.
+- **Utilities / drawing**: `ModToggleInputLevel(on)` · `ModDrawWave(modInfo,&bounds,maxSize,firstByte,zoom,firstCh,lastCh)` · `ModShowError(modInfo,errNum,withCancel)`.
+- **Document restructuring**: `ModAddNewChannel(modData,where)` · `ModDelChannel(modData,chan)` · `ModGetChannelPan(chAttrs,channel,leftOne)` / `ModSetChannelPan(chAttrs,channel,leftPan,rightPan)` · `ModSilenceOut(modData,chSt,chEnd,st,end)` · `ModResampleSoundBits(modData,newBps)` / `ModResampleSoundRate(modData,newRate:Fixed)` — the host-side resamplers that **Resample Rate / Up/Downsample Bits delegate to** (still `[ASM]` at app level, the last unrecovered DSP) · `ModNewDocument(&modData)` / `ModChangeNewDocument(modData)`. Modules like Granular Synthesis and Sample Hose use these to append channels and spawn documents.
+
+### 7.7 Result codes & error voice `[SOURCE: Glue.h]`
+
+The **sign** of the return value tells the host whether the buffer was touched:
+
+- `kModNoError` (0) — success, data modified.
+- `kModCancel` (`userCanceledErr`) — module did nothing (no-op).
+- **Positive** = error, **data left untouched**: `kModGenericError` (1), `kModNotEnoughMemory` (2), `kModCouldntLoadMyRes` (23), `kModUnknownMessage` (30).
+- **Negative** = error, **but data WAS changed**: `kTellGenericError` (−1), `kTellNotEnoughMemory` (−2), `kTellCouldntLoadMyRes` (−23).
+- If the returned code's **absolute value** indexes a string in the module's own `STR# 1000`, the host shows that string — how modules speak in their own voice (§8 catalog). `settings` returns `kModHasNoSettings` (1) when the module has no parameters ("Sorry, man. I haven't got any options.").
+
+### 7.8 Reference effect — `Gain.c` = **Amplify** `[SOURCE, complete]`
+
+The SDK's `Gain` example *is* Amplify's algorithm (signature `"\pSampleEffect"`, `struct ModSettingsRec { short gain; }`, default `gain = 200`, clamped ≤ 32767 in `settings`). It is our one piece of real C source for a shipping-equivalent effect and nails the canonical `effect()` skeleton every module follows — worth mirroring exactly in the prototype's plugin base class:
+
+```c
+pascal OSErr effect(ModParamsPtr modInfo, GluePtr glue, ModSettingsHandle *prefs) {
+    UseResFile(modInfo->refNum);                       // 1. own resource file
+    myGain = (**prefs)->gain;  DisposHandle(*prefs); *prefs = 0;   // 2. read & free settings
+    progressString = Get1Resource('STR ',128);         // 3. progress text ("Amplifying by ")
+    glue->ModSetupProgress(modInfo, &timeToCallProgress, progressString);
+    if (modInfo->selSt == modInfo->selEnd)             // 4. empty selection ⇒ whole channels
+        { modInfo->selSt = 0; glue->ModMaxRelChSize(&modInfo, &modInfo->selEnd); }
+    glue->ModGetSampleValueLimits(modInfo->bps, &min, &max);
+    frameSize = modInfo->bps/8 + (modInfo->bps%8 != 0);
+    for (channel = modInfo->firstSelCh-1; channel < modInfo->lastSelCh; channel++) {
+        start = selSt; end = selEnd;                   // 5. clamp to THIS channel's size…
+        if (start > channelSize) start = channelSize;
+        if (end   > channelSize) end   = channelSize;
+        start -= start%frameSize; end -= end%frameSize;// …and frame-align (unequal channels!)
+        HLock(chan);
+        for (loopPtr = start; loopPtr < end; loopPtr += frameSize) {
+            mySample = (frameSize==1) ? GetSample8(loopPtr) : GetSample16(loopPtr, bps);
+            mySample = mySample * myGain / 100;         // 6. integer gain
+            if (mySample < min) mySample = min;         // 7. saturating clamp
+            else if (mySample > max) mySample = max;
+            (frameSize==1) ? SetSample8(loopPtr,mySample) : SetSample16(loopPtr,mySample,bps);
+            if (timeToCallProgress &&
+                (progressResult = glue->ModShowProgress(processed, total, &timeToCallProgress, false)))
+                break;                                  // 8. non-cancellable (canCancel=false)
+        }
+        HUnlock(chan);
+        result = kModNoError;
+    }
+    glue->ModCloseProgress();
+    return result;                                      // kModCancel if nothing was in range
+}
+```
+
+Every recovered module in §8 is a variation on this skeleton — the differences are the inner kernel (steps 6–7) and whether the pass runs forward/backward, extends the buffer, or appends channels.
 
 ---
 
@@ -209,7 +343,7 @@ Format: **Name** (version, author, group) — algorithm. Parameters. Fidelity.
 
 All ©1994 Alberto Ricci v1.1 unless noted. "Units popup" = the 6-unit popup of §2.3. Defaults marked ⌘ are baked into the DITL; other fields start empty on first run and thereafter remember last-used values via Effect Prefs.
 
-1. **Amplify** — `s' = clamp(s × gain / 100)` integer math `[SOURCE — Gain.c is this module]`. Param: "Amplify by: [__] %". Progress text "Amplifying by ". Empty selection ⇒ whole sound.
+1. **Amplify** — `s' = clamp(s × gain / 100)` integer math `[SOURCE — the SDK's Gain.c is this module; full annotated source in §7.8]`. Param: "Amplify by: [__] %". Progress text "Amplifying by ". Empty selection ⇒ whole channels (`ModMaxRelChSize`), per-channel + frame-aligned, saturating clamp to `ModGetSampleValueLimits(bps)`, non-cancellable progress.
 2. **Bandpass FIR** — `y(n) = x(n) − x(n−2) − 0.25·y(n−2)`; zeros at z=±1, poles at ±0.5i `[DOC]`. No params. *Note: named "FIR" but has a recursive term — the misnomer ships as-is.*
 3. **Bandstop FIR** — `y(n) = [x(n) + x(n−2) + 0.25·y(n−2)]/2`; zeros ±i, poles ±0.5 `[DOC]`. No params.
 4. **Delay** (Echoes & Reverbs) — **recovered by disassembly** `[SOURCE-equivalent — see disassembly/Echo-Delay.md]`: exactly one offset copy mixed in, `dst[n] = clamp(dst[n] + trunc(src[n−D]·strength/100))` computed as a single **backward** in-place pass (destination walks from the end down to `start+D`, always reading the untouched original `D` bytes earlier — no feedback, no repeats). `D` = Delay param frame-aligned to the sample size; Strength = mix %. If extension is allowed, the buffer grows by exactly one `D` and the new tail is silenced before mixing (degrades gracefully, no error, if the grow only partially succeeds); if not, the part of the copy that would fall outside the selection is simply dropped. Params: Delay [__ units popup], Strength [__]% `[RES]`. Non-cancellable progress.
@@ -320,6 +454,7 @@ Goal: a faithful *behavioral* prototype, not a skin. Suggested architecture:
 - Decoded chain: `soundeffects-092.hqx` → BinHex 4.0 → `soundeffects-092.sit` (StuffIt 1.5) → `SoundEffects 0.9.2 ƒ/` with resource forks + 1995–97 timestamps intact.
 - Machine-readable dumps produced during this analysis (regenerate with `rsrc_dump.py` against any file's `..namedfork/rsrc`): per-resource JSON for the app and all 38 modules — DITL items with rects/labels/defaults, CNTL, MENU, STR#, ALRT/DLOG/WIND, vers, Grup, TEXT help.
 - App signature: creator `√SFx`, type APPL; effect files type `√Eff`; effect code resources `EFCT` (68k), `EFCF` (FPU), `EFCP` (PowerPC).
+- **Developer's Kit (`[SOURCE]`, shipped in the archive):** `SoundEffects 0.9.2 ƒ/SoundEffects Developer's Kit/` contains the complete module ABI as C headers (`Interfaces/Glue.h`, `ModGetSetSamples.{h,c}`, `ModSetups.h`, `ModUnits.h`, `ModUnitConversion.{h,c}`, `ModStringConversion`, `ModTypeConversion`, `ModA4Globals.h`) plus full source for two example modules — **`Gain`** (identical to the shipping Amplify effect) and **`EmptyEffect`** (the do-nothing skeleton) — and Resource Templates + THINK C / CodeWarrior project files. §7 is transcribed from this kit; it is the authoritative host⇄module contract, independent of the disassembly.
 
 ## 14. Open items requiring 68k disassembly (ranked by value/effort)
 
