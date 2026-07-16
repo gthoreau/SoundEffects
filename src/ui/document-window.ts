@@ -51,6 +51,9 @@ const CHANNEL_COLUMN = 20;
 export interface DocumentWindowOptions {
   drawMode?: DrawModeName;
   infoPrefs?: InfoStripPrefs;
+  loop?: boolean;
+  /** 0 = Off, 1–7 (§6's ladder). */
+  volume?: number;
   onTransport?: (name: TransportButtonName) => void;
   onVolume?: (v: number) => void;
   onClose?: () => void;
@@ -98,6 +101,8 @@ export class DocumentWindow {
     this.transport = new TransportStrip({
       onButton: (n) => opts.onTransport?.(n),
       onVolume: (v) => opts.onVolume?.(v),
+      loop: opts.loop,
+      volume: opts.volume,
     });
 
     this.win.content.append(this.infoEl, this.canvas, this.transport.element);
@@ -297,6 +302,24 @@ export class DocumentWindow {
     };
     box(y, outLeft);
     box(y + 9, outRight);
+  }
+
+  setLoop(on: boolean): void {
+    this.transport.setLoop(on);
+  }
+
+  setVolume(v: number): void {
+    this.transport.setVolume(v);
+  }
+
+  /**
+   * Reflect the engine's state in the strip. Stop is only live while there is
+   * something to stop — everything else stays available, because §6's transport
+   * lets you hit Play while already playing (it restarts).
+   */
+  setTransportState(state: string): void {
+    this.transport.setEnabled("stop", state !== "stopped");
+    this.transport.setEnabled("pause", state !== "stopped");
   }
 
   refresh(): void {

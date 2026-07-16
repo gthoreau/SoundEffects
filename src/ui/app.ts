@@ -24,12 +24,19 @@
 import { SoundDocument } from "../document.js";
 import { clear, copy, crop, cut, paste } from "../edit.js";
 import { setLoop, setSelection } from "../selection.js";
+import { Transport, TransportState } from "../audio/transport.js";
+import { canPlay, NOT_ENOUGH_HARDWARE } from "../audio/backend.js";
+import type { SoundFormat } from "../formats/index.js";
+import { showAlert } from "./alert.js";
 import { el } from "./dom.js";
 import { DocumentWindow } from "./document-window.js";
+import { confirmExport, downloadSound, openSoundFile, pickFile } from "./files.js";
 import { MenuBar, type MenuRef, type Modifiers } from "./menubar.js";
 import { type MenuItem, Res } from "./resources.js";
 import { DrawMode, type DrawModeName } from "./waveform.js";
 import { EditVerb, editMenuLabel } from "./strings.js";
+import { type TransportButtonName } from "./transport-strip.js";
+import { WebAudioBackend } from "./web-audio.js";
 import { WindowManager } from "./window.js";
 
 /** Menu item indices, by the ids the resources give them. See §4. */
@@ -56,7 +63,17 @@ const Selection = {
   selectLoop: 12,
   crop: 14,
 } as const;
+const Sound = {
+  record: 1,
+  stop: 2,
+  pause: 3,
+  play: 4,
+  fastForward: 5,
+  loop: 6,
+} as const;
 const Zoom = { zoomIn: 1, zoomOut: 2, fitInWindow: 3, fitSelection: 4 } as const;
+/** MENU 142's items are Off, 1–7 — so item index n is volume n−1. */
+const VOLUME_ITEM_BASE = 1;
 
 /**
  * Index space for items appended at runtime. Well above any resource's item
@@ -73,9 +90,23 @@ export class App {
   private untitledCount = 0;
   private drawMode: DrawModeName = DrawMode.dots;
 
+  /**
+   * One device, shared. Each document gets its own `Transport` (it is
+   * constructed around a document), but only one may hold the speaker at a time
+   * — which is also what the original did, having exactly one Sound Manager
+   * channel to give.
+   */
+  private backend: WebAudioBackend;
+  private transports = new Map<SoundDocument, Transport>();
+  private playing: Transport | null = null;
+  /** The Loop toggle and the Volume ladder are app-wide, not per document. */
+  private loop = false;
+  private volume = 7;
+
   constructor(root: HTMLElement) {
     const desktop = el("div", { id: "sfx-desktop" });
     this.manager = new WindowManager(desktop);
+    this.backend = new WebAudioBackend({ onEnded: () => this.onPlaybackEnded() });
 
     this.menubar = new MenuBar({
       stateFor: (ref, item) => this.stateFor(ref, item),
@@ -85,6 +116,134 @@ export class App {
 
     root.append(this.menubar.element, desktop);
     this.manager.onChange(() => this.menubar.close());
+    window.addEventListener("keydown", (e) => this.onKeyDown(e));
+  }
+
+  /**
+   * The backend hands back the speaker whenever the source stops giving frames —
+   * which happens both at the end of a sound *and* on a pause, since a paused
+   * `Transport` renders nothing. Only the transport knows which it was.
+   */
+  private onPlaybackEnded(): void {
+    if (this.playing?.currentState === TransportState.paused) return;
+    this.playing = null;
+    this.refreshTransportUI();
+  }
+
+  private transportFor(doc: SoundDocument): Transport {
+    let t = this.transports.get(doc);
+    if (!t) {
+      // The device's rate has to be known before the Transport exists: it is the
+      // rate the document's declared rate gets resampled *to*, and Transport
+      // reads it to compute its step.
+      this.backend.prepare();
+      t = new Transport(doc, { capabilities: this.backend.capabilities, volume: this.volume });
+      this.transports.set(doc, t);
+    }
+    t.volume = this.volume;
+    return t;
+  }
+
+  private refreshTransportUI(): void {
+    for (const dw of this.docWindows) dw.setTransportState(this.stateOfWindow(dw));
+  }
+
+  private stateOfWindow(dw: DocumentWindow): string {
+    const t = this.transports.get(dw.doc);
+    if (!t || t !== this.playing) return TransportState.stopped;
+    return t.currentState;
+  }
+
+  /** §4's keyboard map: space is the play/pause toggle. */
+  private onKeyDown(e: KeyboardEvent): void {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const target = e.target as HTMLElement | null;
+    if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+
+    if (e.code === "Space") {
+      e.preventDefault();
+      const dw = this.front;
+      if (!dw) return;
+      // Space toggles: if this document is the one playing, pause/resume it;
+      // otherwise start it.
+      if (this.playing && this.transports.get(dw.doc) === this.playing) this.pausePlayback();
+      else void this.startPlayback(dw, {});
+    }
+  }
+
+  /**
+   * Play. §6 gates on the *document's* bit depth, not the selection's, and its
+   * refusal is the app: it does not downsample for you, it tells you to go do it
+   * yourself. On modern hardware `supports16Bit` is true so this never fires —
+   * but a backend constructed with `EIGHT_BIT_CAPABILITIES` gets the original's
+   * voice back verbatim.
+   */
+  private async startPlayback(dw: DocumentWindow, opts: { useLoopRegion?: boolean; soloChannel?: number }): Promise<void> {
+    if (!canPlay(dw.doc, this.backend.capabilities)) {
+      await showAlert({ message: NOT_ENOUGH_HARDWARE });
+      return;
+    }
+    if (this.playing) this.playing.stop();
+    const t = this.transportFor(dw.doc);
+    t.play({ loop: this.loop, useLoopRegion: opts.useLoopRegion, soloChannel: opts.soloChannel });
+    this.playing = t;
+    this.backend.start(t);
+    this.refreshTransportUI();
+  }
+
+  private pausePlayback(): void {
+    if (!this.playing) return;
+    this.playing.pause();
+    if (this.playing.currentState === TransportState.playing) this.backend.start(this.playing);
+    else this.backend.stop();
+    this.refreshTransportUI();
+  }
+
+  private stopPlayback(): void {
+    this.playing?.stop();
+    this.backend.stop();
+    this.playing = null;
+    this.refreshTransportUI();
+  }
+
+  private onTransportButton(dw: DocumentWindow, name: TransportButtonName): void {
+    switch (name) {
+      case "play":
+        void this.startPlayback(dw, {});
+        break;
+      case "stop":
+        this.stopPlayback();
+        break;
+      case "pause":
+        this.pausePlayback();
+        break;
+      case "fastForward":
+        this.transports.get(dw.doc)?.fastForward();
+        break;
+      case "loop":
+        this.setLoopEnabled(!this.loop);
+        break;
+      case "record":
+        // §6's recorder is built and tested; the Record window (WIND 133) that
+        // drives it is not. Greying the button would be a lie about the model,
+        // so it says what is actually missing.
+        void showAlert({
+          message: "I can't record yet — my Record window isn't built.",
+          icon: "note",
+        });
+        break;
+    }
+  }
+
+  private setLoopEnabled(on: boolean): void {
+    this.loop = on;
+    for (const dw of this.docWindows) dw.setLoop(on);
+  }
+
+  private setVolume(v: number): void {
+    this.volume = v;
+    for (const t of this.transports.values()) t.volume = v;
+    for (const dw of this.docWindows) dw.setVolume(v);
   }
 
   private get front(): DocumentWindow | null {
@@ -141,9 +300,34 @@ export class App {
     }
 
     if (ref.menuID === Res.menu.file) {
-      if (ref.item === File.new) return { enabled: true };
+      if (ref.item === File.new || ref.item === File.open) return { enabled: true };
       if (ref.item === File.close) return { enabled: !!doc };
+      if (ref.item === File.saveAs) return { enabled: !!doc };
       return { enabled: BUILT.has(refKeyOf(ref)) };
+    }
+
+    if (ref.menuID === Res.menu.sound) {
+      const t = doc ? this.transports.get(doc) : null;
+      const isPlaying = !!t && t === this.playing && t.currentState === TransportState.playing;
+      switch (ref.item) {
+        case Sound.play:
+        case Sound.pause:
+        case Sound.fastForward:
+          return { enabled: !!doc };
+        case Sound.stop:
+          return { enabled: isPlaying || (!!t && t === this.playing) };
+        // A checkmark, because Loop is a toggle and MENU 132 gives it no other
+        // affordance.
+        case Sound.loop:
+          return { enabled: !!doc, mark: this.loop ? "✓" : null };
+        default:
+          return { enabled: BUILT.has(refKeyOf(ref)) };
+      }
+    }
+
+    // MENU 142: Off, 1–7. The current step is marked, radio-style.
+    if (ref.menuID === Res.menu.volume) {
+      return { enabled: true, mark: item.index - VOLUME_ITEM_BASE === this.volume ? "✓" : null };
     }
 
     // The Effects menu is populated at launch by scanning the Effects Folder
@@ -179,7 +363,38 @@ export class App {
     switch (ref.menuID) {
       case Res.menu.file:
         if (ref.item === File.new) this.newDocument();
+        else if (ref.item === File.open) void this.openFile();
         else if (ref.item === File.close) dw?.win.close();
+        else if (ref.item === File.saveAs && dw) void this.saveAs(dw.doc);
+        return;
+
+      case Res.menu.sound:
+        if (!dw) return;
+        switch (ref.item) {
+          case Sound.play:
+            // option-Play loops the Set Loop region instead of the selection (§4).
+            void this.startPlayback(dw, { useLoopRegion: mods.option });
+            break;
+          case Sound.stop:
+            this.stopPlayback();
+            break;
+          case Sound.pause:
+            this.pausePlayback();
+            break;
+          case Sound.fastForward:
+            this.transports.get(dw.doc)?.fastForward();
+            break;
+          case Sound.loop:
+            this.setLoopEnabled(!this.loop);
+            break;
+          case Sound.record:
+            this.onTransportButton(dw, "record");
+            break;
+        }
+        return;
+
+      case Res.menu.volume:
+        this.setVolume(item.index - VOLUME_ITEM_BASE);
         return;
 
       case Res.menu.edit:
@@ -266,10 +481,53 @@ export class App {
     return this.openDocument(doc);
   }
 
+  /** File > Open (§10). */
+  async openFile(): Promise<DocumentWindow | null> {
+    const file = await pickFile();
+    if (!file) return null;
+    const doc = await openSoundFile(file);
+    if (!doc) return null;
+    return this.openDocument(doc);
+  }
+
+  /**
+   * File > Save As (§10). AIFF is canonical; WAV is the convenience.
+   *
+   * The format choice is `MENU 156`'s ("System 7 Sound File" / "AIFF") in the
+   * original, but we no longer write System 7 sound files — they are resource-fork
+   * documents no modern filesystem carries (step 6). So the popup's two entries
+   * become AIFF and WAV, and `confirmExport` says what each will cost.
+   */
+  async saveAs(doc: SoundDocument): Promise<void> {
+    const answer = await showAlert({
+      message: `Save “${doc.name}” as which kind of file?`,
+      icon: "note",
+      buttons: [
+        { text: "AIFF", isDefault: true },
+        { text: "WAV" },
+        { text: "Cancel", isCancel: true },
+      ],
+    });
+    if (answer !== 0 && answer !== 1) return;
+    const format: SoundFormat = answer === 0 ? "aiff" : "wav";
+    if (!(await confirmExport(doc, format))) return;
+    downloadSound(doc, format);
+  }
+
   openDocument(doc: SoundDocument): DocumentWindow {
     const dw = new DocumentWindow(this.manager, doc, {
       drawMode: this.drawMode,
+      loop: this.loop,
+      volume: this.volume,
+      onTransport: (name) => this.onTransportButton(dw, name),
+      onVolume: (v) => this.setVolume(v),
       onClose: () => {
+        // A closing document takes its transport with it, and the speaker if it
+        // held it. Leaving a Transport pointed at a closed document alive would
+        // keep the whole buffer reachable.
+        const t = this.transports.get(doc);
+        if (t && t === this.playing) this.stopPlayback();
+        this.transports.delete(doc);
         const i = this.docWindows.indexOf(dw);
         if (i >= 0) this.docWindows.splice(i, 1);
       },
@@ -296,7 +554,14 @@ function refKeyOf(ref: MenuRef): string {
  */
 const BUILT = new Set<string>([
   `${Res.menu.file}:${File.new}`,
+  `${Res.menu.file}:${File.open}`,
   `${Res.menu.file}:${File.close}`,
+  `${Res.menu.file}:${File.saveAs}`,
+  `${Res.menu.sound}:${Sound.play}`,
+  `${Res.menu.sound}:${Sound.stop}`,
+  `${Res.menu.sound}:${Sound.pause}`,
+  `${Res.menu.sound}:${Sound.fastForward}`,
+  `${Res.menu.sound}:${Sound.loop}`,
   `${Res.menu.edit}:${Edit.cut}`,
   `${Res.menu.edit}:${Edit.copy}`,
   `${Res.menu.edit}:${Edit.paste}`,

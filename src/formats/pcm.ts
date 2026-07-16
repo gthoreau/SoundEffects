@@ -219,5 +219,39 @@ export function documentFromChannels(
   if (doc.numChans === 0) doc.addChannel();
   doc.firstSelCh = 1;
   doc.lastSelCh = doc.numChans;
+  panStereoPair(doc);
   return doc;
+}
+
+/**
+ * A two-channel import is a **stereo pair**: channel 1 left, channel 2 right.
+ *
+ * `[INTERPRETED]`, and worth stating plainly. `SoundDocument`'s new-channel
+ * default is `outLeft && outRight` — correct for a mono sound, which should come
+ * out of both speakers. But §3's two speaker toggles are per lane and nothing
+ * recovered says what an *import* sets them to, so a decoded stereo file would
+ * inherit the mono default and route both channels to both speakers. That sums
+ * L and R into each ear: **a stereo file would play as mono**, silently.
+ *
+ * This is as safe as an interpretation gets. The document model calls 2 channels
+ * "Stereo" (§3's info strip), AIFF and WAV both define channel order as L then R,
+ * and dual-mono playback of a stereo file is not something any shipping editor
+ * did. The alternative isn't a different flavour of correct — it is just wrong.
+ *
+ * Only a *pair* is panned. Three or more channels are "N channels" to this app,
+ * not a surround layout, and nothing recovered assigns them speakers — so they
+ * keep the both-on default and the user pans them with the toggles.
+ *
+ * The scars stay honest either way: the toggles are live, the routing is the
+ * same one Quick Mix commits (§6), so panning here changes what Quick Mix does
+ * to an imported stereo file — which is exactly what it should do.
+ */
+export function panStereoPair(doc: SoundDocument): void {
+  if (doc.numChans !== 2) return;
+  const [l, r] = doc.channels;
+  if (!l || !r) return;
+  l.outLeft = true;
+  l.outRight = false;
+  r.outLeft = false;
+  r.outRight = true;
 }

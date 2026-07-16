@@ -17,4 +17,6 @@ export * from "./info-strip.js";
 export * from "./transport-strip.js";
 export * from "./document-window.js";
 export * from "./alert.js";
+export * from "./files.js";
+export * from "./web-audio.js";
 export * from "./app.js";
