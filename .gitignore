@@ -1,4 +1,5 @@
 .DS_Store
+node_modules/
 
 # Extracted classic Mac OS files — contents live in HFS resource forks,
 # which git cannot store (they'd be committed as empty files).

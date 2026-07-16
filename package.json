@@ -1,0 +1,17 @@
+{
+  "name": "soundeffects-core",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Core editing engine and sample model for the SoundEffects 0.9.2 reconstruction",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
