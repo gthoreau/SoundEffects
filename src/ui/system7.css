@@ -1,0 +1,504 @@
+/*
+ * The System 7 look — SPEC §12: "System-7 look optional but recommended
+ * (Chicago-style font, 1-px bevels); behavior first."
+ *
+ * Everything here is chrome and nothing here is behaviour. The rule this file
+ * follows: **no rounding, no gradients, no transitions, no shadows.** A 1994
+ * Mac drew 1-px black frames on a 50% dither and that was the whole visual
+ * language. Anti-aliasing the corners would be a bigger lie than the wrong grey.
+ *
+ * Geometry does not live here — window and control rects come out of the
+ * resource fork (WIND/CNTL/DITL) and are applied inline. This file only says
+ * what a bevel looks like, never how big something is.
+ */
+
+:root {
+  /* The classic 8-colour QuickDraw greys we actually need. */
+  --sfx-black: #000000;
+  --sfx-white: #ffffff;
+  --sfx-grey-light: #dddddd;
+  --sfx-grey: #aaaaaa;
+  --sfx-grey-dark: #808080;
+  /* The desktop's 50% black-on-white dither, drawn as a 2px checker. */
+  --sfx-desktop: #8c8c8c;
+  --sfx-window-bg: #ffffff;
+  --sfx-chrome-bg: #dddddd;
+
+  --sfx-font: "Chicago", "ChicagoFLF", "Charcoal", "Geneva", system-ui, sans-serif;
+  --sfx-font-size: 12px;
+  /* The menu bar and every title bar are 20px tall in System 7. */
+  --sfx-menubar-height: 20px;
+  --sfx-titlebar-height: 20px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--sfx-font);
+  font-size: var(--sfx-font-size);
+  /* System 7 had no font smoothing. Turning it off is most of the look. */
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  cursor: default;
+  user-select: none;
+}
+
+/* The desktop: a 50% dither of black on white, exactly as the Finder drew it. */
+#sfx-desktop {
+  position: absolute;
+  inset: var(--sfx-menubar-height) 0 0 0;
+  background-color: var(--sfx-white);
+  background-image: repeating-conic-gradient(
+    var(--sfx-black) 0% 25%,
+    var(--sfx-white) 0% 50%
+  );
+  background-size: 4px 4px;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ menu bar */
+
+#sfx-menubar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: var(--sfx-menubar-height);
+  background: var(--sfx-white);
+  border-bottom: 1px solid var(--sfx-black);
+  display: flex;
+  align-items: stretch;
+  z-index: 10000;
+}
+
+.sfx-menu-title {
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.sfx-menu-title[aria-disabled="true"] {
+  color: var(--sfx-grey-dark);
+}
+
+/* Pulling a menu down inverts its title. It does not highlight or tint it. */
+.sfx-menu-title[aria-expanded="true"] {
+  background: var(--sfx-black);
+  color: var(--sfx-white);
+}
+
+.sfx-menu {
+  position: absolute;
+  top: var(--sfx-menubar-height);
+  background: var(--sfx-white);
+  border: 1px solid var(--sfx-black);
+  /* The one shadow System 7 did draw: a hard 1px black offset, no blur. */
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+  padding: 2px 0;
+  z-index: 10001;
+  min-width: 120px;
+}
+
+.sfx-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 1px 18px 1px 18px;
+  white-space: nowrap;
+  /* The anchor a hierarchical item's submenu hangs off. */
+  position: relative;
+}
+
+/*
+ * A hierarchical item's submenu. It must override `.sfx-menu`'s own absolute
+ * placement (which is measured from the menu bar) or it lands on top of its
+ * parent's items instead of beside them.
+ *
+ * It hangs to the right, overlapping the parent's frame by 1px so the two black
+ * borders coincide into one line — which is how System 7 drew them.
+ */
+.sfx-submenu {
+  display: none;
+  top: -3px;
+  left: 100%;
+}
+
+.sfx-menu-item:hover > .sfx-submenu {
+  display: block;
+}
+
+.sfx-menu-item[aria-disabled="true"] {
+  /* System 7 greyed a disabled item by *dithering* it, not by fading it. */
+  color: var(--sfx-grey);
+}
+
+.sfx-menu-item:not([aria-disabled="true"]):hover {
+  background: var(--sfx-black);
+  color: var(--sfx-white);
+}
+
+.sfx-menu-separator {
+  height: 1px;
+  margin: 2px 0;
+  background: var(--sfx-grey);
+  pointer-events: none;
+}
+
+.sfx-menu-key {
+  /* The ⌘ column is right-aligned and never wraps. */
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+.sfx-menu-mark {
+  position: absolute;
+  left: 4px;
+}
+
+/* ------------------------------------------------------------------- windows */
+
+.sfx-window {
+  position: absolute;
+  background: var(--sfx-window-bg);
+  border: 1px solid var(--sfx-black);
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * The title bar's six horizontal lines are the System 7 signature, and they are
+ * what an *active* window looks like. An inactive one drops them entirely —
+ * that absence is the whole activation cue, so it must not be replaced with a
+ * grey tint.
+ */
+.sfx-titlebar {
+  height: var(--sfx-titlebar-height);
+  border-bottom: 1px solid var(--sfx-black);
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  gap: 4px;
+  background: repeating-linear-gradient(
+    var(--sfx-black) 0 1px,
+    var(--sfx-white) 1px 2px
+  );
+  background-size: 100% 12px;
+  background-position: center;
+  background-repeat: no-repeat;
+  cursor: default;
+}
+
+.sfx-window[data-active="false"] .sfx-titlebar {
+  background: var(--sfx-white);
+}
+
+.sfx-title {
+  background: var(--sfx-white);
+  padding: 0 6px;
+  margin: 0 auto;
+  white-space: nowrap;
+}
+
+.sfx-window[data-active="false"] .sfx-title {
+  color: var(--sfx-grey-dark);
+}
+
+/* Close box and zoom box: 11px squares with a 1px frame, per WIND's procID. */
+.sfx-close,
+.sfx-zoom {
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--sfx-black);
+  background: var(--sfx-white);
+  flex: none;
+}
+
+.sfx-close:active {
+  background: var(--sfx-black);
+}
+
+.sfx-zoom {
+  /* The zoom box carries a smaller square in its top-left corner. */
+  background-image: linear-gradient(var(--sfx-black), var(--sfx-black));
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+}
+
+.sfx-window[data-active="false"] .sfx-close,
+.sfx-window[data-active="false"] .sfx-zoom {
+  visibility: hidden;
+}
+
+.sfx-window-body {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* The grow box lives in the bottom-right, overlapping both scroll bars. */
+.sfx-growbox {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 15px;
+  height: 15px;
+  background: var(--sfx-white);
+  border-left: 1px solid var(--sfx-black);
+  border-top: 1px solid var(--sfx-black);
+  cursor: nwse-resize;
+}
+
+.sfx-growbox::after {
+  content: "";
+  position: absolute;
+  inset: 3px 3px 5px 5px;
+  border: 1px solid var(--sfx-black);
+  background: var(--sfx-white);
+}
+
+/* ------------------------------------------------------------------ controls */
+
+/*
+ * A System 7 push button: 1px black frame, white fill, and it *inverts* when
+ * pressed. There is no hover state — the machine had no idea where the mouse
+ * was until you clicked.
+ */
+.sfx-button {
+  font: inherit;
+  -webkit-font-smoothing: none;
+  border: 1px solid var(--sfx-black);
+  border-radius: 8px;
+  background: var(--sfx-white);
+  color: var(--sfx-black);
+  padding: 1px 12px;
+  cursor: default;
+}
+
+.sfx-button:active:not(:disabled) {
+  background: var(--sfx-black);
+  color: var(--sfx-white);
+}
+
+.sfx-button:disabled {
+  color: var(--sfx-grey);
+  border-color: var(--sfx-grey);
+}
+
+/* The default button's extra 3px ring — the Return key's target. */
+.sfx-button[data-default="true"] {
+  box-shadow: 0 0 0 1px var(--sfx-white), 0 0 0 3px var(--sfx-black);
+}
+
+.sfx-checkbox,
+.sfx-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sfx-checkbox-box {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--sfx-black);
+  background: var(--sfx-white);
+  flex: none;
+  position: relative;
+}
+
+.sfx-radio-box {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--sfx-black);
+  border-radius: 50%;
+  background: var(--sfx-white);
+  flex: none;
+  position: relative;
+}
+
+/* Checked = an X drawn corner to corner. System 7 used no checkmark glyph here. */
+.sfx-checkbox[aria-checked="true"] .sfx-checkbox-box::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  background:
+    linear-gradient(to bottom right, transparent 44%, var(--sfx-black) 44% 56%, transparent 56%),
+    linear-gradient(to bottom left, transparent 44%, var(--sfx-black) 44% 56%, transparent 56%);
+}
+
+.sfx-radio[aria-checked="true"] .sfx-radio-box::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: var(--sfx-black);
+}
+
+.sfx-checkbox[aria-disabled="true"],
+.sfx-radio[aria-disabled="true"] {
+  color: var(--sfx-grey);
+}
+
+/* Text fields are sunken: a 1px frame, white well, no padding to speak of. */
+.sfx-field {
+  font: inherit;
+  -webkit-font-smoothing: none;
+  border: 1px solid var(--sfx-black);
+  background: var(--sfx-white);
+  padding: 1px 3px;
+  border-radius: 0;
+}
+
+/* A popup: framed, with the 1px drop shadow on the right and bottom edges. */
+.sfx-popup {
+  font: inherit;
+  -webkit-font-smoothing: none;
+  border: 1px solid var(--sfx-black);
+  background: var(--sfx-white);
+  border-radius: 0;
+  box-shadow: 1px 1px 0 var(--sfx-black);
+  padding: 1px 3px;
+  cursor: default;
+}
+
+.sfx-static {
+  white-space: pre-wrap;
+}
+
+/* --------------------------------------------------- document window zones */
+
+/* Zone 1 — the info strip (§3). Fields sit in a row, separated by rules. */
+.sfx-info-strip {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--sfx-black);
+  background: var(--sfx-chrome-bg);
+  overflow: hidden;
+  white-space: nowrap;
+  flex: none;
+}
+
+.sfx-info-field {
+  padding: 0 8px;
+  border-right: 1px solid var(--sfx-grey-dark);
+}
+
+.sfx-info-field:last-child {
+  border-right: none;
+}
+
+/* Zone 2 — the wave editor. The canvas owns every pixel inside it. */
+.sfx-wave-canvas {
+  display: block;
+  flex: 1;
+  background: var(--sfx-white);
+  cursor: text;
+}
+
+/* Zone 3 — the transport (§3). */
+.sfx-transport {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  /* The grow box sits in the bottom-right corner, on top of this strip. Reserve
+     its 15px so it lands on background rather than through the volume popup. */
+  padding: 0 19px 0 4px;
+  border-top: 1px solid var(--sfx-black);
+  background: var(--sfx-chrome-bg);
+  flex: none;
+}
+
+.sfx-transport-spacer {
+  flex: 1;
+}
+
+.sfx-transport-button {
+  width: 22px;
+  height: 20px;
+  border: 1px solid var(--sfx-black);
+  background: var(--sfx-white);
+  color: var(--sfx-black);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+/* An icon button inverts while held — and a *toggled* one stays inverted.
+   That is how System 7 showed Loop was on: there was no other affordance. */
+.sfx-transport-button:active,
+.sfx-transport-button[aria-pressed="true"] {
+  background: var(--sfx-black);
+  color: var(--sfx-white);
+}
+
+.sfx-transport-button[aria-disabled="true"] {
+  color: var(--sfx-grey);
+  border-color: var(--sfx-grey);
+}
+
+.sfx-volume {
+  flex: none;
+}
+
+/* ------------------------------------------------------------------- alerts */
+
+.sfx-modal-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  /* No scrim. System 7 dimmed nothing — the alert simply sat on top and the
+     app stopped responding. The modality is in the event handling, not a wash. */
+  background: transparent;
+  padding-top: 80px;
+}
+
+.sfx-alert {
+  background: var(--sfx-white);
+  border: 1px solid var(--sfx-black);
+  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+  min-width: 340px;
+  max-width: 460px;
+  padding: 12px;
+  /* The dBoxProc's signature: a heavy outer frame drawn inside the box. */
+  outline: 3px solid var(--sfx-black);
+  outline-offset: -6px;
+  pointer-events: auto;
+}
+
+.sfx-alert-body {
+  display: flex;
+  gap: 12px;
+  padding: 6px 4px 12px;
+}
+
+.sfx-alert-icon {
+  font-size: 28px;
+  line-height: 1;
+  flex: none;
+}
+
+.sfx-alert-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  line-height: 1.35;
+}
+
+.sfx-alert-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 2px 4px;
+}

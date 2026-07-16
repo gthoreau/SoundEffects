@@ -1,0 +1,700 @@
+{
+ "WIND": {
+  "128": {
+   "rect": {
+    "top": 50,
+    "left": 20,
+    "bottom": 302,
+    "right": 474
+   },
+   "procID": 12,
+   "visible": false,
+   "goAway": true,
+   "refCon": 0,
+   "title": "SoundEffects by Alberto Ricci",
+   "positioning": 30730
+  },
+  "129": {
+   "rect": {
+    "top": 50,
+    "left": 0,
+    "bottom": 291,
+    "right": 520
+   },
+   "procID": 5,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "title": "About SoundEffects…",
+   "positioning": 10250
+  },
+  "130": {
+   "rect": {
+    "top": 80,
+    "left": 50,
+    "bottom": 138,
+    "right": 378
+   },
+   "procID": 5,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "title": "Effect Progress"
+  },
+  "131": {
+   "rect": {
+    "top": 50,
+    "left": 100,
+    "bottom": 320,
+    "right": 370
+   },
+   "procID": 5,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "title": "Effect Info"
+  },
+  "132": {
+   "rect": {
+    "top": 50,
+    "left": 10,
+    "bottom": 320,
+    "right": 490
+   },
+   "procID": 5,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "title": "Mixer"
+  },
+  "133": {
+   "rect": {
+    "top": 50,
+    "left": 100,
+    "bottom": 236,
+    "right": 388
+   },
+   "procID": 5,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "title": "Record",
+   "positioning": 28682
+  },
+  "134": {
+   "rect": {
+    "top": 169,
+    "left": 1,
+    "bottom": 337,
+    "right": 80
+   },
+   "procID": 4,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "title": "Level"
+  },
+  "135": {
+   "rect": {
+    "top": 50,
+    "left": 20,
+    "bottom": 150,
+    "right": 190
+   },
+   "procID": 8,
+   "visible": false,
+   "goAway": true,
+   "refCon": 0,
+   "title": "Chunk List"
+  },
+  "136": {
+   "rect": {
+    "top": 50,
+    "left": 10,
+    "bottom": 320,
+    "right": 490
+   },
+   "procID": 5,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "title": "Spectrum",
+   "positioning": 26634
+  },
+  "137": {
+   "rect": {
+    "top": 34,
+    "left": 30,
+    "bottom": 336,
+    "right": 470
+   },
+   "procID": 5,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "title": "Register…",
+   "positioning": 10250
+  },
+  "138": {
+   "rect": {
+    "top": 116,
+    "left": 134,
+    "bottom": 177,
+    "right": 354
+   },
+   "procID": 5,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "title": "Play Clipboard",
+   "positioning": 28682
+  }
+ },
+ "DLOG": {
+  "128": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 138,
+    "right": 454
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 128,
+   "title": "",
+   "positioning": 28682
+  },
+  "132": {
+   "rect": {
+    "top": 29,
+    "left": 9,
+    "bottom": 335,
+    "right": 419
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 132,
+   "title": "",
+   "positioning": 10250
+  },
+  "137": {
+   "rect": {
+    "top": 40,
+    "left": 50,
+    "bottom": 308,
+    "right": 430
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 137,
+   "title": "",
+   "positioning": 28682
+  },
+  "138": {
+   "rect": {
+    "top": 0,
+    "left": 0,
+    "bottom": 211,
+    "right": 344
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 138,
+   "title": "",
+   "positioning": 0
+  },
+  "139": {
+   "rect": {
+    "top": 40,
+    "left": 20,
+    "bottom": 215,
+    "right": 280
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 139,
+   "title": "",
+   "positioning": 28682
+  },
+  "140": {
+   "rect": {
+    "top": 40,
+    "left": 20,
+    "bottom": 276,
+    "right": 280
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 140,
+   "title": "",
+   "positioning": 28682
+  },
+  "141": {
+   "rect": {
+    "top": 40,
+    "left": 20,
+    "bottom": 276,
+    "right": 280
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 141,
+   "title": "",
+   "positioning": 28682
+  },
+  "142": {
+   "rect": {
+    "top": 40,
+    "left": 20,
+    "bottom": 238,
+    "right": 280
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 142,
+   "title": "",
+   "positioning": 28682
+  },
+  "143": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 292,
+    "right": 360
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 143,
+   "title": "",
+   "positioning": 28682
+  },
+  "153": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 65,
+    "right": 360
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 153,
+   "title": "",
+   "positioning": 26634
+  },
+  "155": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 130,
+    "right": 362
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 155,
+   "title": "",
+   "positioning": 45066
+  },
+  "161": {
+   "rect": {
+    "top": 40,
+    "left": 20,
+    "bottom": 310,
+    "right": 280
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 161,
+   "title": "",
+   "positioning": 28682
+  },
+  "163": {
+   "rect": {
+    "top": 40,
+    "left": 20,
+    "bottom": 140,
+    "right": 263
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 163,
+   "title": "",
+   "positioning": 28682
+  },
+  "165": {
+   "rect": {
+    "top": 40,
+    "left": 20,
+    "bottom": 202,
+    "right": 422
+   },
+   "procID": 1,
+   "visible": false,
+   "goAway": false,
+   "refCon": 0,
+   "itemsID": 165,
+   "title": "",
+   "positioning": 12298
+  }
+ },
+ "ALRT": {
+  "129": {
+   "rect": {
+    "top": 94,
+    "left": 80,
+    "bottom": 194,
+    "right": 433
+   },
+   "itemsID": 129,
+   "stages": 17476,
+   "positioning": 28682
+  },
+  "130": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 148,
+    "right": 378
+   },
+   "itemsID": 130,
+   "stages": 21845,
+   "positioning": 12298
+  },
+  "131": {
+   "rect": {
+    "top": 94,
+    "left": 80,
+    "bottom": 192,
+    "right": 376
+   },
+   "itemsID": 131,
+   "stages": 17476,
+   "positioning": 28682
+  },
+  "133": {
+   "rect": {
+    "top": 70,
+    "left": 50,
+    "bottom": 168,
+    "right": 443
+   },
+   "itemsID": 133,
+   "stages": 21845,
+   "positioning": 28682
+  },
+  "134": {
+   "rect": {
+    "top": 46,
+    "left": 70,
+    "bottom": 176,
+    "right": 426
+   },
+   "itemsID": 134,
+   "stages": 21845,
+   "positioning": 12298
+  },
+  "135": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 154,
+    "right": 455
+   },
+   "itemsID": 135,
+   "stages": 21845,
+   "positioning": 12298
+  },
+  "136": {
+   "rect": {
+    "top": 94,
+    "left": 80,
+    "bottom": 208,
+    "right": 444
+   },
+   "itemsID": 136,
+   "stages": 17476,
+   "positioning": 12298
+  },
+  "144": {
+   "rect": {
+    "top": 50,
+    "left": 40,
+    "bottom": 162,
+    "right": 394
+   },
+   "itemsID": 144,
+   "stages": 21845,
+   "positioning": 28682
+  },
+  "145": {
+   "rect": {
+    "top": 50,
+    "left": 50,
+    "bottom": 274,
+    "right": 454
+   },
+   "itemsID": 145,
+   "stages": 21845,
+   "positioning": 12298
+  },
+  "146": {
+   "rect": {
+    "top": 80,
+    "left": 50,
+    "bottom": 178,
+    "right": 464
+   },
+   "itemsID": 146,
+   "stages": 17476,
+   "positioning": 12298
+  },
+  "147": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 140,
+    "right": 436
+   },
+   "itemsID": 147,
+   "stages": 21845,
+   "positioning": 28682
+  },
+  "148": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 156,
+    "right": 487
+   },
+   "itemsID": 148,
+   "stages": 21845,
+   "positioning": 28682
+  },
+  "149": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 140,
+    "right": 395
+   },
+   "itemsID": 149,
+   "stages": 21845,
+   "positioning": 28682
+  },
+  "150": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 156,
+    "right": 445
+   },
+   "itemsID": 150,
+   "stages": 17476,
+   "positioning": 28682
+  },
+  "151": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 140,
+    "right": 428
+   },
+   "itemsID": 151,
+   "stages": 17476,
+   "positioning": 28682
+  },
+  "152": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 156,
+    "right": 430
+   },
+   "itemsID": 152,
+   "stages": 17476,
+   "positioning": 28682
+  },
+  "154": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 124,
+    "right": 408
+   },
+   "itemsID": 154,
+   "stages": 17476,
+   "positioning": 45066
+  },
+  "156": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 176,
+    "right": 454
+   },
+   "itemsID": 156,
+   "stages": 17476,
+   "positioning": 28682
+  },
+  "157": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 176,
+    "right": 454
+   },
+   "itemsID": 157,
+   "stages": 17476,
+   "positioning": 28682
+  },
+  "158": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 140,
+    "right": 402
+   },
+   "itemsID": 158,
+   "stages": 17476,
+   "positioning": 28682
+  },
+  "159": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 154,
+    "right": 396
+   },
+   "itemsID": 159,
+   "stages": 17476,
+   "positioning": 12298
+  },
+  "160": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 320,
+    "right": 440
+   },
+   "itemsID": 160,
+   "stages": 17476,
+   "positioning": 12298
+  },
+  "162": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 140,
+    "right": 434
+   },
+   "itemsID": 162,
+   "stages": 21845,
+   "positioning": 28682
+  },
+  "164": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 140,
+    "right": 438
+   },
+   "itemsID": 164,
+   "stages": 21845,
+   "positioning": 28682
+  },
+  "166": {
+   "rect": {
+    "top": 40,
+    "left": 40,
+    "bottom": 156,
+    "right": 430
+   },
+   "itemsID": 166,
+   "stages": 17476,
+   "positioning": 28682
+  }
+ },
+ "names": {
+  "WIND": {
+   "128": "Doc",
+   "129": "About",
+   "130": "Progr",
+   "131": "ModInfo",
+   "132": "Mixer",
+   "133": "Record",
+   "134": "InputLevel",
+   "135": "Chunk",
+   "136": "Spectrum",
+   "137": "Register",
+   "138": "PlayClip"
+  },
+  "DLOG": {
+   "128": "Error",
+   "132": "Prefs",
+   "137": "EditHeader",
+   "138": "CustomPut",
+   "139": "ShiftSound",
+   "140": "SelectExactly",
+   "141": "SelectPeak",
+   "142": "LeaveSilence",
+   "143": "GetInfo",
+   "153": "AutoEffSettings",
+   "155": "AskSettingName",
+   "161": "FindClipping",
+   "163": "ChangeField",
+   "165": "OpenPartFile"
+  },
+  "ALRT": {
+   "129": "SaveChanges",
+   "130": "Gestalt",
+   "131": "Revert",
+   "133": "DoExtend",
+   "134": "NERAM",
+   "135": "UnrecogType",
+   "136": "PermErr",
+   "144": "FreeMem",
+   "145": "NoSM3",
+   "146": "Generic",
+   "147": "Register",
+   "148": "RegisterSaved",
+   "149": "RegisterPrinted",
+   "150": "RegisterCost",
+   "151": "Resample",
+   "152": "ConfirmResampleBits",
+   "154": "ConfirmDeleteSet",
+   "156": "ModAlert",
+   "157": "ModAlertCancel",
+   "158": "ModStop",
+   "159": "ApplIsOld",
+   "160": "Welcome",
+   "162": "NoClipping",
+   "164": "MemLow",
+   "166": "ConfirmResampleRate"
+  }
+ }
+}

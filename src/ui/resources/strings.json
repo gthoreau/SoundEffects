@@ -1,0 +1,300 @@
+{
+ "STR#": {
+  "128": [
+   "An unknown error occurred.",
+   "There is not enough memory.\rTry to close unused windows to free up some memory.",
+   "I couldn’t find any sounds in the document “∑”.",
+   "I couldn’t open the document “∑”.",
+   "An error occurred while loading the Effects.",
+   "I couldn’t set up Apple Events succesfully.",
+   "I couldn’t process an Apple Event succesfully.",
+   "Please put the Effects folder or an alias in the Preferences folder or in the same folder as SoundEffects.",
+   "I couldn’t find the effect file “∑” in the Effects folder.",
+   "The effect file “∑” does not contain an Effect code resource.",
+   "I couldn’t create the document “∑”.\r\rError ∑.",
+   "I couldn’t save “∑” because the disk “∑” is full. Try saving onto a different disk.",
+   "I couldn’t find an available sound input device to record a new sound with.",
+   "I couldn’t find the original document for “∑” any more. It was probably deleted or moved.",
+   "The previous version of “∑” was probably modified and the sound is now missing.",
+   "I couldn’t create my preferences file in the Preferences folder.",
+   "I couldn’t find my preferences file any more in the Preferences folder.",
+   "I couldn’t use the sound input device. Probably another application is using it.",
+   "I couldn’t find an available sound input device, so you won’t be able to edit sound input device-specific preferences.",
+   "The device “∑” does not have an Options dialog.",
+   "I couldn’t find my own resources!",
+   "There is not enough memory to load my own resources. Please save your work and quit as soon as possible, then give me more memory in the Finder.",
+   "I could not load my resources.",
+   "I’m sorry, but I can’t delete the only channel of a mono sound.\rDelete the document “∑” instead.",
+   "There is not enough memory to open a new window.\rTry to close other unused windows to free up some memory.",
+   "There is not enough memory to revert to the last saved version of the sound “∑”.\rTry to close unused windows to free up some memory.",
+   "I couldn’t find out what kind of sound “∑” is.",
+   "There is not enough memory to add a new channel to “∑”.\rTry to close unused windows to free up some memory.",
+   "Please save your work and quit as soon as possible.",
+   "I received a command that I don’t know how to respond to.",
+   "You cannot shift any sound in “∑” because it is empty.",
+   "",
+   "I couldn’t replace the existing file “∑”. You may try saving the registration form under a different name.",
+   "There is no data to select in “∑”.",
+   "An error occurred while reading the document “∑”.",
+   "The document “∑” does not appear to be a real AIFF sound file.",
+   "A disk error occurred while reading the document “∑”.",
+   "There is not enough memory to open the document “∑”.\rTry to close unused windows to free up some memory.",
+   "You can’t look for peaks in the sound “∑”, because it is empty.",
+   "There is not enough memory to shift the selection in “∑”.\rI need ∑K, but only ∑K are available.",
+   "An error occurred while reading the document “∑”.",
+   "An error occurred while reading the document “∑”. A part of the sound has been read successfully, but it may be corrupted.",
+   "There are more than 800 clipping points in “∑”. Only the first 800 will be shown.",
+   "The effect module “∑” does not have an about box.",
+   "An unknown error occurred while printing the registration form.",
+   "The sound “∑” has no chunks to export.",
+   "An error occurred while saving “∑” to disk.\r\rError ∑.",
+   "You can’t replace “∑”, because it is locked. Please save the document under a different name.",
+   "You can’t replace “∑”, because it is in use. Please save the document under a different name.",
+   "An error occurred after saving “∑” to disk. The saved sound should be all right, but please save the document again as soon as possible to avoid any problems.",
+   "There is not enough memory to save “∑”.\rTry to close unused windows to free up some memory.",
+   "There is not enough memory to save the chunk information in “∑”.\rTry to close unused windows to free up some memory.",
+   "There is not enough memory to correctly paste the sound. I will proceed anyway, but the result may not be correct.",
+   "The Finder is not able to play sounds with more than two channels.\rI will save the document anyway, but remember that you will get an error if you try to play the sound from the Finder.",
+   "",
+   "I couldn’t open the effect “∑” for writing, because it is probably on a locked volume.\rPlease move the Effects Folder in the Preferences folder on your startup disk, or unlock the volume it is on.",
+   "I couldn’t replace the existing file “∑”. You may try saving the chunk list under a different name.",
+   "There is not enough memory to record a sound in “∑”.\rTry to close unused windows to free up some memory.",
+   "I couldn’t create my temporary file for Undo buffers in the system disk. You may not be able to Undo.",
+   "I couldn’t find the Sound control panel.",
+   "I couldn’t open the Sound control panel succesfully.",
+   "I couldn’t open “∑” because some essential information about the sound is missing from the document.",
+   "You can’t use the effect “∑”, because it requires a newer version of SoundEffects.\rPlease upgrade to the latest version.",
+   "The effect “∑” is too old to be used with this version of SoundEffects. Please use a newer version of it."
+  ],
+  "129": [
+   "Channel ",
+   "Channels ",
+   " to "
+  ],
+  "130": [
+   "closing",
+   "quitting"
+  ],
+  "131": [
+   "kHz; ",
+   " bits",
+   "Mono",
+   "Stereo",
+   " channels",
+   " samples",
+   " seconds",
+   " bytes",
+   "samp",
+   "bytes",
+   "secs",
+   "ms"
+  ],
+  "132": [
+   "There is not enough hardware to play the selected sound.",
+   "You may want to downsample it before playing."
+  ],
+  "133": [
+   "SoundEffects",
+   "Version "
+  ],
+  "134": [
+   "Save sound file as…",
+   "Save registration form as…",
+   "Save chunk list as…"
+  ],
+  "135": [
+   "Version ",
+   "n/a",
+   " bytes",
+   "unknown size"
+  ],
+  "136": [
+   "Cut",
+   "Copy",
+   "Paste",
+   "Clear",
+   "Cut Channel",
+   "Copy Channel",
+   "Paste Channel",
+   "Clear Channel",
+   "Save As…",
+   "Export Chunks As…"
+  ],
+  "137": [
+   "Use this pop-up menu to select the folder or disk that contains the file you want to open.  When you choose an item from this menu, its contents appear in the list directly below this menu.",
+   "This list shows the contents of the item named above.  Double-click a folder or disk to see its contents in this window. Double-click a document to open it.",
+   "This icon represents a disk on your desktop.  Click here to see the contents of the folder or disk that contains the folder named to the left.",
+   "To eject the disk named above, click this button.",
+   "This button ejects the disk named above. The button is not available because the item listed above is not an ejectable disk.",
+   "To see a list of the items on your desktop, click this button. To see the contents of a different disk, click this button, then double-click the disk’s name in the window on the left.",
+   "To see a list of the items on your desktop, click this button. The button is not available because items on the desktop are already listed in the window.",
+   "To see the contents of the selected disk or folder, or to open the selected file, click this button.",
+   "To see the contents of the selected disk or folder, or to open the selected file, click this button.  The button is not available because nothing is selected, or because you cannot open the selected item.",
+   "To close the dialog box without opening a document, click this button.",
+   "Type a name for your new document in this box.",
+   "To save your document in the folder or disk whose contents are listed in the window, click this button.  The document will have the name shown in the box below the window.",
+   "To save your document in the folder or disk whose contents are listed in the window, click here.  The button is not available because no name has been provided for the document, or because you cannot make changes to the selected folder or disk.",
+   "To close the dialog box without saving the document, click this button.",
+   "To create a new folder in the disk or folder listed to the left, click this button.",
+   "To create a new folder in the disk or folder listed to the left, click this button.  Not available now because you cannot create a new folder on the disk named above.",
+   "Displays this item’s contents in the list below.",
+   "To create a new folder with the name given above, click this button.",
+   "To create a new folder, click this button.  The button is not available because no name is entered for the folder.",
+   "To cancel your new folder, click this button.",
+   "Type a name for your new folder in this box.",
+   "To see the contents of the selected disk or folder, click this button.",
+   "To see the contents of the selected disk or folder, click this button.  The button is not available because no folder or disk is selected, or because you cannot open the selected item."
+  ],
+  "138": [
+   "Merry Christmas!",
+   "Today is Alberto Ricci’s birthday!"
+  ],
+  "139": [
+   "Shift ",
+   " by:",
+   "the whole sound",
+   "channel number ",
+   "channels ",
+   " to ",
+   "the selection"
+  ],
+  "140": [
+   " Options…",
+   "About ",
+   "…"
+  ],
+  "141": [
+   "Available Samples:",
+   "Available Seconds:",
+   "Recorded Samples:",
+   "Recorded Seconds:"
+  ],
+  "142": [
+   "the selection.",
+   "the insertion point."
+  ],
+  "143": [
+   "General Settings",
+   "Vox Parameters"
+  ],
+  "144": [
+   "Start",
+   "Length",
+   "Channel",
+   "Kind",
+   "the current selection of ",
+   " chunks",
+   "\r\rStart\tEnd\tLength\tChannel\tKind\r-----\t---\t------\t-------\t----\r\r",
+   "Chunk",
+   "Clipping"
+  ],
+  "145": [
+   "The ",
+   "insertion point is before sample ",
+   "selection extends from sample ",
+   " to sample ",
+   " of channel ",
+   " of channels ",
+   " to ",
+   ".",
+   "(",
+   "%)"
+  ],
+  "146": [
+   "Chan "
+  ],
+  "147": [
+   "SoundEffects Registration Form",
+   "Name",
+   "Address",
+   "City",
+   "State",
+   "Zip",
+   "Country",
+   "Phone",
+   "FAX",
+   "Comments",
+   "E-mail address(es)",
+   "Register",
+   "",
+   "copies of SoundEffects for",
+   "(You will receive the latest version if you don’t have it yet, or a newer one when ready.)",
+   "SE Registration Form"
+  ],
+  "148": [
+   "Resume",
+   "Pause"
+  ],
+  "149": [
+   "selection start",
+   "selection end",
+   "selection length",
+   "length of selected channels"
+  ],
+  "150": [
+   "record",
+   "paste"
+  ]
+ },
+ "STR": {
+  "128": "Effects Folder",
+  "129": "SoundEffects Prefs",
+  "130": "SoundEffects Effect Prefs",
+  "131": "untitled sound #",
+  "132": " kHz",
+  "133": " Bits",
+  "134": "SoundEffects help…",
+  "135": " Hz",
+  "136": "(-",
+  "137": "0123456789",
+  "138": "Choose a background color:",
+  "139": "SoundEffects",
+  "140": "Custom",
+  "141": "0123456789.",
+  "142": "SFXTemp"
+ },
+ "names": {
+  "STR#": {
+   "128": "Err",
+   "129": "Sel-Chans",
+   "130": "SaveChanges",
+   "131": "Units",
+   "132": "No16bit",
+   "133": "About",
+   "134": "SF",
+   "135": "EffInfo",
+   "136": "DynMItems",
+   "137": "SFPutBal",
+   "138": "Dates",
+   "139": "Shift",
+   "140": "EffMenu",
+   "141": "RecInfo",
+   "142": "SelectExactly",
+   "143": "RecMisc",
+   "144": "ChunkMisc",
+   "145": "GetInfo",
+   "146": "MixMisc",
+   "147": "RegMisc",
+   "148": "Progress",
+   "149": "FldPrompts",
+   "150": "Resampling"
+  },
+  "STR": {
+   "128": "ƒ Name",
+   "129": "Prefs",
+   "130": "EffPrefs",
+   "131": "Untitled",
+   "132": "Rate Unit",
+   "133": "Size Unit",
+   "134": "HelpMenu",
+   "135": "Rate Unit 2",
+   "136": "Disable",
+   "137": "Numbers",
+   "138": "ColorPick",
+   "139": "MissingAppl",
+   "140": "Custom",
+   "141": "NumbersDec",
+   "142": "UndoFile"
+  }
+ }
+}

@@ -1,0 +1,1373 @@
+{
+ "MENU": {
+  "128": {
+   "menuID": 128,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967287,
+   "enabled": true,
+   "title": "\u0014",
+   "items": [
+    {
+     "index": 1,
+     "text": "About SoundEffects…",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "Registration Form…",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    }
+   ]
+  },
+  "129": {
+   "menuID": 129,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294966007,
+   "enabled": true,
+   "title": "File",
+   "items": [
+    {
+     "index": 1,
+     "text": "New",
+     "icon": 0,
+     "key": "N",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "Open…",
+     "icon": 0,
+     "key": "O",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 4,
+     "text": "Close",
+     "icon": 0,
+     "key": "W",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 5,
+     "text": "Save",
+     "icon": 0,
+     "key": "S",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 6,
+     "text": "Save As…",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 7,
+     "text": "Revert",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 8,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 9,
+     "text": "Preferences",
+     "icon": 0,
+     "key": 27,
+     "mark": "",
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 10,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 11,
+     "text": "Quit",
+     "icon": 0,
+     "key": "Q",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "130": {
+   "menuID": 130,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294962041,
+   "enabled": true,
+   "title": "Edit",
+   "items": [
+    {
+     "index": 1,
+     "text": "Undo",
+     "icon": 0,
+     "key": "Z",
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 2,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 3,
+     "text": "Cut",
+     "icon": 0,
+     "key": "X",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 4,
+     "text": "Copy",
+     "icon": 0,
+     "key": "C",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 5,
+     "text": "Paste",
+     "icon": 0,
+     "key": "V",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 6,
+     "text": "Clear",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 7,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 8,
+     "text": "Leave Silence…",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 9,
+     "text": "Shift Sound…",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 10,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 11,
+     "text": "Zoom",
+     "icon": 0,
+     "key": 27,
+     "mark": "",
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 12,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 13,
+     "text": "Play Clipboard",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "131": {
+   "menuID": 131,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294925239,
+   "enabled": true,
+   "title": "Selection",
+   "items": [
+    {
+     "index": 1,
+     "text": "Select All",
+     "icon": 0,
+     "key": "A",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "Select None",
+     "icon": 0,
+     "key": "D",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 4,
+     "text": "Extend to Beginning",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 5,
+     "text": "Extend to End",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 6,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 7,
+     "text": "Select Exactly…",
+     "icon": 0,
+     "key": "E",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 8,
+     "text": "Select Peak…",
+     "icon": 0,
+     "key": "K",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 9,
+     "text": "Select Silence",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 10,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 11,
+     "text": "Set Loop",
+     "icon": 0,
+     "key": "L",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 12,
+     "text": "Select Loop",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 13,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 14,
+     "text": "Crop",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 15,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 16,
+     "text": "Selection Info…",
+     "icon": 0,
+     "key": "I",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "132": {
+   "menuID": 132,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967167,
+   "enabled": true,
+   "title": "Sound",
+   "items": [
+    {
+     "index": 1,
+     "text": "Record…",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "Stop",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "Pause",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 4,
+     "text": "Play",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 5,
+     "text": "Fast Forward",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 6,
+     "text": "Loop",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 7,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 8,
+     "text": "Volume",
+     "icon": 0,
+     "key": 27,
+     "mark": "",
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "133": {
+   "menuID": 133,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967289,
+   "enabled": true,
+   "title": "Effects",
+   "items": [
+    {
+     "index": 1,
+     "text": "Redo Effect",
+     "icon": 0,
+     "key": "/",
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 2,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    }
+   ]
+  },
+  "134": {
+   "menuID": 134,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967019,
+   "enabled": true,
+   "title": "Special",
+   "items": [
+    {
+     "index": 1,
+     "text": "Show Spectrum…",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 3,
+     "text": "Mixer…",
+     "icon": 0,
+     "key": "M",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 4,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 5,
+     "text": "Show Chunk List",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 6,
+     "text": "Set Chunk",
+     "icon": 0,
+     "key": "U",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 7,
+     "text": "Find Clipped Samples…",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 8,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 9,
+     "text": "Change Sound Info…",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "135": {
+   "menuID": 135,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967291,
+   "enabled": true,
+   "title": "Windows",
+   "items": [
+    {
+     "index": 1,
+     "text": "Sound Level Meter",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    }
+   ]
+  },
+  "140": {
+   "menuID": 140,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "\u0000",
+   "items": [
+    {
+     "index": 1,
+     "text": "General",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "Window Setup",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "Recording - Sound Input Device",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 4,
+     "text": "Recording - Miscellaneous",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 5,
+     "text": "Effects",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "141": {
+   "menuID": 141,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "Zoom",
+   "items": [
+    {
+     "index": 1,
+     "text": "Zoom In",
+     "icon": 0,
+     "key": "=",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "Zoom Out",
+     "icon": 0,
+     "key": "-",
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "Fit in Window",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 4,
+     "text": "Fit Selection",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "142": {
+   "menuID": 142,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "Volume",
+   "items": [
+    {
+     "index": 1,
+     "text": "Off  ",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "  1  ",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "  2  ",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 4,
+     "text": "  3  ",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 5,
+     "text": "  4  ",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 6,
+     "text": "  5  ",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 7,
+     "text": "  6  ",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 8,
+     "text": "  7  ",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "150": {
+   "menuID": 150,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "\u0000",
+   "items": [
+    {
+     "index": 1,
+     "text": "General",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "Window Setup",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "Recording - Sound Input Device",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 4,
+     "text": "Recording - Miscellaneous",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 5,
+     "text": "Effects",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "151": {
+   "menuID": 151,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "\u0000",
+   "items": [
+    {
+     "index": 1,
+     "text": "Off",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "1",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "2",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 4,
+     "text": "3",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 5,
+     "text": "4",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 6,
+     "text": "5",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 7,
+     "text": "6",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 8,
+     "text": "7",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "152": {
+   "menuID": 152,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "\u0000",
+   "items": []
+  },
+  "153": {
+   "menuID": 153,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "\u0000",
+   "items": []
+  },
+  "154": {
+   "menuID": 154,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "\u0000",
+   "items": [
+    {
+     "index": 1,
+     "text": "Samples",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "Bytes",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "Seconds",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 4,
+     "text": "Milliseconds",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "155": {
+   "menuID": 155,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "\u0000",
+   "items": [
+    {
+     "index": 1,
+     "text": "5 kHz",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "7 kHz",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "11 kHz",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 4,
+     "text": "11.1 kHz",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 5,
+     "text": "22.050 kHz",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 6,
+     "text": "22.254 kHz – Standard",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 7,
+     "text": "24 kHz – Voice Recognition",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 8,
+     "text": "32 kHz",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 9,
+     "text": "44.1 kHz – CD",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 10,
+     "text": "48 kHz – DAT",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "156": {
+   "menuID": 156,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "\u0000",
+   "items": [
+    {
+     "index": 1,
+     "text": "System 7 Sound File",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "AIFF",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "157": {
+   "menuID": 157,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "\u0000",
+   "items": [
+    {
+     "index": 1,
+     "text": "Samples",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "Bytes",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "Seconds",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 4,
+     "text": "Milliseconds",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 5,
+     "text": "Meters",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 6,
+     "text": "Feet",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "158": {
+   "menuID": 158,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "Mix to:",
+   "items": [
+    {
+     "index": 1,
+     "text": "New Document",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "New Track",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "159": {
+   "menuID": 159,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967295,
+   "enabled": true,
+   "title": "\u0000",
+   "items": [
+    {
+     "index": 1,
+     "text": "Mono",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 2,
+     "text": "Stereo",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  },
+  "160": {
+   "menuID": 160,
+   "width": 0,
+   "height": 0,
+   "procID": 0,
+   "enableFlags": 4294967293,
+   "enabled": true,
+   "title": "\u0000",
+   "items": [
+    {
+     "index": 1,
+     "text": "-",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": false
+    },
+    {
+     "index": 2,
+     "text": "Save setup as…",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    },
+    {
+     "index": 3,
+     "text": "Delete setup…",
+     "icon": 0,
+     "key": 0,
+     "mark": 0,
+     "style": 0,
+     "enabled": true
+    }
+   ]
+  }
+ },
+ "MBAR": {
+  "128": [
+   128,
+   129,
+   130,
+   131,
+   132,
+   133,
+   134,
+   135
+  ]
+ },
+ "names": {
+  "MENU": {
+   "151": "playThru",
+   "152": "Rate",
+   "153": "BPS",
+   "154": "units",
+   "158": "MixTo",
+   "159": "numChans"
+  }
+ }
+}

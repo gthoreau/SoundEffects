@@ -1,0 +1,3629 @@
+{
+ "DITL": {
+  "128": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 68,
+     "left": 338,
+     "bottom": 88,
+     "right": 396
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 76,
+     "bottom": 55,
+     "right": 396
+    },
+    "text": ""
+   },
+   {
+    "id": 3,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 130
+   }
+  ],
+  "129": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 284,
+     "bottom": 90,
+     "right": 344
+    },
+    "text": "Save"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 211,
+     "bottom": 90,
+     "right": 271
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 77,
+     "bottom": 90,
+     "right": 162
+    },
+    "text": "Don’t Save"
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 58,
+     "right": 346
+    },
+    "text": "Save changes to the sound “^0” before ^1?"
+   },
+   {
+    "id": 5,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 130
+   }
+  ],
+  "130": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 75,
+     "left": 267,
+     "bottom": 95,
+     "right": 325
+    },
+    "text": "Sorry"
+   },
+   {
+    "id": 2,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 13,
+     "left": 79,
+     "bottom": 61,
+     "right": 325
+    },
+    "text": "SoundEffects requires some routines only available in System 7.0 or later.\rI’m afraid you’ll have to upgrade…"
+   }
+  ],
+  "131": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 68,
+     "left": 152,
+     "bottom": 88,
+     "right": 212
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 68,
+     "left": 225,
+     "bottom": 88,
+     "right": 285
+    },
+    "text": "Revert"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 72,
+     "bottom": 55,
+     "right": 292
+    },
+    "text": "Revert to the last saved version of “^0”?"
+   },
+   {
+    "id": 4,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 130
+   }
+  ],
+  "132": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 277,
+     "left": 334,
+     "bottom": 297,
+     "right": 392
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 277,
+     "left": 261,
+     "bottom": 297,
+     "right": 319
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 23,
+     "bottom": 18,
+     "right": 201
+    },
+    "text": "SoundEffects Preferences"
+   },
+   {
+    "id": 4,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 4,
+     "bottom": 18,
+     "right": 20
+    }
+   },
+   {
+    "id": 5,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 20,
+     "left": 0,
+     "bottom": 24,
+     "right": 512
+    },
+    "resID": 173
+   },
+   {
+    "id": 6,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 27,
+     "left": 25,
+     "bottom": 47,
+     "right": 280
+    },
+    "resID": 128
+   },
+   {
+    "id": 7,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 50,
+     "left": 0,
+     "bottom": 51,
+     "right": 512
+    },
+    "resID": 173
+   }
+  ],
+  "133": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 68,
+     "left": 325,
+     "bottom": 88,
+     "right": 383
+    },
+    "text": "Extend"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 68,
+     "left": 254,
+     "bottom": 88,
+     "right": 312
+    },
+    "text": "Limit"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 73,
+     "bottom": 55,
+     "right": 385
+    },
+    "text": "This effect may output a sound longer than before. Do you want to limit the module’s effect to the selection or extend it as needed?"
+   },
+   {
+    "id": 4,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 130
+   }
+  ],
+  "134": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 100,
+     "left": 287,
+     "bottom": 120,
+     "right": 345
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 75,
+     "bottom": 87,
+     "right": 348
+    },
+    "text": "The selected effect needs more memory. It requires at least ^0K and the available memory is only ^1K.\rTry to close unused windows to free up some memory."
+   },
+   {
+    "id": 3,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 129
+   }
+  ],
+  "135": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 84,
+     "left": 335,
+     "bottom": 104,
+     "right": 393
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 76,
+     "bottom": 71,
+     "right": 396
+    },
+    "text": "I’m sorry, but I can only open System 7 sound files or AIFF files (types 'sfil' and 'AIFF').\rYou may want to use SoundExtractor to convert sounds of other formats to System 7 sounds."
+   },
+   {
+    "id": 3,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 129
+   }
+  ],
+  "136": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 84,
+     "left": 290,
+     "bottom": 104,
+     "right": 350
+    },
+    "text": "Open"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 84,
+     "left": 217,
+     "bottom": 104,
+     "right": 277
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 72,
+     "bottom": 71,
+     "right": 350
+    },
+    "text": "The document “^0” is already open.\rIf you open it again, it will appear in a new untitled window.\rDo you want to open it anyway?"
+   },
+   {
+    "id": 4,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 130
+   }
+  ],
+  "137": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 236,
+     "left": 302,
+     "bottom": 256,
+     "right": 360
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 236,
+     "left": 231,
+     "bottom": 256,
+     "right": 289
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 23,
+     "bottom": 18,
+     "right": 103
+    },
+    "text": "Sound Info"
+   },
+   {
+    "id": 4,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 4,
+     "bottom": 18,
+     "right": 20
+    }
+   },
+   {
+    "id": 5,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 20,
+     "left": 0,
+     "bottom": 24,
+     "right": 390
+    },
+    "resID": 173
+   },
+   {
+    "id": 6,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 34,
+     "left": 23,
+     "bottom": 98,
+     "right": 364
+    },
+    "text": "Warning: you should never set these values directly. Instead, use effects such as Downsample. Change these values only if you know what you’re doing, or you may end up with undesired effects."
+   },
+   {
+    "id": 7,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 122,
+     "left": 63,
+     "bottom": 138,
+     "right": 178
+    },
+    "text": "Sampling Rate:"
+   },
+   {
+    "id": 8,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 148,
+     "left": 63,
+     "bottom": 164,
+     "right": 178
+    },
+    "text": "Sample Size:"
+   },
+   {
+    "id": 9,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 174,
+     "left": 63,
+     "bottom": 190,
+     "right": 178
+    },
+    "text": "Channels:"
+   },
+   {
+    "id": 10,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 200,
+     "left": 63,
+     "bottom": 216,
+     "right": 178
+    },
+    "text": "Base MIDI value:"
+   },
+   {
+    "id": 11,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 122,
+     "left": 187,
+     "bottom": 138,
+     "right": 264
+    },
+    "text": ""
+   },
+   {
+    "id": 12,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 148,
+     "left": 187,
+     "bottom": 164,
+     "right": 239
+    },
+    "text": ""
+   },
+   {
+    "id": 13,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 174,
+     "left": 187,
+     "bottom": 190,
+     "right": 239
+    },
+    "text": ""
+   },
+   {
+    "id": 14,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 200,
+     "left": 187,
+     "bottom": 216,
+     "right": 239
+    },
+    "text": ""
+   },
+   {
+    "id": 15,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 121,
+     "left": 268,
+     "bottom": 141,
+     "right": 290
+    },
+    "resID": 134
+   },
+   {
+    "id": 16,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 122,
+     "left": 293,
+     "bottom": 138,
+     "right": 325
+    },
+    "text": "Hz"
+   },
+   {
+    "id": 17,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 148,
+     "left": 248,
+     "bottom": 164,
+     "right": 280
+    },
+    "text": "Bits"
+   }
+  ],
+  "138": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 161,
+     "left": 252,
+     "bottom": 181,
+     "right": 332
+    },
+    "text": "Save"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 130,
+     "left": 252,
+     "bottom": 150,
+     "right": 332
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "helpItem",
+    "enabled": false,
+    "rect": {
+     "top": 0,
+     "left": 0,
+     "bottom": 0,
+     "right": 0
+    },
+    "data": [
+     0,
+     1,
+     0,
+     128
+    ]
+   },
+   {
+    "id": 4,
+    "kind": "userItem",
+    "enabled": false,
+    "rect": {
+     "top": 8,
+     "left": 235,
+     "bottom": 24,
+     "right": 337
+    }
+   },
+   {
+    "id": 5,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 32,
+     "left": 252,
+     "bottom": 52,
+     "right": 332
+    },
+    "text": "Eject"
+   },
+   {
+    "id": 6,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 60,
+     "left": 252,
+     "bottom": 80,
+     "right": 332
+    },
+    "text": "Desktop"
+   },
+   {
+    "id": 7,
+    "kind": "userItem",
+    "enabled": false,
+    "rect": {
+     "top": 29,
+     "left": 12,
+     "bottom": 127,
+     "right": 230
+    }
+   },
+   {
+    "id": 8,
+    "kind": "userItem",
+    "enabled": false,
+    "rect": {
+     "top": 6,
+     "left": 12,
+     "bottom": 25,
+     "right": 230
+    }
+   },
+   {
+    "id": 9,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 119,
+     "left": 250,
+     "bottom": 120,
+     "right": 334
+    },
+    "resID": 11
+   },
+   {
+    "id": 10,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 157,
+     "left": 15,
+     "bottom": 173,
+     "right": 227
+    },
+    "text": ""
+   },
+   {
+    "id": 11,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 136,
+     "left": 15,
+     "bottom": 152,
+     "right": 227
+    },
+    "text": "Save as:"
+   },
+   {
+    "id": 12,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 88,
+     "left": 252,
+     "bottom": 108,
+     "right": 332
+    }
+   },
+   {
+    "id": 13,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 188,
+     "left": 12,
+     "bottom": 208,
+     "right": 312
+    },
+    "resID": 135
+   }
+  ],
+  "139": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 145,
+     "left": 192,
+     "bottom": 165,
+     "right": 250
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 145,
+     "left": 121,
+     "bottom": 165,
+     "right": 179
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 23,
+     "bottom": 18,
+     "right": 103
+    },
+    "text": "Shift Sound"
+   },
+   {
+    "id": 4,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 4,
+     "bottom": 18,
+     "right": 20
+    }
+   },
+   {
+    "id": 5,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 20,
+     "left": 0,
+     "bottom": 24,
+     "right": 382
+    },
+    "resID": 173
+   },
+   {
+    "id": 6,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 35,
+     "left": 23,
+     "bottom": 51,
+     "right": 250
+    },
+    "text": ""
+   },
+   {
+    "id": 7,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 64,
+     "left": 40,
+     "bottom": 80,
+     "right": 115
+    },
+    "text": ""
+   },
+   {
+    "id": 8,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 63,
+     "left": 120,
+     "bottom": 83,
+     "right": 250
+    },
+    "resID": 136
+   },
+   {
+    "id": 9,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 93,
+     "left": 35,
+     "bottom": 111,
+     "right": 155
+    },
+    "text": "Shift Left"
+   },
+   {
+    "id": 10,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 113,
+     "left": 35,
+     "bottom": 131,
+     "right": 155
+    },
+    "text": "Shift Right"
+   }
+  ],
+  "140": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 207,
+     "left": 192,
+     "bottom": 227,
+     "right": 250
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 207,
+     "left": 121,
+     "bottom": 227,
+     "right": 179
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 23,
+     "bottom": 18,
+     "right": 123
+    },
+    "text": "Select Exactly"
+   },
+   {
+    "id": 4,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 4,
+     "bottom": 18,
+     "right": 20
+    }
+   },
+   {
+    "id": 5,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 20,
+     "left": 0,
+     "bottom": 24,
+     "right": 382
+    },
+    "resID": 173
+   },
+   {
+    "id": 6,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 35,
+     "left": 23,
+     "bottom": 51,
+     "right": 213
+    },
+    "text": "Select exactly"
+   },
+   {
+    "id": 7,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 64,
+     "left": 40,
+     "bottom": 80,
+     "right": 115
+    },
+    "text": ""
+   },
+   {
+    "id": 8,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 63,
+     "left": 120,
+     "bottom": 83,
+     "right": 250
+    },
+    "resID": 136
+   },
+   {
+    "id": 9,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 92,
+     "left": 23,
+     "bottom": 108,
+     "right": 213
+    },
+    "text": "of sound"
+   },
+   {
+    "id": 10,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 113,
+     "left": 35,
+     "bottom": 131,
+     "right": 148
+    },
+    "text": "Before"
+   },
+   {
+    "id": 11,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 133,
+     "left": 35,
+     "bottom": 151,
+     "right": 148
+    },
+    "text": "Centered on"
+   },
+   {
+    "id": 12,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 153,
+     "left": 35,
+     "bottom": 171,
+     "right": 148
+    },
+    "text": "After"
+   },
+   {
+    "id": 13,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 176,
+     "left": 23,
+     "bottom": 192,
+     "right": 213
+    },
+    "text": ""
+   }
+  ],
+  "141": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 207,
+     "left": 191,
+     "bottom": 227,
+     "right": 249
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 207,
+     "left": 120,
+     "bottom": 227,
+     "right": 178
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 23,
+     "bottom": 18,
+     "right": 123
+    },
+    "text": "Select Peak"
+   },
+   {
+    "id": 4,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 4,
+     "bottom": 18,
+     "right": 20
+    }
+   },
+   {
+    "id": 5,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 20,
+     "left": 0,
+     "bottom": 24,
+     "right": 382
+    },
+    "resID": 173
+   },
+   {
+    "id": 6,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 35,
+     "left": 23,
+     "bottom": 51,
+     "right": 258
+    },
+    "text": "Select the peak of"
+   },
+   {
+    "id": 7,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 58,
+     "left": 35,
+     "bottom": 76,
+     "right": 213
+    },
+    "text": "the Sound"
+   },
+   {
+    "id": 8,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 78,
+     "left": 35,
+     "bottom": 96,
+     "right": 213
+    },
+    "text": "the Selection"
+   },
+   {
+    "id": 9,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 104,
+     "left": 23,
+     "bottom": 120,
+     "right": 258
+    },
+    "text": "leaving"
+   },
+   {
+    "id": 10,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 134,
+     "left": 40,
+     "bottom": 150,
+     "right": 115
+    },
+    "text": ""
+   },
+   {
+    "id": 11,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 133,
+     "left": 120,
+     "bottom": 153,
+     "right": 250
+    },
+    "resID": 136
+   },
+   {
+    "id": 12,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 163,
+     "left": 23,
+     "bottom": 195,
+     "right": 258
+    },
+    "text": "of margin at the left and the right of the peak."
+   }
+  ],
+  "142": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 168,
+     "left": 192,
+     "bottom": 188,
+     "right": 250
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 168,
+     "left": 121,
+     "bottom": 188,
+     "right": 179
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 23,
+     "bottom": 17,
+     "right": 129
+    },
+    "text": "Leave Silence"
+   },
+   {
+    "id": 4,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 4,
+     "bottom": 18,
+     "right": 20
+    }
+   },
+   {
+    "id": 5,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 20,
+     "left": 0,
+     "bottom": 24,
+     "right": 382
+    },
+    "resID": 173
+   },
+   {
+    "id": 6,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 35,
+     "left": 23,
+     "bottom": 51,
+     "right": 250
+    },
+    "text": "Leave"
+   },
+   {
+    "id": 7,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 64,
+     "left": 40,
+     "bottom": 80,
+     "right": 115
+    },
+    "text": ""
+   },
+   {
+    "id": 8,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 63,
+     "left": 120,
+     "bottom": 83,
+     "right": 250
+    },
+    "resID": 136
+   },
+   {
+    "id": 9,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 94,
+     "left": 23,
+     "bottom": 110,
+     "right": 250
+    },
+    "text": "of silence at the beginning of "
+   },
+   {
+    "id": 10,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 116,
+     "left": 35,
+     "bottom": 134,
+     "right": 213
+    },
+    "text": "the Sound"
+   },
+   {
+    "id": 11,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 136,
+     "left": 35,
+     "bottom": 154,
+     "right": 213
+    },
+    "text": "the Selected Channels"
+   }
+  ],
+  "143": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 223,
+     "left": 243,
+     "bottom": 243,
+     "right": 301
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 23,
+     "bottom": 17,
+     "right": 129
+    },
+    "text": "Get Info"
+   },
+   {
+    "id": 3,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 4,
+     "bottom": 18,
+     "right": 20
+    }
+   },
+   {
+    "id": 4,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 20,
+     "left": 0,
+     "bottom": 24,
+     "right": 382
+    },
+    "resID": 173
+   },
+   {
+    "id": 5,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 35,
+     "left": 23,
+     "bottom": 51,
+     "right": 301
+    },
+    "text": "Sound “^0”:"
+   },
+   {
+    "id": 6,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 58,
+     "left": 23,
+     "bottom": 106,
+     "right": 301
+    },
+    "text": ""
+   },
+   {
+    "id": 7,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 126,
+     "left": 23,
+     "bottom": 142,
+     "right": 88
+    },
+    "text": "Sample #"
+   },
+   {
+    "id": 8,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 126,
+     "left": 177,
+     "bottom": 142,
+     "right": 248
+    },
+    "text": "/  channel"
+   },
+   {
+    "id": 9,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 126,
+     "left": 91,
+     "bottom": 142,
+     "right": 161
+    },
+    "text": ""
+   },
+   {
+    "id": 10,
+    "kind": "userItem",
+    "enabled": false,
+    "rect": {
+     "top": 146,
+     "left": 88,
+     "bottom": 162,
+     "right": 104
+    }
+   },
+   {
+    "id": 11,
+    "kind": "userItem",
+    "enabled": false,
+    "rect": {
+     "top": 146,
+     "left": 108,
+     "bottom": 162,
+     "right": 124
+    }
+   },
+   {
+    "id": 12,
+    "kind": "userItem",
+    "enabled": false,
+    "rect": {
+     "top": 146,
+     "left": 128,
+     "bottom": 162,
+     "right": 144
+    }
+   },
+   {
+    "id": 13,
+    "kind": "userItem",
+    "enabled": false,
+    "rect": {
+     "top": 146,
+     "left": 148,
+     "bottom": 162,
+     "right": 164
+    }
+   },
+   {
+    "id": 14,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 126,
+     "left": 251,
+     "bottom": 142,
+     "right": 281
+    },
+    "text": ""
+   },
+   {
+    "id": 15,
+    "kind": "userItem",
+    "enabled": false,
+    "rect": {
+     "top": 119,
+     "left": 285,
+     "bottom": 135,
+     "right": 301
+    }
+   },
+   {
+    "id": 16,
+    "kind": "userItem",
+    "enabled": false,
+    "rect": {
+     "top": 133,
+     "left": 285,
+     "bottom": 149,
+     "right": 301
+    }
+   },
+   {
+    "id": 17,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 173,
+     "left": 23,
+     "bottom": 189,
+     "right": 130
+    },
+    "text": "Value:"
+   },
+   {
+    "id": 18,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 173,
+     "left": 130,
+     "bottom": 189,
+     "right": 192
+    }
+   },
+   {
+    "id": 19,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 173,
+     "left": 200,
+     "bottom": 189,
+     "right": 255
+    },
+    "text": ""
+   },
+   {
+    "id": 20,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 193,
+     "left": 23,
+     "bottom": 209,
+     "right": 130
+    },
+    "text": "Frame average:"
+   },
+   {
+    "id": 21,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 193,
+     "left": 130,
+     "bottom": 209,
+     "right": 192
+    }
+   },
+   {
+    "id": 22,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 193,
+     "left": 200,
+     "bottom": 209,
+     "right": 255
+    },
+    "text": ""
+   }
+  ],
+  "144": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 83,
+     "left": 88,
+     "bottom": 103,
+     "right": 208
+    },
+    "text": "Cancel Operation"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 83,
+     "left": 221,
+     "bottom": 103,
+     "right": 344
+    },
+    "text": "Discard Clipboard"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 72,
+     "bottom": 71,
+     "right": 347
+    },
+    "text": "There is not enough memory to proceed. Probably, discarding the clipboard’s contents would free enough. Can I throw away its contents?"
+   },
+   {
+    "id": 4,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 131
+   }
+  ],
+  "145": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 195,
+     "left": 335,
+     "bottom": 215,
+     "right": 393
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 128
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 76,
+     "bottom": 87,
+     "right": 396
+    },
+    "text": "Sound Manager 3.0 or later is not installed.\r\rIn order to get the maximum performance from SoundEffects, you should install this extension in your System Folder."
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 87,
+     "left": 76,
+     "bottom": 135,
+     "right": 396
+    },
+    "text": "This will benefit other applications, as well. You will be able to play 16-bit sounds, and playback will take up less CPU time."
+   },
+   {
+    "id": 5,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 135,
+     "left": 76,
+     "bottom": 183,
+     "right": 396
+    },
+    "text": "You can find the Sound Manager 3.0 extension on Apple’s Hardware System Update disks, as well as on various on-line services."
+   }
+  ],
+  "146": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 68,
+     "left": 338,
+     "bottom": 88,
+     "right": 396
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 76,
+     "bottom": 55,
+     "right": 396
+    },
+    "text": "^0\r^1^2^3"
+   }
+  ],
+  "147": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 295,
+     "bottom": 90,
+     "right": 385
+    },
+    "text": "Save Form…"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 192,
+     "bottom": 90,
+     "right": 282
+    },
+    "text": "Print Form…"
+   },
+   {
+    "id": 3,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 77,
+     "bottom": 90,
+     "right": 162
+    },
+    "text": "Don’t Save"
+   },
+   {
+    "id": 4,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 129
+   },
+   {
+    "id": 5,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 42,
+     "right": 390
+    },
+    "text": "Are you sure you don’t want to register your copy of SoundEffects? C’mon, it’s really cheap!"
+   }
+  ],
+  "148": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 86,
+     "left": 379,
+     "bottom": 106,
+     "right": 437
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 129
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 74,
+     "right": 441
+    },
+    "text": "Thank you very much for registering!\rYou can now open, modify and print the registration form with SimpleText or your favorite word processor. Then put it in an envelope and mail it to me."
+   }
+  ],
+  "149": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 287,
+     "bottom": 90,
+     "right": 345
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 129
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 58,
+     "right": 351
+    },
+    "text": "Thank you very much for registering!\rYou can now put the registration form in an envelope and mail it to me."
+   }
+  ],
+  "150": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 86,
+     "left": 335,
+     "bottom": 106,
+     "right": 393
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 129
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 74,
+     "right": 397
+    },
+    "text": "The suggested registration fee is $15 per copy. You are, however, free to change this amount by typing another value in the field, if you think it is too much or too little."
+   }
+  ],
+  "151": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 291,
+     "bottom": 90,
+     "right": 377
+    },
+    "text": "Resample"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 192,
+     "bottom": 90,
+     "right": 278
+    },
+    "text": "Change bps"
+   },
+   {
+    "id": 3,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 129
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 58,
+     "right": 383
+    },
+    "text": "Do you want me to really resample the ^0 bits sound to ^1 bits, or just change the bits per sample value?"
+   }
+  ],
+  "152": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 86,
+     "left": 298,
+     "bottom": 106,
+     "right": 378
+    },
+    "text": "Resample"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 86,
+     "left": 227,
+     "bottom": 106,
+     "right": 285
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 129
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 74,
+     "right": 383
+    },
+    "text": "You are trying to ^0 a sound sampled at ^1 bits into a sound sampled at ^2 bits. Do you want me to resample the sound you are inserting at ^3 bits?"
+   }
+  ],
+  "153": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 0,
+     "left": 84,
+     "bottom": 20,
+     "right": 142
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 0,
+     "left": 13,
+     "bottom": 20,
+     "right": 71
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 3,
+     "left": 13,
+     "bottom": 19,
+     "right": 266
+    },
+    "text": ""
+   },
+   {
+    "id": 4,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 21,
+     "left": 0,
+     "bottom": 23,
+     "right": 600
+    },
+    "resID": 150
+   }
+  ],
+  "154": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 54,
+     "left": 297,
+     "bottom": 74,
+     "right": 355
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 54,
+     "left": 226,
+     "bottom": 74,
+     "right": 284
+    },
+    "text": "Delete"
+   },
+   {
+    "id": 3,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 130
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 42,
+     "right": 364
+    },
+    "text": "Are you sure you want to delete the setup “^0”?"
+   }
+  ],
+  "155": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 60,
+     "left": 254,
+     "bottom": 80,
+     "right": 312
+    },
+    "text": "Save"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 60,
+     "left": 183,
+     "bottom": 80,
+     "right": 241
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 31,
+     "left": 13,
+     "bottom": 47,
+     "right": 309
+    },
+    "text": ""
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 6,
+     "left": 10,
+     "bottom": 22,
+     "right": 206
+    },
+    "text": "Save the new setting as…"
+   }
+  ],
+  "156": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 106,
+     "left": 338,
+     "bottom": 126,
+     "right": 396
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 30,
+     "left": 76,
+     "bottom": 94,
+     "right": 396
+    },
+    "text": "^1\r^2^3"
+   },
+   {
+    "id": 3,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 130
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 76,
+     "bottom": 23,
+     "right": 396
+    },
+    "text": "^0"
+   },
+   {
+    "id": 5,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 25,
+     "left": 76,
+     "bottom": 27,
+     "right": 396
+    },
+    "resID": 150
+   }
+  ],
+  "157": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 106,
+     "left": 338,
+     "bottom": 126,
+     "right": 396
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 106,
+     "left": 267,
+     "bottom": 126,
+     "right": 325
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 30,
+     "left": 76,
+     "bottom": 94,
+     "right": 396
+    },
+    "text": "^1\r^2^3"
+   },
+   {
+    "id": 4,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 130
+   },
+   {
+    "id": 5,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 76,
+     "bottom": 23,
+     "right": 396
+    },
+    "text": "^0"
+   },
+   {
+    "id": 6,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 25,
+     "left": 76,
+     "bottom": 27,
+     "right": 396
+    },
+    "resID": 150
+   }
+  ],
+  "158": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 278,
+     "bottom": 90,
+     "right": 346
+    },
+    "text": "Stop"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 197,
+     "bottom": 90,
+     "right": 265
+    },
+    "text": "Resume"
+   },
+   {
+    "id": 3,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 130
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 76,
+     "bottom": 55,
+     "right": 352
+    },
+    "text": "If you stop the effect now you will get a half-processed sound, probably useless.\rYou should therefore immediately Undo."
+   }
+  ],
+  "159": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 84,
+     "left": 265,
+     "bottom": 104,
+     "right": 339
+    },
+    "text": "Continue"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 84,
+     "left": 178,
+     "bottom": 104,
+     "right": 252
+    },
+    "text": "Quit"
+   },
+   {
+    "id": 3,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 130
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 73,
+     "bottom": 71,
+     "right": 343
+    },
+    "text": "You seem to have used a newer Sound Effects on this Mac. Since this version is probably outdated, you may want to look for the newer one."
+   }
+  ],
+  "160": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 250,
+     "left": 318,
+     "bottom": 270,
+     "right": 388
+    },
+    "text": "All right!"
+   },
+   {
+    "id": 2,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 128
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 76,
+     "bottom": 23,
+     "right": 396
+    },
+    "text": "Welcome to SoundEffects!"
+   },
+   {
+    "id": 4,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 25,
+     "left": 76,
+     "bottom": 27,
+     "right": 390
+    },
+    "resID": 150
+   },
+   {
+    "id": 5,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 30,
+     "left": 76,
+     "bottom": 94,
+     "right": 396
+    },
+    "text": "This is a preliminary release of SoundEffects. It still lacks some features, like Undo. However, it is fully functional and tested, and a complete version will be ready soon."
+   },
+   {
+    "id": 6,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 94,
+     "left": 76,
+     "bottom": 126,
+     "right": 396
+    },
+    "text": "And remember: the more feedback I receive, the sooner the complete version will be ready."
+   },
+   {
+    "id": 7,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 126,
+     "left": 76,
+     "bottom": 206,
+     "right": 396
+    },
+    "text": "My e-mail address is ricci@pmn.it on the Internet. For more information, look at the About box or at the Registration window.\r\rHave a good time!"
+   },
+   {
+    "id": 8,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 222,
+     "left": 76,
+     "bottom": 238,
+     "right": 396
+    },
+    "text": "(This dialog will not be shown again.)"
+   }
+  ],
+  "161": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 240,
+     "left": 191,
+     "bottom": 260,
+     "right": 249
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 240,
+     "left": 120,
+     "bottom": 260,
+     "right": 178
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 23,
+     "bottom": 18,
+     "right": 169
+    },
+    "text": "Find Clipped Samples"
+   },
+   {
+    "id": 4,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 2,
+     "left": 4,
+     "bottom": 18,
+     "right": 20
+    }
+   },
+   {
+    "id": 5,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 20,
+     "left": 0,
+     "bottom": 24,
+     "right": 382
+    },
+    "resID": 173
+   },
+   {
+    "id": 6,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 35,
+     "left": 23,
+     "bottom": 51,
+     "right": 258
+    },
+    "text": "Find all portions of"
+   },
+   {
+    "id": 7,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 58,
+     "left": 35,
+     "bottom": 76,
+     "right": 213
+    },
+    "text": "the Sound"
+   },
+   {
+    "id": 8,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 78,
+     "left": 35,
+     "bottom": 96,
+     "right": 213
+    },
+    "text": "the Selection"
+   },
+   {
+    "id": 9,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 104,
+     "left": 23,
+     "bottom": 120,
+     "right": 258
+    },
+    "text": "where"
+   },
+   {
+    "id": 10,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 134,
+     "left": 40,
+     "bottom": 150,
+     "right": 115
+    },
+    "text": ""
+   },
+   {
+    "id": 11,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 163,
+     "left": 23,
+     "bottom": 195,
+     "right": 258
+    },
+    "text": "or more consecutive samples have a level greater than or equal to"
+   },
+   {
+    "id": 12,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 209,
+     "left": 40,
+     "bottom": 225,
+     "right": 77
+    },
+    "text": ""
+   },
+   {
+    "id": 13,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 209,
+     "left": 83,
+     "bottom": 225,
+     "right": 220
+    },
+    "text": "% of the maximum"
+   }
+  ],
+  "162": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 325,
+     "bottom": 90,
+     "right": 383
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 129
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 42,
+     "right": 390
+    },
+    "text": "No clipping occurs in ^0the sound “^1”."
+   }
+  ],
+  "163": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 71,
+     "left": 174,
+     "bottom": 91,
+     "right": 232
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 71,
+     "left": 103,
+     "bottom": 91,
+     "right": 161
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 7,
+     "left": 18,
+     "bottom": 23,
+     "right": 253
+    },
+    "text": "New ^0:"
+   },
+   {
+    "id": 4,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 37,
+     "left": 21,
+     "bottom": 53,
+     "right": 106
+    },
+    "text": ""
+   },
+   {
+    "id": 5,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 36,
+     "left": 111,
+     "bottom": 56,
+     "right": 236
+    },
+    "resID": 136
+   }
+  ],
+  "164": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 330,
+     "bottom": 90,
+     "right": 388
+    },
+    "text": "OK"
+   },
+   {
+    "id": 2,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 42,
+     "right": 390
+    },
+    "text": "SoundEffects is dangerously low on memory. You should save your work as soon as possible."
+   }
+  ],
+  "165": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 132,
+     "left": 282,
+     "bottom": 152,
+     "right": 390
+    },
+    "text": "Open this part"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 132,
+     "left": 211,
+     "bottom": 152,
+     "right": 269
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 130
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 74,
+     "right": 390
+    },
+    "text": "There is not enough memory to open “^0”. Only ^1 samples can be opened, out of ^2.\rShould I open only a part of the sound?"
+   },
+   {
+    "id": 5,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 94,
+     "left": 48,
+     "bottom": 110,
+     "right": 144
+    },
+    "text": "(from sample"
+   },
+   {
+    "id": 6,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 94,
+     "left": 147,
+     "bottom": 110,
+     "right": 222
+    },
+    "text": ""
+   },
+   {
+    "id": 7,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 94,
+     "left": 230,
+     "bottom": 110,
+     "right": 303
+    },
+    "text": "to sample"
+   },
+   {
+    "id": 8,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 94,
+     "left": 306,
+     "bottom": 110,
+     "right": 381
+    },
+    "text": ""
+   },
+   {
+    "id": 9,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 94,
+     "left": 385,
+     "bottom": 110,
+     "right": 399
+    },
+    "text": ")"
+   }
+  ],
+  "166": [
+   {
+    "id": 1,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 86,
+     "left": 298,
+     "bottom": 106,
+     "right": 378
+    },
+    "text": "Resample"
+   },
+   {
+    "id": 2,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 86,
+     "left": 227,
+     "bottom": 106,
+     "right": 285
+    },
+    "text": "Cancel"
+   },
+   {
+    "id": 3,
+    "kind": "icon",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 20,
+     "bottom": 42,
+     "right": 52
+    },
+    "resID": 129
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 10,
+     "left": 75,
+     "bottom": 74,
+     "right": 383
+    },
+    "text": "You are trying to ^0 a sound sampled at ^1 kHz into a sound sampled at ^2 kHz. Do you want me to resample the sound you are inserting at ^3 kHz?"
+   }
+  ],
+  "500": [
+   {
+    "id": 1,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 3,
+     "left": 10,
+     "bottom": 23,
+     "right": 340
+    },
+    "resID": 133
+   },
+   {
+    "id": 2,
+    "kind": "picture",
+    "enabled": true,
+    "rect": {
+     "top": 26,
+     "left": 0,
+     "bottom": 28,
+     "right": 600
+    },
+    "resID": 150
+   }
+  ],
+  "1001": [
+   {
+    "id": 1,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 69,
+     "left": 23,
+     "bottom": 87,
+     "right": 315
+    },
+    "text": "Open a new window on startup"
+   },
+   {
+    "id": 2,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 89,
+     "left": 23,
+     "bottom": 107,
+     "right": 315
+    },
+    "text": "Remember utility window positions"
+   },
+   {
+    "id": 3,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 109,
+     "left": 23,
+     "bottom": 127,
+     "right": 315
+    },
+    "text": "Add .sys7/.AIFF extension to saved files"
+   },
+   {
+    "id": 4,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 134,
+     "left": 20,
+     "bottom": 154,
+     "right": 313
+    },
+    "resID": 132
+   },
+   {
+    "id": 5,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 163,
+     "left": 23,
+     "bottom": 179,
+     "right": 217
+    },
+    "text": "Draw the sound wave using"
+   },
+   {
+    "id": 6,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 180,
+     "left": 34,
+     "bottom": 198,
+     "right": 159
+    },
+    "text": "Dots"
+   },
+   {
+    "id": 7,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 200,
+     "left": 34,
+     "bottom": 218,
+     "right": 159
+    },
+    "text": "Lines"
+   },
+   {
+    "id": 8,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 224,
+     "left": 23,
+     "bottom": 240,
+     "right": 217
+    },
+    "text": "Start playing from"
+   },
+   {
+    "id": 9,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 241,
+     "left": 34,
+     "bottom": 259,
+     "right": 159
+    },
+    "text": "Beginning"
+   },
+   {
+    "id": 10,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 261,
+     "left": 34,
+     "bottom": 279,
+     "right": 159
+    },
+    "text": "Insertion Point"
+   }
+  ],
+  "1002": [
+   {
+    "id": 1,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 69,
+     "left": 23,
+     "bottom": 87,
+     "right": 243
+    },
+    "text": "Use custom background color:"
+   },
+   {
+    "id": 2,
+    "kind": "userItem",
+    "enabled": false,
+    "rect": {
+     "top": 68,
+     "left": 249,
+     "bottom": 88,
+     "right": 281
+    }
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 99,
+     "left": 23,
+     "bottom": 115,
+     "right": 355
+    },
+    "text": "In the upper part of document windows, show:"
+   },
+   {
+    "id": 4,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 122,
+     "left": 23,
+     "bottom": 140,
+     "right": 282
+    },
+    "text": "Sampling rate and size"
+   },
+   {
+    "id": 5,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 142,
+     "left": 23,
+     "bottom": 160,
+     "right": 282
+    },
+    "text": "Number of channels"
+   },
+   {
+    "id": 6,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 162,
+     "left": 23,
+     "bottom": 180,
+     "right": 282
+    },
+    "text": "File size (bytes)"
+   },
+   {
+    "id": 7,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 182,
+     "left": 23,
+     "bottom": 200,
+     "right": 282
+    },
+    "text": "Selected channel’s length (samples)"
+   },
+   {
+    "id": 8,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 202,
+     "left": 23,
+     "bottom": 220,
+     "right": 282
+    },
+    "text": "Selected channel’s length (seconds)"
+   }
+  ],
+  "1003": [
+   {
+    "id": 1,
+    "kind": "userItem",
+    "enabled": true,
+    "rect": {
+     "top": 204,
+     "left": 23,
+     "bottom": 236,
+     "right": 55
+    }
+   },
+   {
+    "id": 2,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 201,
+     "left": 69,
+     "bottom": 217,
+     "right": 225
+    },
+    "text": ""
+   },
+   {
+    "id": 3,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 69,
+     "left": 23,
+     "bottom": 87,
+     "right": 223
+    },
+    "text": "Automatic Gain Control"
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 90,
+     "left": 23,
+     "bottom": 106,
+     "right": 137
+    },
+    "text": "Active channels:"
+   },
+   {
+    "id": 5,
+    "kind": "userItem",
+    "enabled": false,
+    "rect": {
+     "top": 90,
+     "left": 142,
+     "bottom": 106,
+     "right": 271
+    }
+   },
+   {
+    "id": 6,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 110,
+     "left": 136,
+     "bottom": 130,
+     "right": 396
+    },
+    "resID": 137
+   },
+   {
+    "id": 7,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 130,
+     "left": 66,
+     "bottom": 150,
+     "right": 396
+    },
+    "resID": 130
+   },
+   {
+    "id": 8,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 150,
+     "left": 81,
+     "bottom": 170,
+     "right": 396
+    },
+    "resID": 131
+   },
+   {
+    "id": 9,
+    "kind": "resControl",
+    "enabled": false,
+    "rect": {
+     "top": 170,
+     "left": 20,
+     "bottom": 190,
+     "right": 396
+    },
+    "resID": 129
+   },
+   {
+    "id": 10,
+    "kind": "button",
+    "enabled": false,
+    "rect": {
+     "top": 218,
+     "left": 64,
+     "bottom": 238,
+     "right": 144
+    },
+    "text": "Settings…"
+   },
+   {
+    "id": 11,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 245,
+     "left": 23,
+     "bottom": 263,
+     "right": 223
+    },
+    "text": "Beep when clipping occurs"
+   }
+  ],
+  "1004": [
+   {
+    "id": 1,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 70,
+     "left": 10,
+     "bottom": 86,
+     "right": 378
+    },
+    "text": "When recording a sound"
+   },
+   {
+    "id": 2,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 90,
+     "left": 30,
+     "bottom": 108,
+     "right": 360
+    },
+    "text": "Insert the whole recorded sound"
+   },
+   {
+    "id": 3,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 110,
+     "left": 30,
+     "bottom": 128,
+     "right": 360
+    },
+    "text": "Constrain the recorded sound to the selection"
+   },
+   {
+    "id": 4,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 140,
+     "left": 10,
+     "bottom": 158,
+     "right": 169
+    },
+    "text": "Record no more than"
+   },
+   {
+    "id": 5,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 141,
+     "left": 173,
+     "bottom": 157,
+     "right": 231
+    },
+    "text": "1000"
+   },
+   {
+    "id": 6,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 141,
+     "left": 238,
+     "bottom": 157,
+     "right": 262
+    },
+    "text": "K"
+   },
+   {
+    "id": 7,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 160,
+     "left": 30,
+     "bottom": 178,
+     "right": 360
+    },
+    "text": "Only if virtual memory is active"
+   }
+  ],
+  "1005": [
+   {
+    "id": 1,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 70,
+     "left": 10,
+     "bottom": 86,
+     "right": 207
+    },
+    "text": "Show progress window after"
+   },
+   {
+    "id": 2,
+    "kind": "editText",
+    "enabled": false,
+    "rect": {
+     "top": 70,
+     "left": 212,
+     "bottom": 86,
+     "right": 254
+    },
+    "text": ""
+   },
+   {
+    "id": 3,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 70,
+     "left": 262,
+     "bottom": 86,
+     "right": 386
+    },
+    "text": "60ths of a second"
+   },
+   {
+    "id": 4,
+    "kind": "staticText",
+    "enabled": true,
+    "rect": {
+     "top": 98,
+     "left": 10,
+     "bottom": 113,
+     "right": 386
+    },
+    "text": "Progress bar and background tasks responsiveness:"
+   },
+   {
+    "id": 5,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 118,
+     "left": 30,
+     "bottom": 136,
+     "right": 115
+    },
+    "text": "Excellent"
+   },
+   {
+    "id": 6,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 118,
+     "left": 115,
+     "bottom": 136,
+     "right": 200
+    },
+    "text": "Good"
+   },
+   {
+    "id": 7,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 118,
+     "left": 200,
+     "bottom": 136,
+     "right": 285
+    },
+    "text": "Fair"
+   },
+   {
+    "id": 8,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 118,
+     "left": 285,
+     "bottom": 136,
+     "right": 370
+    },
+    "text": "Poor"
+   },
+   {
+    "id": 9,
+    "kind": "checkBox",
+    "enabled": false,
+    "rect": {
+     "top": 150,
+     "left": 10,
+     "bottom": 168,
+     "right": 394
+    },
+    "text": "Beep after applying effects if more than 1 min elapsed"
+   },
+   {
+    "id": 10,
+    "kind": "staticText",
+    "enabled": false,
+    "rect": {
+     "top": 182,
+     "left": 10,
+     "bottom": 214,
+     "right": 386
+    },
+    "text": "When a module may affect the sound beyond the end of the selection"
+   },
+   {
+    "id": 11,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 238,
+     "left": 30,
+     "bottom": 256,
+     "right": 146
+    },
+    "text": "Don’t Extend"
+   },
+   {
+    "id": 12,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 218,
+     "left": 30,
+     "bottom": 236,
+     "right": 146
+    },
+    "text": "Extend Effect"
+   },
+   {
+    "id": 13,
+    "kind": "radioButton",
+    "enabled": false,
+    "rect": {
+     "top": 258,
+     "left": 30,
+     "bottom": 276,
+     "right": 146
+    },
+    "text": "Ask Each Time"
+   }
+  ]
+ },
+ "names": {
+  "DITL": {
+   "128": "Error",
+   "129": "SaveChanges",
+   "130": "Gestalt",
+   "131": "Revert",
+   "132": "Prefs",
+   "133": "DoExtend",
+   "134": "NERAM",
+   "135": "UnrecogType",
+   "136": "PermErr",
+   "137": "EditHeader",
+   "138": "CustomPut",
+   "139": "ShiftSound",
+   "140": "SelectExactly",
+   "141": "SelectPeak",
+   "142": "LeaveSilence",
+   "143": "GetInfo",
+   "144": "FreeMem",
+   "145": "NoSM3",
+   "146": "Generic",
+   "147": "Register",
+   "148": "RegisterSaved",
+   "149": "RegisterPrinted",
+   "150": "RegisterCost",
+   "151": "Resample",
+   "152": "ConfirmResampleBits",
+   "153": "AutoEffSettings",
+   "154": "ConfirmDeleteSet",
+   "155": "AskSettingName",
+   "156": "ModAlert",
+   "157": "ModAlertCancel",
+   "158": "ModStop",
+   "159": "ApplIsOld",
+   "160": "Welcome",
+   "161": "FindClipping",
+   "162": "NoClipping",
+   "163": "ChangeField",
+   "164": "MemLow",
+   "165": "OpenPartFile",
+   "166": "ConfirmResampleRate",
+   "500": "EffSettingsSetup",
+   "1001": "Pg1 - Gen",
+   "1002": "Pg2 - DocWind",
+   "1003": "Pg3 - Rec-SI",
+   "1004": "Pg4 - Rec-Misc",
+   "1005": "Pg5 - Eff"
+  }
+ }
+}
