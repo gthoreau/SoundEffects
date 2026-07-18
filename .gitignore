@@ -2,6 +2,9 @@
 node_modules/
 dist/
 
+# Native (JUCE) build output — CMake cache, fetched JUCE tree, plugin artefacts.
+native/build/
+
 # Machine-local Claude Code state. .claude/launch.json IS tracked — it is the
 # shared dev-server config.
 .claude/settings.local.json
