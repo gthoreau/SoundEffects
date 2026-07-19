@@ -1,5 +1,6 @@
 #include "Edit.h"
 
+#include "Resample.h"
 #include "SampleFormat.h"
 
 #include <algorithm>
@@ -114,25 +115,42 @@ std::unique_ptr<SoundDocument> cut (SoundDocument& doc)
 
 int paste (SoundDocument& doc, const SoundDocument& clip)
 {
+    // Conform the clipboard to the destination's format first. Without this a
+    // 16-bit clip pasted into an 8-bit document reinterprets bytes at the wrong
+    // frame width and mangles the audio. Matches the app's Resample-on-paste.
+    std::unique_ptr<SoundDocument> conformed;
+    const SoundDocument* clipPtr = &clip;
+    if (clip.bps != doc.bps || clip.rateHz != doc.rateHz)
+    {
+        conformed = std::make_unique<SoundDocument> (clip.clone());
+        if (conformed->bps != doc.bps)       resampleSoundBits (*conformed, doc.bps);
+        if (conformed->rateHz != doc.rateHz) resampleSoundRate (*conformed, doc.rateHz);
+        clipPtr = conformed.get();
+    }
+    const SoundDocument& src = *clipPtr;
+
     if (doc.selSt != doc.selEnd) clear (doc);
     const size_t at = doc.selSt;
     int pasted = 0;
     size_t maxLen = 0;
 
-    for (int j = 0; j < clip.numTracks(); ++j)
+    for (int j = 0; j < src.numTracks(); ++j)
     {
         const int target = doc.firstSelTrack - 1 + j;
-        if (target > doc.numTracks() - 1) break;      // surplus clip tracks dropped
+        // Create destination tracks as needed so an N-track copy always lands
+        // across N tracks (the new tracks are zero-length, padded to the caret
+        // below). This diverges from the original, which dropped surplus tracks.
+        while (target > doc.numTracks() - 1) doc.addTrack();
 
         auto& dst = doc.tracks[static_cast<size_t> (target)].data;
-        const auto& src = clip.tracks[static_cast<size_t> (j)].data;
+        const auto& bytes = src.tracks[static_cast<size_t> (j)].data;
 
         // A track shorter than the caret is padded to the caret first.
         if (dst.size() < at)
             dst.resize (at, silentByte (doc.bps));
 
-        spliceIn (dst, at, src.data(), src.size());
-        maxLen = std::max (maxLen, src.size());
+        spliceIn (dst, at, bytes.data(), bytes.size());
+        maxLen = std::max (maxLen, bytes.size());
         ++pasted;
     }
 

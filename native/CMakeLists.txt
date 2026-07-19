@@ -40,6 +40,7 @@ target_sources(SoundEffect PRIVATE
     Source/engine/Engine.cpp
     Source/engine/Import.cpp
     Source/engine/Edit.cpp
+    Source/engine/Resample.cpp
     Source/ui/CanvasComponent.cpp
     Source/ui/WindowComponent.cpp
     Source/ui/MixerComponent.cpp)

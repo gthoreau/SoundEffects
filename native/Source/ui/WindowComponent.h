@@ -43,7 +43,9 @@ public:
 
 private:
     se::SoundDocument* doc() const noexcept { return engine.editDoc (id); }
-    void commit()   { engine.commitEdit (id); }
+    // Publish the edit AND invalidate the waveform cache (content may have changed
+    // without a size change, e.g. silence — the size-based cache wouldn't notice).
+    void commit()   { engine.commitEdit (id); cachedWidth = -1; repaint(); }
     void resizeToFit();
     void ensurePeaks (se::SoundDocument& d);
 

@@ -386,14 +386,24 @@ void WindowComponent::mouseUp (const juce::MouseEvent&)
 
 bool WindowComponent::keyPressed (const juce::KeyPress& k)
 {
-    if (! k.getModifiers().isCommandDown()) return false;
     auto* d = doc(); if (d == nullptr) return false;
+    const int code = k.getKeyCode();
+
+    // Delete / Backspace: remove selected audio (like Cut — splices out, shortens).
+    // Option/Alt + Delete: replace the selected audio with silence (no length change).
+    if (code == juce::KeyPress::deleteKey || code == juce::KeyPress::backspaceKey)
+    {
+        if (k.getModifiers().isAltDown()) se::silenceSelection (*d);
+        else                             se::clear (*d);
+        commit(); resizeToFit();
+        return true;
+    }
+
+    if (! k.getModifiers().isCommandDown()) return false;
 
     // On macOS a Command-combo yields no text character, so match on the key code
     // (modifier-independent), accepting either case.
-    const int code = k.getKeyCode();
     const auto is = [code] (int lo, int up) { return code == lo || code == up; };
-
     if (is ('c', 'C')) { if (clipboard) *clipboard = se::copy (*d); return true; }
     if (is ('x', 'X')) { if (clipboard) { *clipboard = se::cut (*d); commit(); resizeToFit(); } return true; }
     if (is ('v', 'V')) { if (clipboard && *clipboard) { se::paste (*d, **clipboard); commit(); resizeToFit(); } return true; }
