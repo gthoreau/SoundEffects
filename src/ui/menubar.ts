@@ -206,7 +206,7 @@ export class MenuBar {
 
     if (submenuID !== null) {
       row.append(el("span", { class: "sfx-menu-key", text: "▶" }));
-      const sub = this.buildSubmenu(getMenu(submenuID), row, enabled);
+      const sub = this.buildSubmenu(getMenu(submenuID), enabled);
       row.append(sub);
     } else {
       const key = commandKey(item);
@@ -221,7 +221,7 @@ export class MenuBar {
     return row;
   }
 
-  private buildSubmenu(m: MenuTemplate, parent: HTMLElement, parentEnabled: boolean): HTMLElement {
+  private buildSubmenu(m: MenuTemplate, parentEnabled: boolean): HTMLElement {
     const panel = el("div", { class: "sfx-menu sfx-submenu", "data-menu-id": m.menuID });
     for (const item of m.items) {
       if (isSeparator(item)) {

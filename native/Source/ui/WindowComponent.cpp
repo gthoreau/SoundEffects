@@ -223,7 +223,7 @@ void WindowComponent::paint (Graphics& g)
         auto wr = waveRect (t);
         g.setColour (kWhite); g.fillRect (wr);
         const float mid = (float) wr.getCentreY();
-        const float amp = wr.getHeight() * 0.5f - 3.0f;
+        const float amp = (float) wr.getHeight() * 0.5f - 3.0f;
         g.setColour (kWave);
         if (t < (int) peaks.size())
         {

@@ -26,7 +26,6 @@ import {
   writeSound,
   inspectImport,
   inspectExport,
-  rateTooHighAlert,
   UNKNOWN_FORMAT_ALERT,
   PADS_CHANNELS_ALERT,
   MAX_RATE_HZ,

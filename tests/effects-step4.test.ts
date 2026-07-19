@@ -1,9 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { SoundDocument } from "../src/document.js";
-import { getSample } from "../src/samples.js";
 import { setSelection } from "../src/selection.js";
 import { doubleToFixed, Unit } from "../src/units.js";
-import { Host, DoExtend, runEffect, kModCancel, kModNoError, AnsiCRandom } from "../src/runtime/index.js";
+import { Host, DoExtend, runEffect, kModCancel } from "../src/runtime/index.js";
 import {
   Flanger,
   FlangerLFO,
