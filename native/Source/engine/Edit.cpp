@@ -144,4 +144,33 @@ int paste (SoundDocument& doc, const SoundDocument& clip)
     return pasted;
 }
 
+void insertSilence (SoundDocument& doc, size_t bytes)
+{
+    const size_t frameSize = static_cast<size_t> (doc.frameSize());
+    const size_t len = bytes - (bytes % frameSize);
+    if (len == 0) return;
+    const size_t at = doc.selSt;
+    const uint8_t silent = silentByte (doc.bps);
+
+    for (int i : doc.selectedTrackIndices())
+    {
+        auto& data = doc.tracks[static_cast<size_t> (i)].data;
+        const size_t insertAt = std::min (at, data.size());
+        data.insert (data.begin() + static_cast<std::ptrdiff_t> (insertAt), len, silent);
+    }
+    doc.selSt = at;
+    doc.selEnd = at + len;
+}
+
+void silenceSelection (SoundDocument& doc)
+{
+    const uint8_t silent = silentByte (doc.bps);
+    for (int i : doc.selectedTrackIndices())
+    {
+        auto& data = doc.tracks[static_cast<size_t> (i)].data;
+        const auto r = trackRange (doc, i, doc.selSt, doc.selEnd);
+        for (size_t p = r.start; p < r.end && p < data.size(); ++p) data[p] = silent;
+    }
+}
+
 } // namespace se

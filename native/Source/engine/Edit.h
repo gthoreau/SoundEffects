@@ -48,4 +48,13 @@ std::unique_ptr<SoundDocument> cut (SoundDocument& doc);
     Surplus clipboard tracks are dropped. Returns tracks that received audio. */
 int paste (SoundDocument& doc, const SoundDocument& clip);
 
+/** Edit ▸ Insert Silence — insert `bytes` of real silent samples at the caret in
+    every selected track (grows those tracks). Silence IS audio, distinct from
+    absence past a track's end. */
+void insertSilence (SoundDocument& doc, size_t bytes);
+
+/** Zero the selection in the selected tracks WITHOUT shortening them (turns the
+    selected range into silence). */
+void silenceSelection (SoundDocument& doc);
+
 } // namespace se

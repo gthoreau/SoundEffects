@@ -25,21 +25,35 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
     playOpts = opts;
     advanceScale = 1.0;
     cachedFrameSize = doc.frameSize();
+    const bool hasSelection = doc.selSt != doc.selEnd;
 
-    if (opts.loop && opts.useLoopRegion) { loopStart = doc.loopSt; loopEnd = doc.loopEnd; }
-    else if (opts.loop)                  { loopStart = doc.selSt;  loopEnd = doc.selEnd;  }
-    else                                 { loopStart = 0;          loopEnd = 0;           }
-
-    if (opts.loop && loopEnd <= loopStart) { loopStart = 0; loopEnd = doc.maxTrackSize(); }
-
-    if (opts.loop)
+    ctx = {};
+    if (opts.loop && opts.useLoopRegion && doc.loopEnd > doc.loopSt)
     {
-        pos = static_cast<double> (loopStart);
-        playEnd = loopEnd;
+        // option-Play: loop the Set Loop region across all tracks.
+        ctx.mode = LoopMode::selection;
+        ctx.selSt = doc.loopSt; ctx.selEnd = doc.loopEnd;
+        ctx.firstSelTrack = 1; ctx.lastSelTrack = doc.numTracks();
+        pos = static_cast<double> (ctx.selSt);
+    }
+    else if (opts.loop && hasSelection)
+    {
+        // Loop the selection, in the selected tracks (they stay in phase).
+        ctx.mode = LoopMode::selection;
+        ctx.selSt = doc.selSt; ctx.selEnd = doc.selEnd;
+        ctx.firstSelTrack = doc.firstSelTrack; ctx.lastSelTrack = doc.lastSelTrack;
+        pos = static_cast<double> (ctx.selSt);
+    }
+    else if (opts.loop)
+    {
+        // No selection: every track loops over ITS OWN length, independently.
+        ctx.mode = LoopMode::all;
+        pos = 0.0;
     }
     else
     {
-        const bool hasSelection = doc.selSt != doc.selEnd;
+        // Play once. A selection plays just the selection; else from caret/start.
+        ctx.mode = LoopMode::once;
         if (hasSelection) { pos = static_cast<double> (doc.selSt); playEnd = doc.selEnd; }
         else
         {
@@ -50,6 +64,7 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
 
     if (opts.soloTrack >= 0) { monitor.soloed.clear(); monitor.soloed.insert (opts.soloTrack); }
 
+    uiLoopModeCode.store (static_cast<uint8_t> (ctx.mode), std::memory_order_relaxed);
     setState (TransportState::playing);
     uiPos.store (static_cast<size_t> (pos), std::memory_order_relaxed);
 }
@@ -87,10 +102,9 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
     if (left == nullptr || right == nullptr)      return 0;
     if (currentState != TransportState::playing)  return 0;
 
-    const int    frameSize = doc.frameSize();
-    cachedFrameSize = frameSize;
+    cachedFrameSize = doc.frameSize();
     const double s         = step (doc);
-    const bool   looping   = playOpts.loop;
+    const bool   playOnce  = ctx.mode == LoopMode::once;
     const bool   forceMono = ! supportsStereo;
 
     MixOptions mix;
@@ -101,18 +115,12 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
     int written = 0;
     for (int i = 0; i < frames; ++i)
     {
-        if (pos >= static_cast<double> (playEnd))
-        {
-            if (! looping) { setState (TransportState::stopped); break; }
-            const double span = static_cast<double> (playEnd) - static_cast<double> (loopStart);
-            if (span <= 0.0) { setState (TransportState::stopped); break; }
-            pos = static_cast<double> (loopStart) + std::fmod (pos - static_cast<double> (loopStart), span);
-        }
+        // pos is MONOTONIC — mixFrame wraps each track at its own length. Only
+        // play-once has a stop point; the loop modes run forever.
+        if (playOnce && pos >= static_cast<double> (playEnd)) { setState (TransportState::stopped); break; }
 
-        size_t read = static_cast<size_t> (std::floor (pos));
-        read -= read % static_cast<size_t> (frameSize);
-
-        const StereoFrame f = mixFrame (doc, read, mix);
+        const size_t p = static_cast<size_t> (std::floor (pos));
+        const StereoFrame f = mixFrame (doc, p, ctx, mix);
         left[i]  = f.left;
         right[i] = f.right;
 

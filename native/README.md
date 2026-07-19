@@ -57,10 +57,17 @@ for output routing and the mixer.
 
 ## The model (what makes it SoundEffect)
 
-- **Independent tracks.** Each track is its own buffer with its own length.
-  Nothing pads or aligns them — drifting out of phase is the point.
-- **Free-running loops.** No selection → the whole sound loops and tracks phase
-  against each other; a selection → only the selected span loops.
+- **Independent tracks = rudimentary per-track samplers.** Each track is its own
+  buffer, and in a playing window each track loops over ITS OWN length
+  independently (`pos % len` per track, not one shared playhead) — so tracks
+  phase against each other within a window, and windows phase against each other.
+- **Loops.** Loop + no selection → every track loops its own length; loop +
+  selection → the selected span loops (selected tracks); no loop → each track
+  plays once to its end.
+- **Silence vs absence.** Silence = real silent samples (audio: selectable,
+  erasable, insertable via Insert Silence), drawn as a SOLID line and part of the
+  loop length. Absence = past a track's end, drawn as a DOTTED line, contributes
+  nothing.
 - **Global additive playback.** `Engine` sums *every open window* at once. The
   infinite canvas is the spatial view of a bank of unsynchronised loopers.
 - **Per-window mixer.** Each `Window` has a `gain` + `mute` — the real "Level"

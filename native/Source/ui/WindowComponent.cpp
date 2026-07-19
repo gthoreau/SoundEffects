@@ -202,6 +202,10 @@ void WindowComponent::paint (Graphics& g)
 
     // Track lanes.
     const int n = d->numTracks();
+    auto* wsnap = engine.windowById (id);
+    const bool playing = wsnap && wsnap->transport->uiState() == se::TransportState::playing;
+    const size_t playPos = wsnap ? wsnap->transport->uiPlayhead() : 0;
+    const se::LoopMode loopMode = wsnap ? wsnap->transport->uiLoopMode() : se::LoopMode::once;
     for (int t = 0; t < n; ++t)
     {
         auto lane = laneRect (t);
@@ -219,21 +223,51 @@ void WindowComponent::paint (Graphics& g)
         g.drawText (juce::String::fromUTF8 ("\xE2\x96\xBC"), ctrlRect (t, 1), juce::Justification::centred, false);
         g.drawText (juce::String::fromUTF8 ("\xC3\x97"),     ctrlRect (t, 2), juce::Justification::centred, false);
 
-        // Waveform.
+        // Waveform on a shared byte-time axis. Silence (real samples) draws as a
+        // solid line; absence (past this track's end) draws as a dotted line.
         auto wr = waveRect (t);
         g.setColour (kWhite); g.fillRect (wr);
         const float mid = (float) wr.getCentreY();
         const float amp = (float) wr.getHeight() * 0.5f - 3.0f;
+        const size_t lenT = track.data.size();
+        const int endX = std::min (xAtByte (lenT, maxSize), wr.getRight());
+
         g.setColour (kWave);
+        g.drawHorizontalLine ((int) mid, (float) wr.getX(), (float) endX);   // silence: solid baseline
         if (t < (int) peaks.size())
         {
             const auto& cols = peaks[(size_t) t];
-            for (int x = 0; x < (int) cols.size(); ++x)
+            for (int x = 0; x < (int) cols.size() && wr.getX() + x < endX; ++x)
             {
                 const auto r = cols[(size_t) x];
                 if (r.getStart() == 0.0f && r.getEnd() == 0.0f) continue;
                 g.drawVerticalLine (wr.getX() + x, mid - r.getEnd() * amp, mid - r.getStart() * amp + 1.0f);
             }
+        }
+        for (int x = endX + 1; x < wr.getRight(); x += 3)                    // absence: dotted
+            g.fillRect (x, (int) mid, 1, 1);
+
+        // Per-track playhead (each track at its OWN loop phase).
+        if (playing && lenT > 0)
+        {
+            const size_t fs = (size_t) std::max (1, d->frameSize());
+            const size_t lenA = lenT - lenT % fs;
+            bool present = true; size_t ph = 0;
+            switch (loopMode)
+            {
+                case se::LoopMode::once: present = playPos < lenA; ph = playPos; break;
+                case se::LoopMode::all:  ph = lenA ? playPos % lenA : 0; break;
+                case se::LoopMode::selection:
+                    if (t >= d->firstSelTrack - 1 && t <= d->lastSelTrack - 1)
+                    {
+                        const size_t selLen = d->selEnd > d->selSt ? d->selEnd - d->selSt : 0;
+                        if (selLen > 0) { ph = d->selSt + (playPos >= d->selSt ? playPos - d->selSt : 0) % selLen; present = ph < lenA; }
+                        else ph = lenA ? playPos % lenA : 0;
+                    }
+                    else present = false;
+                    break;
+            }
+            if (present) { g.setColour (kInk); g.drawVerticalLine (xAtByte (ph, maxSize), (float) wr.getY(), (float) wr.getBottom()); }
         }
     }
 
@@ -246,20 +280,10 @@ void WindowComponent::paint (Graphics& g)
             if (t >= 0) { auto wr = waveRect (t); g.fillRect (Rectangle<int> (x0, wr.getY(), std::max (1, x1 - x0), wr.getHeight())); }
     }
 
-    // Playhead (single line across all lanes).
-    if (auto* w = engine.windowById (id))
-        if (w->transport->uiState() == se::TransportState::playing)
-        {
-            const int px = xAtByte (w->transport->uiPlayhead(), maxSize);
-            g.setColour (kInk);
-            g.drawVerticalLine (px, (float) (kTitleH + kInfoH), (float) (getHeight() - kTransportH));
-        }
-
     // Transport strip.
     auto tb = transportBounds();
     g.setColour (kInk); g.drawRect (tb, 1);
     const char* glyph[6] = { "\xE2\x97\x8F", "\xE2\x96\xA0", "II", "\xE2\x96\xB6", "\xE2\x96\xB6\xE2\x96\xB6", "\xE2\x86\xBB" };
-    const bool playing = engine.windowById (id) && engine.windowById (id)->transport->uiState() == se::TransportState::playing;
     for (int i = 0; i < 6; ++i)
     {
         auto b = transportButton (i);

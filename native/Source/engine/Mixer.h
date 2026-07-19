@@ -40,15 +40,33 @@ struct MixOptions
     bool forceMono = false;      // a backend that mixes stereo down to mono
 };
 
+/**
+ * How the monotonic transport position maps to each track's read position.
+ *  - once:      each track reads at `pos`; past its own end it is absent (silent).
+ *  - all:       each track loops over ITS OWN length independently — `pos % len`.
+ *               Different lengths phase against each other (the core weirdness).
+ *  - selection: the selected time range loops in phase; only the selected tracks
+ *               sound; a track shorter than the read point is absent.
+ */
+enum class LoopMode { once, all, selection };
+
+struct PlayContext
+{
+    LoopMode mode = LoopMode::once;
+    size_t   selSt = 0, selEnd = 0;      // selection mode: the looped byte range
+    int      firstSelTrack = 1, lastSelTrack = 1;   // selection mode: 1-based scope
+};
+
 struct StereoFrame { float left = 0.0f; float right = 0.0f; };
 
 /**
- * Mix one frame of the document at byte offset `pos` into a stereo frame.
- *  - A track shorter than `pos` contributes nothing and the rest play on.
- *  - Each track scaled by its own 8.8 volume; above unity overdrives on purpose.
- *  - Routing by the track's own L/R output-channel enables; both off => inaudible.
- *  - Sum is NOT scaled by track count. Clamp at the very edge.
+ * Mix one frame at monotonic transport position `pos` into a stereo frame, each
+ * track mapped through `ctx` to its own read position (independent per-track
+ * looping). Absence (past a track's end) contributes nothing — the rest play on.
+ * Per-track 8.8 volume (over-unity overdrives), L/R routing, no count scaling,
+ * clamp at the edge.
  */
-StereoFrame mixFrame (const SoundDocument& doc, size_t pos, const MixOptions& opts) noexcept;
+StereoFrame mixFrame (const SoundDocument& doc, size_t pos,
+                      const PlayContext& ctx, const MixOptions& opts) noexcept;
 
 } // namespace se

@@ -32,9 +32,11 @@ static float clampFloat (double v) noexcept
     return static_cast<float> (v);
 }
 
-StereoFrame mixFrame (const SoundDocument& doc, size_t pos, const MixOptions& opts) noexcept
+StereoFrame mixFrame (const SoundDocument& doc, size_t pos,
+                      const PlayContext& ctx, const MixOptions& opts) noexcept
 {
     const int    frameSize = doc.frameSize();
+    const size_t fs        = static_cast<size_t> (frameSize);
     const double divisor   = floatDivisor (doc.bps);
     const double master    = volumeScalar (opts.volume);
 
@@ -45,15 +47,44 @@ StereoFrame mixFrame (const SoundDocument& doc, size_t pos, const MixOptions& op
         if (opts.monitor != nullptr && ! isAudible (*opts.monitor, t)) continue;
 
         const Track& track = doc.tracks[static_cast<size_t> (t)];
+        const size_t len = track.data.size() - (track.data.size() % fs);  // frame-aligned
+        if (len == 0) continue;
 
-        // Past this track's end? It simply contributes nothing.
-        if (pos + static_cast<size_t> (frameSize) > track.data.size()) continue;
+        // Map the monotonic position to this track's own read position.
+        size_t rp = 0;
+        bool present = true;
+        switch (ctx.mode)
+        {
+            case LoopMode::once:
+                present = pos < len;
+                rp = pos;
+                break;
 
-        // 8.8 fixed: 0x0100 = 1.0, >1.0 overdrives, <=0 is silent.
-        const double vol = track.volume / static_cast<double> (0x0100);
+            case LoopMode::all:
+                rp = pos % len;                       // independent per-track loop
+                break;
+
+            case LoopMode::selection:
+            {
+                if (t < ctx.firstSelTrack - 1 || t > ctx.lastSelTrack - 1) { present = false; break; }
+                size_t selLen = ctx.selEnd > ctx.selSt ? ctx.selEnd - ctx.selSt : 0;
+                selLen -= selLen % fs;
+                if (selLen == 0) { rp = pos % len; break; }
+                const size_t phase = (pos >= ctx.selSt ? pos - ctx.selSt : 0) % selLen;
+                rp = ctx.selSt + phase;
+                present = rp < len;
+                break;
+            }
+        }
+        if (! present) continue;
+
+        rp -= rp % fs;
+        if (rp + fs > track.data.size()) continue;
+
+        const double vol = track.volume / static_cast<double> (0x0100);   // 8.8 fixed
         if (vol <= 0.0) continue;
 
-        const double s = (getSample (track.data.data(), pos, doc.bps) / divisor) * vol;
+        const double s = (getSample (track.data.data(), rp, doc.bps) / divisor) * vol;
         if (track.outLeft)  left  += s;
         if (track.outRight) right += s;
     }

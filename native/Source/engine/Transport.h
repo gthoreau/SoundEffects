@@ -49,10 +49,15 @@ public:
     TransportState state() const noexcept { return currentState; }
 
     // --- UI snapshot: safe to read from the message thread while audio runs ---
+    /** Monotonic transport byte position; the UI maps it per track (pos % len). */
     size_t uiPlayhead() const noexcept { return uiPos.load (std::memory_order_relaxed); }
     TransportState uiState() const noexcept
     {
         return static_cast<TransportState> (uiStateCode.load (std::memory_order_relaxed));
+    }
+    LoopMode uiLoopMode() const noexcept
+    {
+        return static_cast<LoopMode> (uiLoopModeCode.load (std::memory_order_relaxed));
     }
 
     int  masterVolume = VOLUME_FULL;   // 0..7
@@ -75,14 +80,16 @@ private:
     double deviceRate;
 
     TransportState currentState = TransportState::stopped;
-    double pos = 0.0;           // byte offset; fractional — deviceRate rarely divides
+    double pos = 0.0;           // MONOTONIC byte position; fractional device-rate step
     double advanceScale = 1.0;  // 2.0 while Advance is engaged
     int    cachedFrameSize = 1; // last doc's frameSize, for framePos()
     PlayOptions playOpts;
-    size_t loopStart = 0, loopEnd = 0, playEnd = 0;
+    PlayContext ctx;            // how pos maps to each track's read position
+    size_t playEnd = 0;         // once-mode stop point
 
     std::atomic<size_t>  uiPos { 0 };
     std::atomic<uint8_t> uiStateCode { static_cast<uint8_t> (TransportState::stopped) };
+    std::atomic<uint8_t> uiLoopModeCode { static_cast<uint8_t> (LoopMode::once) };
 };
 
 } // namespace se
