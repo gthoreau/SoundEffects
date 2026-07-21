@@ -1,5 +1,6 @@
 // PluginEditor — hosts the infinite canvas of sound Windows and the main mixer,
-// with a small toolbar (New / Open / Mosaic). System 7 dressing comes later.
+// with a small toolbar (New / Open / Mosaic / view state). System 7 dressing
+// comes later.
 //
 // A 30 Hz timer refreshes the canvas + mixer (transport playhead, window set).
 // UNVERIFIED against JUCE — build locally.
@@ -26,12 +27,15 @@ private:
     void timerCallback() override;
     void openFile();
     void newWindow();
+    void updateViewStatus();
 
     SoundEffectAudioProcessor& processorRef;
 
     juce::TextButton newButton    { "New" };
     juce::TextButton openButton   { "Open\xE2\x80\xA6" };
     juce::TextButton mosaicButton { "Mosaic" };
+    juce::TextButton zoomResetButton { "100%" };
+    juce::Label      viewStatus;
 
     CanvasComponent canvas;
     MixerComponent  mixer;

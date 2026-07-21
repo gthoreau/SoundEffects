@@ -16,16 +16,33 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
     addAndMakeVisible (newButton);
     addAndMakeVisible (openButton);
     addAndMakeVisible (mosaicButton);
+    addAndMakeVisible (zoomResetButton);
+    addAndMakeVisible (viewStatus);
     addAndMakeVisible (canvas);
     addAndMakeVisible (mixer);
 
-    newButton.onClick    = [this] { newWindow(); };
-    openButton.onClick   = [this] { openFile(); };
-    mosaicButton.onClick = [this] { canvas.mosaic(); };
+    newButton.onClick       = [this] { newWindow(); };
+    openButton.onClick      = [this] { openFile(); };
+    mosaicButton.onClick    = [this] { canvas.mosaic(); };
+    zoomResetButton.onClick = [this] { canvas.resetView(); };
+
+    viewStatus.setFont (juce::FontOptions (11.0f));
+    viewStatus.setColour (juce::Label::textColourId, juce::Colours::black);
+    canvas.onViewChanged = [this] { updateViewStatus(); };
+    updateViewStatus();
 
     setSize (960, 600);
     setResizable (true, true);
     startTimerHz (30);
+}
+
+void SoundEffectAudioProcessorEditor::updateViewStatus()
+{
+    juce::String s;
+    s << juce::roundToInt (canvas.zoomLevel() * 100.0f) << "%   "
+      << (canvas.isMosaicMode() ? "mosaic" : "free")
+      << (canvas.isPanMode() ? "   pan (V to exit)" : "   H to pan");
+    viewStatus.setText (s, juce::dontSendNotification);
 }
 
 SoundEffectAudioProcessorEditor::~SoundEffectAudioProcessorEditor()
@@ -95,6 +112,10 @@ void SoundEffectAudioProcessorEditor::resized()
     openButton.setBounds   (bar.removeFromLeft (60));
     bar.removeFromLeft (4);
     mosaicButton.setBounds (bar.removeFromLeft (70));
+    bar.removeFromLeft (4);
+    zoomResetButton.setBounds (bar.removeFromLeft (52));
+    bar.removeFromLeft (8);
+    viewStatus.setBounds (bar);
 
     mixer.setBounds  (area.removeFromRight (kMixerW));
     canvas.setBounds (area);

@@ -50,7 +50,9 @@ struct Window
     std::atomic<float> gain  { 1.0f };
     std::atomic<bool>  muted { false };
 
-    float x = 0.0f, y = 0.0f, width = 480.0f, height = 260.0f;   // canvas placement
+    // Canvas placement, in canvas ("world") coordinates. Zero means "not placed
+    // yet" — the canvas picks a spot and a size the first time it sees the Window.
+    float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;
 
     ~Window() { delete audioDoc; }
 };

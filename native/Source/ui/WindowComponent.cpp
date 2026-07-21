@@ -31,7 +31,23 @@ int WindowComponent::numTracks() const noexcept
 
 int WindowComponent::preferredHeight() const noexcept
 {
-    return kTitleH + kInfoH + numTracks() * kLaneH + kTransportH;
+    return chromeHeight() + numTracks() * laneH;
+}
+
+void WindowComponent::applySize (int width, int height)
+{
+    const int n = numTracks();
+    laneH = std::clamp ((height - chromeHeight()) / std::max (1, n), kMinLaneH, kMaxLaneH);
+    setSize (std::max (kMinWidth, width), chromeHeight() + n * laneH);
+}
+
+void WindowComponent::storeGeometry()
+{
+    if (auto* w = engine.windowById (id))
+    {
+        w->x = (float) getX();       w->y = (float) getY();
+        w->width = (float) getWidth(); w->height = (float) getHeight();
+    }
 }
 
 void WindowComponent::refresh()
@@ -44,6 +60,8 @@ void WindowComponent::resizeToFit()
 {
     setSize (preferredWidth(), preferredHeight());
     cachedWidth = -1;
+    storeGeometry();
+    if (onGeometryChanged) onGeometryChanged();
     repaint();
 }
 
@@ -61,22 +79,32 @@ Rectangle<int> WindowComponent::addTrackButton() const
 
 Rectangle<int> WindowComponent::laneRect (int t) const
 {
-    return { 0, kTitleH + kInfoH + t * kLaneH, getWidth(), kLaneH };
+    return { 0, kTitleH + kInfoH + t * laneH, getWidth(), laneH };
 }
+
+Rectangle<int> WindowComponent::resizeGripBounds() const
+{
+    return { getWidth() - kGripW - 1, getHeight() - kGripW - 1, kGripW, kGripW };
+}
+
+// The L/R toggles and the up/down/trash controls are chrome: they keep a fixed
+// size no matter how tall the lane is, pinned to the top of the lane. Only the
+// waveform between them grows.
 
 Rectangle<int> WindowComponent::lrRect (int t, bool left) const
 {
     auto lane = laneRect (t);
-    auto col = lane.removeFromLeft (kLrW).reduced (2);
-    return left ? col.removeFromTop (col.getHeight() / 2).reduced (0, 1)
-                : col.removeFromBottom (col.getHeight() / 2).reduced (0, 1);
+    auto col = lane.removeFromLeft (kLrW).reduced (2, 0);
+    const int s = std::min (7, (lane.getHeight() - 3) / 2);
+    const int top = lane.getY() + 2;
+    return { col.getX(), left ? top : top + s + 1, col.getWidth(), s };
 }
 
 Rectangle<int> WindowComponent::ctrlRect (int t, int which) const
 {
     auto lane = laneRect (t);
     auto col = lane.removeFromRight (kCtrlW);
-    const int h = col.getHeight() / 3;
+    const int h = std::min (12, col.getHeight() / 3);
     return { col.getX(), col.getY() + which * h, col.getWidth(), h };
 }
 
@@ -293,21 +321,45 @@ void WindowComponent::paint (Graphics& g)
         g.setFont (juce::FontOptions (11.0f));
         g.drawText (juce::String::fromUTF8 (glyph[i]), b, juce::Justification::centred, false);
     }
+
+    // Grow box: the System 7 corner grip, drag it to resize.
+    auto grip = resizeGripBounds();
+    g.setColour (kWhite); g.fillRect (grip);
+    g.setColour (kInk);   g.drawRect (grip, 1);
+    for (int i = 3; i < kGripW - 1; i += 3)
+        g.drawLine ((float) (grip.getRight() - i), (float) (grip.getBottom() - 2),
+                    (float) (grip.getRight() - 2), (float) (grip.getBottom() - i));
 }
 
 void WindowComponent::resized() { cachedWidth = -1; }
 
 // --- interaction ------------------------------------------------------------
 
+juce::Point<int> WindowComponent::parentPos (const juce::MouseEvent& e) const
+{
+    if (auto* parent = getParentComponent())
+        return e.getEventRelativeTo (parent).getPosition();
+    return e.getScreenPosition();
+}
+
 void WindowComponent::mouseDown (const juce::MouseEvent& e)
 {
-    draggingTitle = false; selecting = false;
+    draggingTitle = false; selecting = false; resizingWindow = false;
     grabKeyboardFocus();
     auto* d = doc();
     if (d == nullptr) return;
     const auto p = e.getPosition();
     const size_t maxSize = d->maxTrackSize();
     const int n = d->numTracks();
+
+    if (resizeGripBounds().contains (p))
+    {
+        resizingWindow = true;
+        dragMouseStart = parentPos (e);
+        resizeSizeStart = { getWidth(), getHeight() };
+        toFront (true);
+        return;
+    }
 
     if (closeBoxBounds().contains (p)) { if (onClose) onClose (id); return; }
     if (addTrackButton().contains (p)) { d->addTrack(); commit(); resizeToFit(); return; }
@@ -349,7 +401,7 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
     if (p.getY() < kTitleH)
     {
         draggingTitle = true;
-        dragMouseStart = e.getScreenPosition();
+        dragMouseStart = parentPos (e);
         dragBoundsStart = getBounds().getPosition();
         toFront (true);
     }
@@ -357,11 +409,23 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
 
 void WindowComponent::mouseDrag (const juce::MouseEvent& e)
 {
+    if (resizingWindow)
+    {
+        const auto delta = parentPos (e) - dragMouseStart;
+        applySize (resizeSizeStart.getX() + delta.getX(),
+                   resizeSizeStart.getY() + delta.getY());
+        cachedWidth = -1;
+        storeGeometry();
+        if (onGeometryChanged) onGeometryChanged();
+        repaint();
+        return;
+    }
     if (draggingTitle)
     {
-        const auto np = dragBoundsStart + (e.getScreenPosition() - dragMouseStart);
+        auto np = dragBoundsStart + (parentPos (e) - dragMouseStart);
+        np = { std::max (0, np.getX()), std::max (0, np.getY()) };   // stay on the board
         setTopLeftPosition (np);
-        if (auto* w = engine.windowById (id)) { w->x = (float) np.getX(); w->y = (float) np.getY(); }
+        storeGeometry();
         return;
     }
     if (selecting)
@@ -369,7 +433,7 @@ void WindowComponent::mouseDrag (const juce::MouseEvent& e)
         auto* d = doc(); if (d == nullptr) return;
         const size_t maxSize = d->maxTrackSize();
         const int n = d->numTracks();
-        const int curTrack = std::clamp ((e.getPosition().getY() - (kTitleH + kInfoH)) / kLaneH, 0, n - 1);
+        const int curTrack = std::clamp ((e.getPosition().getY() - (kTitleH + kInfoH)) / laneH, 0, n - 1);
         const size_t curByte = byteAtX (e.getPosition().getX(), maxSize);
         d->firstSelTrack = std::min (selAnchorTrack, curTrack) + 1;
         d->lastSelTrack  = std::max (selAnchorTrack, curTrack) + 1;
@@ -381,7 +445,16 @@ void WindowComponent::mouseDrag (const juce::MouseEvent& e)
 void WindowComponent::mouseUp (const juce::MouseEvent&)
 {
     if (selecting) commit();       // publish the selection so Play can loop it
-    draggingTitle = false; selecting = false;
+    // A title drag is a deliberate placement: tell the canvas so it stops tiling.
+    if (draggingTitle && onUserMoved) onUserMoved();
+    draggingTitle = false; selecting = false; resizingWindow = false;
+}
+
+void WindowComponent::mouseMove (const juce::MouseEvent& e)
+{
+    setMouseCursor (resizeGripBounds().contains (e.getPosition())
+                        ? juce::MouseCursor::BottomRightCornerResizeCursor
+                        : juce::MouseCursor::NormalCursor);
 }
 
 bool WindowComponent::keyPressed (const juce::KeyPress& k)
