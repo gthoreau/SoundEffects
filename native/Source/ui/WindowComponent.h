@@ -69,6 +69,12 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp   (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override;
+    void mouseExit  (const juce::MouseEvent&) override;
+    // The active window is the one holding keyboard focus — i.e. the one ⌘X/⌘C/⌘V
+    // and Delete act on. Highlighting it makes that otherwise invisible.
+    void focusGained (FocusChangeType) override;
+    void focusLost   (FocusChangeType) override;
     bool keyPressed (const juce::KeyPress&) override;
 
 private:
@@ -94,7 +100,12 @@ private:
     juce::Rectangle<int> ctrlRect (int t, int which) const;   // 0=up 1=down 2=trash
     juce::Rectangle<int> waveRect (int t) const;
     juce::Rectangle<int> transportBounds() const;
-    juce::Rectangle<int> transportButton (int i) const;       // 0..5
+    juce::Rectangle<int> transportButton (int i) const;       // 0..kNumTransportButtons-1
+    /** Draw transport symbol `which` inside `button`, in the current colour. The
+        symbols are paths, not text: ● ■ ▶ ↻ have wildly different metrics at any
+        one point size, so glyphs cannot be made to match. */
+    void drawTransportSymbol (juce::Graphics&, int which, juce::Rectangle<int> button,
+                              bool playing) const;
     juce::Rectangle<int> closeBoxBounds() const;
     int    waveWidth() const noexcept;
     size_t byteAtX (int x, size_t maxSize) const noexcept;
@@ -103,14 +114,29 @@ private:
     se::Engine& engine;
     uint64_t id;
     bool loopEnabled = true;
+    // 2x speed. Mirrors Transport::advanceScale, which play() resets to 1.0 — so
+    // anything that (re)starts playback must clear this too.
+    bool advanceEnabled = false;
+
+    // Transport: record / stop / play-pause / 2x / loop, square, centred as a
+    // group. The strip is sized from the buttons, not the other way round.
+    static constexpr int kNumTransportButtons = 5;
+    static constexpr int kBtnSize = 28;
+    static constexpr int kBtnGap = 5;
+    static constexpr int kBtnMargin = 4;
 
     static constexpr int kTitleH = 18;
     static constexpr int kInfoH = 28;
-    static constexpr int kTransportH = 26;
+    static constexpr int kTransportH = kBtnSize + 2 * kBtnMargin;
     static constexpr int kLaneH = 48;      // default lane height
     static constexpr int kLrW = 12;
     static constexpr int kCtrlW = 14;
     static constexpr int kGripW = 14;
+
+    // Border weight carries the state: plain, hovered, active (keyboard focus).
+    static constexpr int kBorderIdle = 1;
+    static constexpr int kBorderHover = 2;
+    static constexpr int kBorderActive = 4;
 
     // Height of one track lane. This is the only thing a vertical resize changes:
     // total height is always chromeHeight() + numTracks() * laneH.
@@ -126,6 +152,12 @@ private:
     std::vector<size_t> cachedSizes;
     size_t cachedMax = 0;
     std::vector<std::vector<juce::Range<float>>> peaks;
+
+    bool hovered = false;
+
+    // last drawn playhead state, so refresh() can skip idle repaints
+    bool   lastPlaying = false;
+    size_t lastPlayhead = 0;
 
     // title drag / corner resize
     bool draggingTitle = false;

@@ -122,6 +122,26 @@ single entry can be nudged without disturbing the rest. The whole surface takes
 the colour; the waveform bed is the same hue washed 72% toward white so the trace
 stays readable.
 
+**Highlight.** A Window's border weight carries its state: 1px plain, 2px hovered,
+4px active. "Active" means *holding keyboard focus* — the Window that ⌘X/⌘C/⌘V
+and Delete actually act on — rather than a separate notion of selection, so the
+highlight makes an otherwise invisible state visible. Clicking bare canvas moves
+focus to the canvas and clears it. The border is painted last so the highlight is
+never partly overdrawn, and it grows inwards, so a thick border never disturbs the
+neighbours it touches in the grid.
+
+**Transport.** Five square buttons, centred as a group at the foot of the Window:
+record · stop · play/pause · 2× · loop. The symbols are drawn as paths inside one
+shared box rather than as text — `●■▶↻` have wildly different metrics at any one
+point size, so glyphs cannot be made to match — and the strip's height derives
+from the button size (`kBtnSize`), not the other way round. Play and pause are **one toggle** —
+`Transport::pause()` already flips playing↔paused, so only a *stopped* transport
+calls `play()` (calling it while paused would restart from the top). 2× is a
+toggle too, and because `Transport::advance()` starts playback when the transport
+isn't rolling, engaging it also starts it; `play()` resets `advanceScale` to 1.0,
+so anything that (re)starts playback clears the 2× state with it. The record dot
+is red but **not wired up yet** — recording is a later increment.
+
 **View controls.**
 
 | | |

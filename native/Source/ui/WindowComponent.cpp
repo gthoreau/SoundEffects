@@ -15,6 +15,7 @@ const Colour kInk   { 0xff000000 };
 const Colour kWhite { 0xffffffff };
 const Colour kWave  { 0xff202020 };
 const Colour kSelFill { 0x553060c0 };
+const Colour kRecord { 0xffcc2222 };   // the record dot, red on any tint
 }
 
 WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
@@ -54,6 +55,19 @@ void WindowComponent::storeGeometry()
 void WindowComponent::refresh()
 {
     if (doc() == nullptr) { if (onClose) onClose (id); return; }
+
+    // The editor's timer is only here to animate the playhead, so repaint only
+    // when something that MOVES has moved. Everything else (edits, selection,
+    // toggles, resize) already repaints itself at the point of change. Without
+    // this, every Window redrew 30 times a second forever, and that load landed
+    // on top of panning and zooming — which repaint the whole board anyway.
+    auto* w = engine.windowById (id);
+    const bool playing = w != nullptr && w->transport->uiState() == se::TransportState::playing;
+    const size_t head = w != nullptr ? w->transport->uiPlayhead() : 0;
+
+    if (playing == lastPlaying && head == lastPlayhead) return;
+    lastPlaying = playing;
+    lastPlayhead = head;
     repaint();
 }
 
@@ -125,9 +139,11 @@ Rectangle<int> WindowComponent::transportBounds() const
 
 Rectangle<int> WindowComponent::transportButton (int i) const
 {
-    auto bar = transportBounds().reduced (4, 4);
-    const int bw = 22, gap = 4;
-    return { bar.getX() + i * (bw + gap), bar.getY(), bw, bar.getHeight() };
+    auto bar = transportBounds().reduced (kBtnMargin, kBtnMargin);
+    const int total = kNumTransportButtons * kBtnSize + (kNumTransportButtons - 1) * kBtnGap;
+    const int x0 = bar.getX() + std::max (0, (bar.getWidth() - total) / 2);
+    const int y0 = bar.getY() + (bar.getHeight() - kBtnSize) / 2;
+    return { x0 + i * (kBtnSize + kBtnGap), y0, kBtnSize, kBtnSize };
 }
 
 Rectangle<int> WindowComponent::closeBoxBounds() const { return { 5, 4, 11, 11 }; }
@@ -195,6 +211,88 @@ void WindowComponent::ensurePeaks (se::SoundDocument& d)
     }
 }
 
+// --- transport symbols ------------------------------------------------------
+
+void WindowComponent::drawTransportSymbol (Graphics& g, int which, Rectangle<int> button,
+                                           bool playing) const
+{
+    // Every symbol is built inside the SAME centred square, so they all carry the
+    // same visual weight. The play triangle fills it exactly — it is the benchmark
+    // the others are matched to.
+    const float s = (float) button.getWidth() * 0.44f;
+    const auto box = juce::Rectangle<float> (s, s).withCentre (button.toFloat().getCentre());
+
+    switch (which)
+    {
+        case 0:     // record: a dot inscribed in the box
+            g.fillEllipse (box);
+            break;
+
+        case 1:     // stop: the box itself
+            g.fillRect (box);
+            break;
+
+        case 2:
+            if (playing)    // pause: two bars spanning the box
+            {
+                const float bw = s * 0.34f;
+                g.fillRect (box.getX(), box.getY(), bw, s);
+                g.fillRect (box.getRight() - bw, box.getY(), bw, s);
+            }
+            else            // play: the benchmark triangle
+            {
+                juce::Path p;
+                p.addTriangle (box.getX(), box.getY(),
+                               box.getX(), box.getBottom(),
+                               box.getRight(), box.getCentreY());
+                g.fillPath (p);
+            }
+            break;
+
+        case 3:     // 2x: two triangles sharing the same box
+        {
+            const float tw = s * 0.46f;
+            juce::Path p;
+            p.addTriangle (box.getX(), box.getY(),
+                           box.getX(), box.getBottom(),
+                           box.getX() + tw, box.getCentreY());
+            p.addTriangle (box.getRight() - tw, box.getY(),
+                           box.getRight() - tw, box.getBottom(),
+                           box.getRight(), box.getCentreY());
+            g.fillPath (p);
+            break;
+        }
+
+        case 4:     // loop: a circular arrow inscribed in the box
+        {
+            const float r = s * 0.5f;
+            const float cx = box.getCentreX(), cy = box.getCentreY();
+            const float end = juce::MathConstants<float>::twoPi * 0.92f;
+
+            juce::Path arc;
+            arc.addCentredArc (cx, cy, r, r, 0.0f,
+                               juce::MathConstants<float>::twoPi * 0.10f, end, true);
+            g.strokePath (arc, juce::PathStrokeType (std::max (1.5f, s * 0.16f)));
+
+            // Arrowhead on the arc's end, pointing along the (clockwise) tangent.
+            // JUCE measures these angles clockwise from 12 o'clock.
+            const juce::Point<float> tip { cx + r * std::sin (end), cy - r * std::cos (end) };
+            const juce::Point<float> dir { std::cos (end), std::sin (end) };
+            const juce::Point<float> nrm { -dir.y, dir.x };
+            const float h = s * 0.34f;
+
+            juce::Path head;
+            head.addTriangle (tip + dir * h,
+                              tip - nrm * (h * 0.6f),
+                              tip + nrm * (h * 0.6f));
+            g.fillPath (head);
+            break;
+        }
+
+        default: break;
+    }
+}
+
 // --- paint ------------------------------------------------------------------
 
 void WindowComponent::paint (Graphics& g)
@@ -211,7 +309,6 @@ void WindowComponent::paint (Graphics& g)
 
     auto full = getLocalBounds();
     g.setColour (face); g.fillRect (full);
-    g.setColour (kInk); g.drawRect (full, 1);
 
     // Title bar.
     auto title = full.removeFromTop (kTitleH);
@@ -318,15 +415,16 @@ void WindowComponent::paint (Graphics& g)
     // Transport strip.
     auto tb = transportBounds();
     g.setColour (kInk); g.drawRect (tb, 1);
-    const char* glyph[6] = { "\xE2\x97\x8F", "\xE2\x96\xA0", "II", "\xE2\x96\xB6", "\xE2\x96\xB6\xE2\x96\xB6", "\xE2\x86\xBB" };
-    for (int i = 0; i < 6; ++i)
+    // record · stop · play/pause · 2x · loop. The play button doubles as pause
+    // while playing, so the pair is one toggle rather than two buttons.
+    for (int i = 0; i < kNumTransportButtons; ++i)
     {
         auto b = transportButton (i);
-        const bool lit = (i == 3 && playing) || (i == 5 && loopEnabled);
+        const bool lit = (i == 2 && playing) || (i == 3 && advanceEnabled) || (i == 4 && loopEnabled);
         g.setColour (lit ? kInk : face); g.fillRect (b);
         g.setColour (lit ? kWhite : kInk); g.drawRect (b, 1);
-        g.setFont (juce::FontOptions (11.0f));
-        g.drawText (juce::String::fromUTF8 (glyph[i]), b, juce::Justification::centred, false);
+        g.setColour (i == 0 ? kRecord : (lit ? kWhite : kInk));
+        drawTransportSymbol (g, i, b, playing);
     }
 
     // Grow box: the System 7 corner grip, drag it to resize.
@@ -336,7 +434,21 @@ void WindowComponent::paint (Graphics& g)
     for (int i = 3; i < kGripW - 1; i += 3)
         g.drawLine ((float) (grip.getRight() - i), (float) (grip.getBottom() - 2),
                     (float) (grip.getRight() - 2), (float) (grip.getBottom() - i));
+
+    // Border LAST, so the highlight is never partly overdrawn by the contents.
+    // Weight is the whole signal: plain, hovered, active. Since Windows in the
+    // grid touch, a thicker border grows inwards and never disturbs a neighbour.
+    const int border = hasKeyboardFocus (true) ? kBorderActive
+                     : hovered                 ? kBorderHover
+                                               : kBorderIdle;
+    g.setColour (kInk);
+    g.drawRect (getLocalBounds(), border);
 }
+
+void WindowComponent::mouseEnter (const juce::MouseEvent&) { hovered = true;  repaint(); }
+void WindowComponent::mouseExit  (const juce::MouseEvent&) { hovered = false; repaint(); }
+void WindowComponent::focusGained (FocusChangeType) { repaint(); }
+void WindowComponent::focusLost   (FocusChangeType) { repaint(); }
 
 void WindowComponent::resized() { cachedWidth = -1; }
 
@@ -373,16 +485,37 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
 
     if (transportBounds().contains (p))
     {
-        for (int i = 0; i < 6; ++i)
+        auto* wsnap = engine.windowById (id);
+        const auto state = wsnap != nullptr ? wsnap->transport->uiState()
+                                            : se::TransportState::stopped;
+
+        for (int i = 0; i < kNumTransportButtons; ++i)
             if (transportButton (i).contains (p))
             {
                 switch (i)
                 {
-                    case 1: engine.stop (id); break;
-                    case 2: engine.pause (id); break;
-                    case 3: { se::PlayOptions o; o.loop = loopEnabled; engine.play (id, o); break; }
-                    case 4: engine.advance (id); break;
-                    case 5: loopEnabled = ! loopEnabled; break;
+                    case 0: break;                          // record — not wired up yet
+                    case 1: engine.stop (id); advanceEnabled = false; break;
+                    case 2:
+                        // One toggle. Transport::pause() already flips playing
+                        // <-> paused, so only a STOPPED transport needs play() —
+                        // calling it while paused would restart from the top.
+                        if (state == se::TransportState::stopped)
+                        {
+                            se::PlayOptions o; o.loop = loopEnabled;
+                            engine.play (id, o);
+                            advanceEnabled = false;         // play() resets advanceScale
+                        }
+                        else engine.pause (id);
+                        break;
+                    case 3:
+                        // 2x engaged / disengaged. advance() starts playback if
+                        // the transport is stopped, so engaging it also rolls.
+                        if (advanceEnabled) engine.normalSpeed (id);
+                        else                engine.advance (id);
+                        advanceEnabled = ! advanceEnabled;
+                        break;
+                    case 4: loopEnabled = ! loopEnabled; break;
                     default: break;
                 }
                 repaint(); return;

@@ -361,18 +361,23 @@ void CanvasComponent::mouseUp (const juce::MouseEvent&)
 
 void CanvasComponent::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
+    // A trackpad / Magic Mouse sends pixel-precise deltas, which JUCE hands us
+    // scaled by 0.5/256 (see juce_NSViewComponentPeer_mac.mm). Undoing that with
+    // 512 makes the board track the fingers 1:1 — anything less feels like
+    // dragging through treacle. A notched wheel needs a chunky fixed step instead.
+    const float scale = wheel.isSmooth ? 512.0f : 1600.0f;
+
     // Ctrl (or ⌘) + wheel zooms about the pointer; a bare wheel scrolls the board.
     if (e.mods.isCtrlDown() || e.mods.isCommandDown())
     {
-        zoomAround (zoom * std::pow (2.0f, wheel.deltaY * 1.5f), e.position);
+        zoomAround (zoom * std::pow (2.0f, wheel.deltaY * (wheel.isSmooth ? 5.0f : 1.5f)), e.position);
         return;
     }
 
-    const float step = 60.0f;
     if (e.mods.isShiftDown())
-        setPan (pan + juce::Point<float> ((wheel.deltaY + wheel.deltaX) * step, 0.0f));
+        setPan (pan + juce::Point<float> ((wheel.deltaY + wheel.deltaX) * scale, 0.0f));
     else
-        setPan (pan + juce::Point<float> (wheel.deltaX * step, wheel.deltaY * step));
+        setPan (pan + juce::Point<float> (wheel.deltaX * scale, wheel.deltaY * scale));
 }
 
 void CanvasComponent::mouseMagnify (const juce::MouseEvent& e, float scaleFactor)
