@@ -52,7 +52,13 @@ struct Window
 
     // Canvas placement, in canvas ("world") coordinates. Zero means "not placed
     // yet" — the canvas picks a spot and a size the first time it sees the Window.
+    // `width` is the width the Window ASKS for; in the grid its rendered width is
+    // its column's, which is the widest asked-for width in that column.
     float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;
+
+    // Cell address in the canvas grid, and index into the canvas tint palette.
+    // Negative means "not assigned yet"; the canvas fills them in.
+    int gridCol = -1, gridRow = -1, tint = -1;
 
     ~Window() { delete audioDoc; }
 };

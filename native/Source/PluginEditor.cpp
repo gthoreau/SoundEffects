@@ -23,7 +23,7 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
 
     newButton.onClick       = [this] { newWindow(); };
     openButton.onClick      = [this] { openFile(); };
-    mosaicButton.onClick    = [this] { canvas.mosaic(); };
+    mosaicButton.onClick    = [this] { canvas.setMosaicMode (! canvas.isMosaicMode()); };
     zoomResetButton.onClick = [this] { canvas.resetView(); };
 
     viewStatus.setFont (juce::FontOptions (11.0f));
@@ -40,7 +40,7 @@ void SoundEffectAudioProcessorEditor::updateViewStatus()
 {
     juce::String s;
     s << juce::roundToInt (canvas.zoomLevel() * 100.0f) << "%   "
-      << (canvas.isMosaicMode() ? "mosaic" : "free")
+      << (canvas.isMosaicMode() ? "grid" : "free")
       << (canvas.isPanMode() ? "   pan (V to exit)" : "   H to pan");
     viewStatus.setText (s, juce::dontSendNotification);
 }

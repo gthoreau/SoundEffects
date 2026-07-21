@@ -5,10 +5,31 @@
 #include <limits>
 
 namespace {
-constexpr int kPad = 12;
 // The world is a big fixed board; the view transform slides a viewport over it.
 // Windows are kept inside it so they are never clipped away.
 constexpr int kWorldSize = 20000;
+
+// Twelve pastels, one per hue clock position: HSL(h, 55%, 84%) worked out to hex
+// so individual entries can be nudged without disturbing the rest.
+const juce::Colour kTints[CanvasComponent::kNumTints] = {
+    juce::Colour (0xffedc0c0),   // red
+    juce::Colour (0xffedd6c0),   // orange
+    juce::Colour (0xffededc0),   // yellow
+    juce::Colour (0xffd6edc0),   // chartreuse
+    juce::Colour (0xffc0edc0),   // green
+    juce::Colour (0xffc0edd6),   // spring
+    juce::Colour (0xffc0eded),   // cyan
+    juce::Colour (0xffc0d6ed),   // azure
+    juce::Colour (0xffc0c0ed),   // blue
+    juce::Colour (0xffd6c0ed),   // violet
+    juce::Colour (0xffedc0ed),   // magenta
+    juce::Colour (0xffedc0d6),   // rose
+};
+}
+
+juce::Colour CanvasComponent::tintFromPalette (int index) noexcept
+{
+    return kTints[(size_t) juce::jlimit (0, kNumTints - 1, index)];
 }
 
 CanvasComponent::CanvasComponent (se::Engine& e) : engine (e)
@@ -35,6 +56,19 @@ void CanvasComponent::placeNew (WindowComponent& wc, int indexAmongNew)
         wc.applySize ((int) w->width, (int) w->height);
     else
         wc.setSize (wc.preferredWidth(), wc.preferredHeight());
+
+    // A coat of paint, picked at random but never twice running.
+    if (w != nullptr)
+    {
+        if (w->tint < 0)
+        {
+            int pick = juce::Random::getSystemRandom().nextInt (kNumTints);
+            if (pick == lastTint) pick = (pick + 1 + juce::Random::getSystemRandom().nextInt (kNumTints - 1)) % kNumTints;
+            w->tint = pick;
+            lastTint = pick;
+        }
+        wc.setTint (tintFromPalette (w->tint));
+    }
 
     // If the engine's Window has no placement yet, cascade it.
     if (w != nullptr && w->x == 0.0f && w->y == 0.0f)
@@ -66,19 +100,22 @@ void CanvasComponent::refresh()
         auto wc = std::make_unique<WindowComponent> (engine, id);
         wc->clipboard = &clipboard;
         wc->onClose = [this] (uint64_t wid) { engine.removeWindow (wid); };
-        wc->onGeometryChanged = [this] { if (mosaicEnabled) layoutMasonry(); };
-        wc->onUserMoved = [this]
+        wc->onGeometryChanged = [this] { if (mosaicEnabled) layoutGrid(); };
+        auto* raw = wc.get();
+        wc->onDragged = [this, raw] (juce::Point<int> topLeft)
         {
-            // Placing a window by hand opts out of auto-tiling.
-            if (mosaicEnabled) { mosaicEnabled = false; if (onViewChanged) onViewChanged(); }
+            if (! mosaicEnabled) return;      // free placement: the drag IS the position
+            retargetCell (*raw, topLeft);
+            layoutGrid (raw);                 // reflow around the gap it will drop into
         };
+        wc->onDropped = [this] { if (mosaicEnabled) layoutGrid(); };
         world.addAndMakeVisible (*wc);
         placeNew (*wc, newCount++);
         windows.push_back (std::move (wc));
     }
     if (newCount > 0) cascade += newCount;
 
-    if (mosaicEnabled && (newCount > 0 || removedAny)) layoutMasonry();
+    if (mosaicEnabled && (newCount > 0 || removedAny)) layoutGrid();
 
     // Refresh each (transport state / playhead / repaint).
     for (auto& w : windows)
@@ -90,44 +127,162 @@ void CanvasComponent::refresh()
 void CanvasComponent::mosaic()
 {
     mosaicEnabled = true;
-    layoutMasonry();
+    layoutGrid();
     if (onViewChanged) onViewChanged();
 }
 
-void CanvasComponent::layoutMasonry()
+void CanvasComponent::setMosaicMode (bool shouldTile)
 {
-    if (windows.empty()) return;
+    if (shouldTile) { mosaic(); return; }
+    mosaicEnabled = false;
+    if (onViewChanged) onViewChanged();
+}
 
-    // The column unit is the narrowest window, so a wide window simply spans
-    // several columns instead of forcing every column to be as wide as it is.
-    int colW = std::numeric_limits<int>::max();
-    for (auto& w : windows) colW = std::min (colW, w->getWidth());
-    colW = std::max (colW, WindowComponent::kMinWidth);
+std::vector<CanvasComponent::Column> CanvasComponent::buildColumns()
+{
+    struct Entry { int col, row; WindowComponent* w; };
+    std::vector<Entry> entries;
+    entries.reserve (windows.size());
 
-    // How many columns fit across the visible viewport, in world units.
-    const int viewW = std::max (1, (int) ((float) getWidth() / zoom)) - kPad;
-    const int cols = std::clamp (viewW / (colW + kPad), 1, (int) windows.size());
+    for (auto& wc : windows)
+        if (auto* ew = engine.windowById (wc->windowId()))
+            if (ew->gridCol >= 0)                       // unassigned ones sit this out
+                entries.push_back ({ ew->gridCol, ew->gridRow, wc.get() });
 
-    // Walk the windows in engine order; each lands in the run of columns where it
-    // can sit highest. That is what makes one window's new size shove the rest.
-    std::vector<int> bottom ((size_t) cols, kPad);
+    std::stable_sort (entries.begin(), entries.end(),
+                      [] (const Entry& a, const Entry& b)
+                      { return a.col != b.col ? a.col < b.col : a.row < b.row; });
 
-    for (auto& w : windows)
+    std::vector<Column> columns;
+    int lastCol = std::numeric_limits<int>::min();
+    for (const auto& e : entries)
     {
-        const int span = std::clamp ((w->getWidth() + kPad + colW + kPad - 1) / (colW + kPad), 1, cols);
+        if (e.col != lastCol) { columns.push_back ({}); lastCol = e.col; }
+        columns.back().items.push_back (e.w);
+    }
 
-        int bestCol = 0, bestY = std::numeric_limits<int>::max();
-        for (int c = 0; c + span <= cols; ++c)
+    // Compact the addresses (columns 0..n-1, rows 0..k-1) and measure each column:
+    // as wide as its widest member wants to be, as tall as its members stacked.
+    int x = 0;
+    for (size_t c = 0; c < columns.size(); ++c)
+    {
+        auto& col = columns[c];
+        for (size_t r = 0; r < col.items.size(); ++r)
         {
-            int y = kPad;
-            for (int k = c; k < c + span; ++k) y = std::max (y, bottom[(size_t) k]);
-            if (y < bestY) { bestY = y; bestCol = c; }
+            if (auto* ew = engine.windowById (col.items[r]->windowId()))
+            {
+                ew->gridCol = (int) c;
+                ew->gridRow = (int) r;
+            }
+            col.width = std::max (col.width, col.items[r]->preferredWidth());
+            col.height += col.items[r]->getHeight();
         }
+        col.x = x;
+        x += col.width;
+    }
+    return columns;
+}
 
-        w->setTopLeftPosition (kPad + bestCol * (colW + kPad), bestY);
-        w->storeGeometry();
-        for (int k = bestCol; k < bestCol + span; ++k)
-            bottom[(size_t) k] = bestY + w->getHeight() + kPad;
+void CanvasComponent::assignCell (WindowComponent& wc)
+{
+    auto* ew = engine.windowById (wc.windowId());
+    if (ew == nullptr) return;
+
+    const auto columns = buildColumns();
+    int used = 0;
+    for (const auto& c : columns) used += c.width;
+
+    // Start a fresh column while the row of columns still fits across the
+    // viewport; once it is full, drop into whichever column is shortest.
+    const int viewW = std::max (1, (int) ((float) getWidth() / zoom));
+    if (columns.empty() || used + wc.preferredWidth() <= viewW)
+    {
+        ew->gridCol = (int) columns.size();
+        ew->gridRow = 0;
+        return;
+    }
+
+    size_t best = 0;
+    for (size_t c = 1; c < columns.size(); ++c)
+        if (columns[c].height < columns[best].height) best = c;
+
+    ew->gridCol = (int) best;
+    ew->gridRow = (int) columns[best].items.size();
+}
+
+void CanvasComponent::retargetCell (WindowComponent& dragged, juce::Point<int> topLeft)
+{
+    auto* ew = engine.windowById (dragged.windowId());
+    if (ew == nullptr) return;
+
+    auto columns = buildColumns();
+    if (columns.empty()) return;
+
+    // Which column is the dragged corner over? Past the right edge means it is
+    // being pulled out into a brand new column of its own.
+    int target = (int) columns.size();
+    for (size_t c = 0; c < columns.size(); ++c)
+        if (topLeft.getX() < columns[c].x + columns[c].width) { target = (int) c; break; }
+
+    if (target == (int) columns.size())
+    {
+        // Don't let a window that is already alone in the last column keep
+        // spawning new ones — that would drift right for ever.
+        if (! (ew->gridCol == (int) columns.size() - 1 && columns.back().items.size() == 1))
+        {
+            ew->gridCol = target;
+            ew->gridRow = 0;
+            return;
+        }
+        target = (int) columns.size() - 1;
+    }
+
+    // Insert above the first window whose middle is below the dragged corner.
+    auto& col = columns[(size_t) target];
+    int insert = 0, y = 0;
+    for (auto* item : col.items)
+    {
+        if (item == &dragged) continue;
+        if (topLeft.getY() < y + item->getHeight() / 2) break;
+        y += item->getHeight();
+        ++insert;
+    }
+
+    // Rebuild the column's running order with the dragged window spliced in, then
+    // renumber from it — safer than nudging rows, which goes wrong when the
+    // dragged window is being reordered inside its own column.
+    std::vector<WindowComponent*> order;
+    order.reserve (col.items.size() + 1);
+    for (auto* item : col.items)
+        if (item != &dragged) order.push_back (item);
+    order.insert (order.begin() + insert, &dragged);
+
+    for (size_t r = 0; r < order.size(); ++r)
+        if (auto* o = engine.windowById (order[r]->windowId()))
+        {
+            o->gridCol = target;
+            o->gridRow = (int) r;
+        }
+}
+
+void CanvasComponent::layoutGrid (WindowComponent* floating)
+{
+    // Anything without a cell yet (freshly opened) gets one first.
+    for (auto& wc : windows)
+        if (auto* ew = engine.windowById (wc->windowId()))
+            if (ew->gridCol < 0) assignCell (*wc);
+
+    for (const auto& col : buildColumns())
+    {
+        int y = 0;
+        for (auto* w : col.items)
+        {
+            // Every window in the column is stretched to the column's width; the
+            // cell is exactly as tall as the window. No padding: they touch.
+            if (w != floating) w->setBounds (col.x, y, col.width, w->getHeight());
+            w->storeGeometry();
+            y += w->getHeight();
+        }
     }
 }
 
@@ -241,7 +396,7 @@ bool CanvasComponent::keyPressed (const juce::KeyPress& k)
 
 void CanvasComponent::resized()
 {
-    if (mosaicEnabled) layoutMasonry();
+    if (mosaicEnabled) layoutGrid();
     setPan (pan);   // re-clamp against the new viewport
 }
 

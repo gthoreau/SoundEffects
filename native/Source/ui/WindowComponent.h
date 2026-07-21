@@ -35,15 +35,20 @@ public:
     static constexpr int kMinLaneH = 20;
     static constexpr int kMaxLaneH = 400;
 
-    /** The size this window wants right now: its current size once it has one. */
-    int preferredWidth() const noexcept { return getWidth() > 0 ? getWidth() : kDefaultWidth; }
+    /** The width this window ASKS for (grip drag). In the grid its rendered width
+        is the column's — the widest desired width in that column — so a window can
+        be stretched wider than this, never narrower. */
+    int preferredWidth() const noexcept { return desiredW; }
     int preferredHeight() const noexcept;
 
     /** Adopt a size the canvas restored/chose, in the window's own terms. */
     void applySize (int width, int height);
 
-    /** Write this window's bounds back to the engine's Window record. */
+    /** Write this window's desired size and position back to the engine's Window. */
     void storeGeometry();
+
+    /** Flat colour this window is painted in. */
+    void setTint (juce::Colour c) { tint = c; repaint(); }
 
     /** Shared clipboard slot (owned by the canvas). */
     std::unique_ptr<se::SoundDocument>* clipboard = nullptr;
@@ -52,8 +57,11 @@ public:
     std::function<void (uint64_t)> onClose;
     /** Size changed (user grip drag, or a track added/removed) — relayout the canvas. */
     std::function<void()> onGeometryChanged;
-    /** The user dragged this window by its title bar — an explicit manual placement. */
-    std::function<void()> onUserMoved;
+    /** Title-bar drag in progress, with the pointer in canvas coords — the canvas
+        re-targets this window's grid cell and reflows around it. */
+    std::function<void (juce::Point<int>)> onDragged;
+    /** Title-bar drag finished — settle into the layout. */
+    std::function<void()> onDropped;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -107,6 +115,11 @@ private:
     // Height of one track lane. This is the only thing a vertical resize changes:
     // total height is always chromeHeight() + numTracks() * laneH.
     int laneH = kLaneH;
+
+    // Width this window asks for; the grid may render it wider. See preferredWidth().
+    int desiredW = kDefaultWidth;
+
+    juce::Colour tint { 0xffbfbfbf };
 
     // waveform peak cache (per track, one min/max per pixel column of waveWidth)
     int cachedWidth = -1;

@@ -37,16 +37,17 @@ int WindowComponent::preferredHeight() const noexcept
 void WindowComponent::applySize (int width, int height)
 {
     const int n = numTracks();
+    desiredW = std::max (kMinWidth, width);
     laneH = std::clamp ((height - chromeHeight()) / std::max (1, n), kMinLaneH, kMaxLaneH);
-    setSize (std::max (kMinWidth, width), chromeHeight() + n * laneH);
+    setSize (desiredW, chromeHeight() + n * laneH);
 }
 
 void WindowComponent::storeGeometry()
 {
     if (auto* w = engine.windowById (id))
     {
-        w->x = (float) getX();       w->y = (float) getY();
-        w->width = (float) getWidth(); w->height = (float) getHeight();
+        w->x = (float) getX();        w->y = (float) getY();
+        w->width = (float) desiredW;  w->height = (float) getHeight();
     }
 }
 
@@ -58,7 +59,8 @@ void WindowComponent::refresh()
 
 void WindowComponent::resizeToFit()
 {
-    setSize (preferredWidth(), preferredHeight());
+    // Keep the rendered width (the grid owns it); only the height follows the tracks.
+    setSize (getWidth() > 0 ? getWidth() : desiredW, preferredHeight());
     cachedWidth = -1;
     storeGeometry();
     if (onGeometryChanged) onGeometryChanged();
@@ -202,9 +204,14 @@ void WindowComponent::paint (Graphics& g)
     ensurePeaks (*d);
     const size_t maxSize = d->maxTrackSize();
 
+    // The whole window is painted in its tint; the waveform bed is the same hue
+    // washed out towards white so the trace stays readable.
+    const Colour face = tint;
+    const Colour bed  = tint.interpolatedWith (kWhite, 0.72f);
+
     auto full = getLocalBounds();
-    g.setColour (kFace); g.fillRect (full);
-    g.setColour (kInk);  g.drawRect (full, 1);
+    g.setColour (face); g.fillRect (full);
+    g.setColour (kInk); g.drawRect (full, 1);
 
     // Title bar.
     auto title = full.removeFromTop (kTitleH);
@@ -213,7 +220,7 @@ void WindowComponent::paint (Graphics& g)
         g.drawHorizontalLine (y, (float) (title.getX() + 22), (float) (title.getRight() - 22));
     g.setColour (kInk); g.drawRect (closeBoxBounds(), 1);
     { auto na = title.withTrimmedLeft (26).withTrimmedRight (26);
-      g.setColour (kFace); g.fillRect (na.reduced (24, 2));
+      g.setColour (face); g.fillRect (na.reduced (24, 2));
       g.setColour (kInk); g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
       g.drawText (juce::String (d->name), na, juce::Justification::centred, false); }
 
@@ -225,7 +232,7 @@ void WindowComponent::paint (Graphics& g)
                      << d->numTracks() << (d->numTracks() == 1 ? " track   " : " tracks   ") << (int) maxSize << " bytes";
     g.drawText (l, info.reduced (6, 2).withTrimmedRight (24), juce::Justification::centredLeft, false);
     auto add = addTrackButton();
-    g.setColour (kFace); g.fillRect (add); g.setColour (kInk); g.drawRect (add, 1);
+    g.setColour (face); g.fillRect (add); g.setColour (kInk); g.drawRect (add, 1);
     g.drawText ("+", add, juce::Justification::centred, false);
 
     // Track lanes.
@@ -254,7 +261,7 @@ void WindowComponent::paint (Graphics& g)
         // Waveform on a shared byte-time axis. Silence (real samples) draws as a
         // solid line; absence (past this track's end) draws as a dotted line.
         auto wr = waveRect (t);
-        g.setColour (kWhite); g.fillRect (wr);
+        g.setColour (bed); g.fillRect (wr);
         const float mid = (float) wr.getCentreY();
         const float amp = (float) wr.getHeight() * 0.5f - 3.0f;
         const size_t lenT = track.data.size();
@@ -316,7 +323,7 @@ void WindowComponent::paint (Graphics& g)
     {
         auto b = transportButton (i);
         const bool lit = (i == 3 && playing) || (i == 5 && loopEnabled);
-        g.setColour (lit ? kInk : kFace); g.fillRect (b);
+        g.setColour (lit ? kInk : face); g.fillRect (b);
         g.setColour (lit ? kWhite : kInk); g.drawRect (b, 1);
         g.setFont (juce::FontOptions (11.0f));
         g.drawText (juce::String::fromUTF8 (glyph[i]), b, juce::Justification::centred, false);
@@ -324,7 +331,7 @@ void WindowComponent::paint (Graphics& g)
 
     // Grow box: the System 7 corner grip, drag it to resize.
     auto grip = resizeGripBounds();
-    g.setColour (kWhite); g.fillRect (grip);
+    g.setColour (bed); g.fillRect (grip);
     g.setColour (kInk);   g.drawRect (grip, 1);
     for (int i = 3; i < kGripW - 1; i += 3)
         g.drawLine ((float) (grip.getRight() - i), (float) (grip.getBottom() - 2),
@@ -426,6 +433,9 @@ void WindowComponent::mouseDrag (const juce::MouseEvent& e)
         np = { std::max (0, np.getX()), std::max (0, np.getY()) };   // stay on the board
         setTopLeftPosition (np);
         storeGeometry();
+        // Report the window's own top-left, not the pointer: the cell you are
+        // aiming at is the one the window's corner is over.
+        if (onDragged) onDragged (np);
         return;
     }
     if (selecting)
@@ -445,8 +455,7 @@ void WindowComponent::mouseDrag (const juce::MouseEvent& e)
 void WindowComponent::mouseUp (const juce::MouseEvent&)
 {
     if (selecting) commit();       // publish the selection so Play can loop it
-    // A title drag is a deliberate placement: tell the canvas so it stops tiling.
-    if (draggingTitle && onUserMoved) onUserMoved();
+    if (draggingTitle && onDropped) onDropped();
     draggingTitle = false; selecting = false; resizingWindow = false;
 }
 

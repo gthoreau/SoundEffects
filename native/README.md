@@ -16,11 +16,13 @@ native/
   CMakeLists.txt            JUCE via FetchContent → Standalone + VST3 + AU
   Source/
     PluginProcessor.{h,cpp} the ONLY JUCE/host boundary; owns the engine
-    PluginEditor.{h,cpp}    hosts the canvas + mixer + toolbar (New/Open/Mosaic)
+    PluginEditor.{h,cpp}    hosts the canvas + mixer + toolbar (New/Open/Mosaic,
+                            zoom reset, and the zoom / grid / pan readout)
     ui/                     JUCE UI (message thread); reads engine UI-safe snapshots
-      CanvasComponent       the board: hosts Windows, drag-to-move, Mosaic
+      CanvasComponent       the board: the Window grid, zoom/pan, tint palette
       WindowComponent       one System-7 sound Window: info strip, track lanes
-                            (waveform + L/R indicators), transport wired to engine
+                            (waveform + L/R indicators), transport wired to engine,
+                            corner grow box
       MixerComponent        main mixer: one dB fader + mute strip per Window
     engine/                 host-agnostic core — ZERO JUCE includes
       SampleFormat.h        packed offset-binary / big-endian sample access
@@ -75,6 +77,62 @@ for output routing and the mixer.
 - **Destructive edits, declared rate obeyed even when it lies** — carried over
   from the TS core (edits/effects still to be ported).
 
+## The canvas: grid, size, colour, view
+
+The canvas is an unbounded board. The Windows live in a transparent "world" layer
+that carries the view transform, so zoom and pan are one `AffineTransform` and
+JUCE maps mouse events through it — every Window keeps working at any zoom.
+
+**The grid.** Layout is a virtual, unbounded grid, on by default. Each Window
+holds a cell address (`gridCol`, `gridRow`, on the engine's `Window`) and columns
+are *independent stacks*:
+
+- a column is as wide as the **widest** Window in it, and every Window in that
+  column is stretched to that width;
+- a cell is exactly as tall as **its own** Window, so heights vary freely down a
+  column and rows deliberately do **not** line up across columns;
+- there is no padding — the grid starts at the origin and the Windows touch.
+
+So a Window has a **desired width** (what its grow box sets, persisted in
+`Window::width`) distinct from its **rendered width** (its column's). A Window can
+be stretched wider than it asked for, never narrower — dragging a grow box
+narrower does nothing visible until the widest Window in that column shrinks.
+That falls out of the "column = widest member" rule; it is not a bug.
+
+Resizing therefore reflows the whole column and shifts the columns to its right.
+Dragging a Window re-targets its cell — the column under the dragged corner,
+inserted above the first Window whose middle is below it — and the rest reflow
+live around the gap it will drop into, the source column closing up at once.
+Dragging past the rightmost column pulls the Window out into a new column of its
+own. A new Window opens a fresh column while the row of columns still fits the
+viewport, and drops into the shortest column once it doesn't.
+
+**Mosaic** toggles the grid off: Windows stay where they are and drag moves them
+freely. Toggling it back on re-packs them.
+
+**Resizing a Window** never scales its chrome. Total height is always
+`chrome + numTracks × laneHeight`, so a vertical drag changes the height of one
+track lane and the title bar, info strip, transport, L/R output toggles and
+up/down/trash controls keep their fixed size. Only the waveforms grow.
+
+**Tint.** Each new Window is painted in one of twelve pastels, chosen at random
+but never the same as the one before it, persisted as an index in `Window::tint`.
+The palette is explicit hex in `kTints` (even hue spacing, HSL ~ *h*/55%/84%) so a
+single entry can be nudged without disturbing the rest. The whole surface takes
+the colour; the waveform bed is the same hue washed 72% toward white so the trace
+stays readable.
+
+**View controls.**
+
+| | |
+|---|---|
+| `Ctrl`/`⌘` + wheel, or pinch | zoom about the pointer, 20%–400% |
+| wheel / `⇧`+wheel | scroll the board vertically / horizontally |
+| `H` | enter pan mode — hand cursor, drag anywhere pans (Windows stop taking clicks) |
+| `V` or `Esc` | leave pan mode |
+| `0` | reset zoom and pan |
+| `+` / `-` | zoom about the viewport centre |
+
 ## Build
 
 Requires CMake ≥ 3.22, a C++17 compiler, and (first configure) network access to
@@ -111,8 +169,16 @@ JUCE 8.0.4) 2026-07-18.
   and ⌘X/⌘C/⌘V. Engine layer verified (ASan/UBSan + ThreadSanitizer incl.
   concurrent edits during playback); UI drive-tested (add/trash track, selection,
   cut/paste with the independent-track shortening all confirmed on real audio).
-- **Next increments**: canvas pan/zoom; System 7 chrome polish; the effects port;
-  recording; byte-accurate AIFF/WAV save.
+- **UI/UX increment 3**: the canvas proper — resizable Windows (corner grow box,
+  chrome fixed, waveforms stretch), the virtual column grid described above with
+  drag-to-cell and live reflow, the 12-pastel tint palette, and zoom/pan
+  (`Ctrl`+wheel, pinch, `H`/`V`). **Builds and runs** (Standalone, macOS arm64,
+  JUCE 8.0.4); drive-tested end to end — grid packing, column widening on resize,
+  drag between columns and out into a new one, tints, zoom, pan, and the
+  grid/free toggle all confirmed on screen.
+- **Next increments**: System 7 chrome polish; the effects port; recording;
+  byte-accurate AIFF/WAV save; persisting canvas layout across launches (cell,
+  size and tint live on the engine's `Window` but are not yet saved to disk).
 
 ## Known TODO / not-yet-safe
 

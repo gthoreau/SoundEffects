@@ -3,7 +3,6 @@
 // comes later.
 //
 // A 30 Hz timer refreshes the canvas + mixer (transport playhead, window set).
-// UNVERIFIED against JUCE — build locally.
 
 #pragma once
 
