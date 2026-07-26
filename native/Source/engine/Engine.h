@@ -33,6 +33,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -52,13 +53,18 @@ struct Window
 
     // Canvas placement, in canvas ("world") coordinates. Zero means "not placed
     // yet" — the canvas picks a spot and a size the first time it sees the Window.
-    // `width` is the width the Window ASKS for; in the grid its rendered width is
-    // its column's, which is the widest asked-for width in that column.
+    // `width` is the width the Window ASKS for; in the grid the whole column shares
+    // one width, which is whatever the last grow-box drag in it asked for.
     float x = 0.0f, y = 0.0f, width = 0.0f, height = 0.0f;
 
-    // Cell address in the canvas grid, and index into the canvas tint palette.
-    // Negative means "not assigned yet"; the canvas fills them in.
-    int gridCol = -1, gridRow = -1, tint = -1;
+    /** Cell address of a Window the canvas has not placed in the grid yet. The grid
+        grows in every direction, so a real column index may be negative — "unset"
+        cannot just be a negative number. */
+    static constexpr int kNoCell = std::numeric_limits<int>::min();
+
+    // Cell address in the canvas grid, and index into the canvas tint palette
+    // (tint < 0 = unpainted).
+    int gridCol = kNoCell, gridRow = 0, tint = -1;
 
     ~Window() { delete audioDoc; }
 };

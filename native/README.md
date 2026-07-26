@@ -83,29 +83,45 @@ The canvas is an unbounded board. The Windows live in a transparent "world" laye
 that carries the view transform, so zoom and pan are one `AffineTransform` and
 JUCE maps mouse events through it — every Window keeps working at any zoom.
 
+**It reaches every way out of the origin.** The world's origin — where the grid is
+anchored — is at the *centre* of the world layer, not at a corner, and the view
+starts with it parked 48px in from the viewport's top-left. So there is as much
+board above and to the left of the first Window as below and right of the last
+one, and nothing is pinned against an invisible corner.
+
 **The grid.** Layout is a virtual, unbounded grid, on by default. Each Window
 holds a cell address (`gridCol`, `gridRow`, on the engine's `Window`) and columns
 are *independent stacks*:
 
-- a column is as wide as the **widest** Window in it, and every Window in that
-  column is stretched to that width;
+- a column has **one width**, and every Window in it is drawn at that width;
 - a cell is exactly as tall as **its own** Window, so heights vary freely down a
   column and rows deliberately do **not** line up across columns;
-- there is no padding — the grid starts at the origin and the Windows touch.
+- there is no padding — cell (0, 0) starts at the origin and the Windows touch.
 
-So a Window has a **desired width** (what its grow box sets, persisted in
-`Window::width`) distinct from its **rendered width** (its column's). A Window can
-be stretched wider than it asked for, never narrower — dragging a grow box
-narrower does nothing visible until the widest Window in that column shrinks.
-That falls out of the "column = widest member" rule; it is not a bug.
+**Both indices may be negative**, and nothing is ever renumbered to 0..n-1. Row 0
+sits on the origin line and the negative rows stack *upward* from it, exactly as
+the negative columns stack leftward, so the grid grows out of the origin in all
+four directions and neither direction shunts the other along: a column appearing
+to the left leaves column 0 where it is, and a Window dropped above a column lifts
+that column's top rather than shoving everything in it down. `Window::kNoCell`, not
+"negative", is what "the canvas hasn't placed this one yet" means.
 
-Resizing therefore reflows the whole column and shifts the columns to its right.
+**A grow box resizes the column, not the Window.** The whole column adopts the
+width the drag asks for, so narrowing works exactly like widening — the alternative
+("column = its widest member") made a narrowing drag do nothing visible until some
+other Window shrank, which read as a broken grip.
+
+Resizing therefore reflows the whole column and shifts the columns beside it.
 Dragging a Window re-targets its cell — the column under the dragged corner,
 inserted above the first Window whose middle is below it — and the rest reflow
-live around the gap it will drop into, the source column closing up at once.
-Dragging past the rightmost column pulls the Window out into a new column of its
-own. A new Window opens a fresh column while the row of columns still fits the
-viewport, and drops into the shortest column once it doesn't.
+live around the gap it will drop into, the source column closing up at once. Where
+it lands decides which way the column grows: **above the top** takes a row further
+into the negatives and moves nothing else, **below the bottom** takes a row past
+the last, and **in between** makes the rows below it (only) give way. Dragging past
+*either* end column pulls the Window out into a new column of its own (except when
+it is already alone in that end column, or it would drift outwards for ever). A new
+Window opens a fresh column while the row of columns still fits the viewport, and
+drops into the shortest column once it doesn't.
 
 **Mosaic** toggles the grid off: Windows stay where they are and drag moves them
 freely. Toggling it back on re-packs them.
@@ -150,7 +166,7 @@ is red but **not wired up yet** — recording is a later increment.
 | wheel / `⇧`+wheel | scroll the board vertically / horizontally |
 | `H` | enter pan mode — hand cursor, drag anywhere pans (Windows stop taking clicks) |
 | `V` or `Esc` | leave pan mode |
-| `0` | reset zoom and pan |
+| `0` | reset zoom, and put the origin back at the viewport's top-left |
 | `+` / `-` | zoom about the viewport centre |
 
 ## Build
@@ -193,9 +209,10 @@ JUCE 8.0.4) 2026-07-18.
   chrome fixed, waveforms stretch), the virtual column grid described above with
   drag-to-cell and live reflow, the 12-pastel tint palette, and zoom/pan
   (`Ctrl`+wheel, pinch, `H`/`V`). **Builds and runs** (Standalone, macOS arm64,
-  JUCE 8.0.4); drive-tested end to end — grid packing, column widening on resize,
-  drag between columns and out into a new one, tints, zoom, pan, and the
-  grid/free toggle all confirmed on screen.
+  JUCE 8.0.4); drive-tested end to end — grid packing, column resize (both ways),
+  drag between columns and out into a new one either side, drag above a column's
+  top so it climbs past the origin line, tints, zoom, pan, and the grid/free toggle
+  all confirmed on screen.
 - **Next increments**: System 7 chrome polish; the effects port; recording;
   byte-accurate AIFF/WAV save; persisting canvas layout across launches (cell,
   size and tint live on the engine's `Window` but are not yet saved to disk).

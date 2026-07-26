@@ -556,6 +556,9 @@ void WindowComponent::mouseDrag (const juce::MouseEvent& e)
                    resizeSizeStart.getY() + delta.getY());
         cachedWidth = -1;
         storeGeometry();
+        // Width first: in the grid the whole column takes this width, and the
+        // relayout right behind it is what draws the result.
+        if (onWidthChanged) onWidthChanged (desiredW);
         if (onGeometryChanged) onGeometryChanged();
         repaint();
         return;

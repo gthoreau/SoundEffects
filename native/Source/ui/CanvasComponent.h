@@ -5,15 +5,21 @@
 // zoom and pan are one AffineTransform and every child keeps working (JUCE maps
 // mouse events through the transform for us).
 //
+// The board reaches equally far in EVERY direction: its origin is at the centre of
+// the world layer, not at a corner, so there is as much canvas above and left of
+// the first Window as there is below and right of the last.
+//
 // Layout is a grid by default. The grid is virtual and unbounded: every Window
 // holds a cell address (column, row) and columns are independent stacks, so
-//   - a column is as wide as the widest Window in it, and every Window in that
-//     column is stretched to that width,
+//   - a column has ONE width — the last width a grow box in it asked for — and
+//     every Window in it is drawn at that width,
 //   - a cell is exactly as tall as the Window in it, so cells in one column have
 //     whatever heights they like — rows do NOT line up across columns,
-//   - nothing is padded: Windows touch, and the grid starts at the origin.
-// Resizing a Window therefore reflows its whole column (and shifts the columns to
-// its right). Dragging a Window re-targets its cell, with the rest reflowing live
+//   - nothing is padded: Windows touch, and cell (0, 0) starts at the origin.
+// BOTH indices may be negative: the grid grows left of and above the origin as
+// readily as right of and below it, and neither direction shunts the other along.
+// Resizing a Window therefore resizes its whole column (and shifts the columns
+// beside it). Dragging a Window re-targets its cell, with the rest reflowing live
 // around the gap it will land in. The Mosaic button toggles the grid off, leaving
 // Windows wherever they were dropped (free placement).
 //
@@ -77,20 +83,33 @@ private:
         World() { setInterceptsMouseClicks (false, true); }
     };
 
-    /** One column of the virtual grid: its Windows top-to-bottom, plus the width
-        it takes (the widest desired width in it) and where it sits. */
+    /** One column of the virtual grid: its Windows top-to-bottom, its virtual column
+        index (`key`, negative to the left of the origin), the width it takes and
+        where it sits — `y` being its top, which is above the origin line by however
+        many negative rows it holds. */
     struct Column
     {
         std::vector<WindowComponent*> items;
-        int width = 0, x = 0, height = 0;
+        int key = 0;
+        int width = 0, x = 0, y = 0, height = 0;
     };
 
     WindowComponent* find (uint64_t id) const;
     void placeNew (WindowComponent& wc, int indexAmongNew);
 
-    /** Gather the assigned Windows into columns, compacting the cell addresses so
-        columns are 0..n-1 and rows 0..k-1 within each. */
+    /** Gather the assigned Windows into columns and measure them. Cell addresses are
+        left alone, never renumbered: they are stable, and legal on both sides of the
+        origin. Cell (0, 0) is laid out AT the origin. */
     std::vector<Column> buildColumns();
+    /** True if `wc` is the only Window in `col` — an end column it alone occupies
+        must not spawn yet another one when it is dragged further out. */
+    static bool isAloneIn (const Column& col, const WindowComponent& wc) noexcept;
+    /** A Window's row address; negative rows sit above the origin line. */
+    int  rowKey (const WindowComponent& wc) const;
+    void setCell (WindowComponent& wc, int col, int row);
+    /** Give every other Window in `source`'s column the same desired width, so a
+        grow-box drag resizes the column both wider AND narrower. */
+    void setColumnWidth (const WindowComponent& source, int width);
     /** Give a Window with no cell yet one: a new column while the row of columns
         still fits the viewport, else the shortest existing column. */
     void assignCell (WindowComponent& wc);
@@ -100,6 +119,8 @@ private:
         takes up its slot, so the gap it would drop into stays open. */
     void layoutGrid (WindowComponent* floating = nullptr);
     void applyViewTransform();
+    /** The pan that parks the world origin just inside the viewport's top-left. */
+    juce::Point<float> originPan() const noexcept;
     /** Zoom to `newZoom`, keeping the world point under `anchor` (canvas coords) put. */
     void zoomAround (float newZoom, juce::Point<float> anchor);
     void setPan (juce::Point<float> newPan);

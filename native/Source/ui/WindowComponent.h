@@ -19,6 +19,7 @@
 #include "engine/Edit.h"
 #include "engine/Engine.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -35,11 +36,15 @@ public:
     static constexpr int kMinLaneH = 20;
     static constexpr int kMaxLaneH = 400;
 
-    /** The width this window ASKS for (grip drag). In the grid its rendered width
-        is the column's — the widest desired width in that column — so a window can
-        be stretched wider than this, never narrower. */
+    /** The width this window ASKS for (grip drag). In the grid its rendered width is
+        the column's, and a grow-box drag sets that for the whole column — so the
+        two normally agree. */
     int preferredWidth() const noexcept { return desiredW; }
     int preferredHeight() const noexcept;
+
+    /** Adopt a desired width without touching the height, for the canvas to keep a
+        column in step. The rendered width follows at the next layout pass. */
+    void setDesiredWidth (int width) noexcept { desiredW = std::max (kMinWidth, width); }
 
     /** Adopt a size the canvas restored/chose, in the window's own terms. */
     void applySize (int width, int height);
@@ -57,6 +62,9 @@ public:
     std::function<void (uint64_t)> onClose;
     /** Size changed (user grip drag, or a track added/removed) — relayout the canvas. */
     std::function<void()> onGeometryChanged;
+    /** The grip drag changed the width this window asks for. In the grid that is a
+        column-wide change, so it goes out ahead of onGeometryChanged's relayout. */
+    std::function<void (int)> onWidthChanged;
     /** Title-bar drag in progress, with the pointer in canvas coords — the canvas
         re-targets this window's grid cell and reflows around it. */
     std::function<void (juce::Point<int>)> onDragged;
