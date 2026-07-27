@@ -87,6 +87,11 @@ int WindowComponent::waveWidth() const noexcept { return std::max (1, getWidth()
 
 Rectangle<int> WindowComponent::infoRect() const { return { 0, kTitleH, getWidth(), kInfoH }; }
 
+Rectangle<int> WindowComponent::nameBounds() const
+{
+    return Rectangle<int> (0, 0, getWidth(), kTitleH).withTrimmedLeft (26).withTrimmedRight (26);
+}
+
 Rectangle<int> WindowComponent::addTrackButton() const
 {
     auto r = infoRect();
@@ -103,17 +108,25 @@ Rectangle<int> WindowComponent::resizeGripBounds() const
     return { getWidth() - kGripW - 1, getHeight() - kGripW - 1, kGripW, kGripW };
 }
 
-// The L/R toggles and the up/down/trash controls are chrome: they keep a fixed
-// size no matter how tall the lane is, pinned to the top of the lane. Only the
-// waveform between them grows.
+// The output-channel selector and the up/down/trash controls are chrome: they keep
+// a fixed size no matter how tall the lane is, pinned to the top of the lane. Only
+// the waveform between them grows.
 
-Rectangle<int> WindowComponent::lrRect (int t, bool left) const
+Rectangle<int> WindowComponent::outRect (int t, int which) const
 {
     auto lane = laneRect (t);
     auto col = lane.removeFromLeft (kLrW).reduced (2, 0);
-    const int s = std::min (7, (lane.getHeight() - 3) / 2);
+    const int h = std::clamp ((lane.getHeight() - 4) / 3, 4, 10);
     const int top = lane.getY() + 2;
-    return { col.getX(), left ? top : top + s + 1, col.getWidth(), s };
+    return { col.getX(), top + which * h, col.getWidth(), h };
+}
+
+int WindowComponent::outSelection (const se::Track& track) noexcept
+{
+    if (track.outLeft && track.outRight) return 1;   // L+R
+    if (track.outLeft)                   return 0;   // L
+    if (track.outRight)                  return 2;   // R
+    return -1;                                       // routed nowhere: no cell lit
 }
 
 Rectangle<int> WindowComponent::ctrlRect (int t, int which) const
@@ -316,7 +329,8 @@ void WindowComponent::paint (Graphics& g)
     for (int y = title.getY() + 3; y < title.getBottom() - 3; y += 2)
         g.drawHorizontalLine (y, (float) (title.getX() + 22), (float) (title.getRight() - 22));
     g.setColour (kInk); g.drawRect (closeBoxBounds(), 1);
-    { auto na = title.withTrimmedLeft (26).withTrimmedRight (26);
+    if (nameEditor == nullptr)   // while renaming, the editor IS the name
+    { auto na = nameBounds();
       g.setColour (face); g.fillRect (na.reduced (24, 2));
       g.setColour (kInk); g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
       g.drawText (juce::String (d->name), na, juce::Justification::centred, false); }
@@ -343,11 +357,21 @@ void WindowComponent::paint (Graphics& g)
         auto lane = laneRect (t);
         g.setColour (kInk); g.drawHorizontalLine (lane.getBottom() - 1, 0.0f, (float) getWidth());
 
-        // L/R output toggles.
+        // Output channel: one three-way selector, L / L+R / R top to bottom. The
+        // chosen cell is inverted, the same "on" convention as the transport.
         const auto& track = d->tracks[(size_t) t];
-        auto lB = lrRect (t, true), rB = lrRect (t, false);
-        g.setColour (kInk); g.drawRect (lB, 1); if (track.outLeft)  g.fillRect (lB.reduced (2));
-        g.drawRect (rB, 1); if (track.outRight) g.fillRect (rB.reduced (2));
+        static const char* const outLabels[] = { "L", "L+R", "R" };
+        const int chosen = outSelection (track);
+        for (int i = 0; i < 3; ++i)
+        {
+            auto b = outRect (t, i);
+            const bool on = i == chosen;
+            g.setColour (on ? kInk : face);  g.fillRect (b);
+            g.setColour (kInk);              g.drawRect (b, 1);
+            g.setColour (on ? kWhite : kInk);
+            g.setFont (juce::FontOptions (std::min (8.0f, (float) b.getHeight() - 1.0f)));
+            g.drawText (outLabels[i], b, juce::Justification::centred, false);
+        }
 
         // Right controls: move up / down / trash.
         g.setFont (juce::FontOptions (9.0f));
@@ -485,10 +509,6 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
 
     if (transportBounds().contains (p))
     {
-        auto* wsnap = engine.windowById (id);
-        const auto state = wsnap != nullptr ? wsnap->transport->uiState()
-                                            : se::TransportState::stopped;
-
         for (int i = 0; i < kNumTransportButtons; ++i)
             if (transportButton (i).contains (p))
             {
@@ -496,18 +516,7 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
                 {
                     case 0: break;                          // record — not wired up yet
                     case 1: engine.stop (id); advanceEnabled = false; break;
-                    case 2:
-                        // One toggle. Transport::pause() already flips playing
-                        // <-> paused, so only a STOPPED transport needs play() —
-                        // calling it while paused would restart from the top.
-                        if (state == se::TransportState::stopped)
-                        {
-                            se::PlayOptions o; o.loop = loopEnabled;
-                            engine.play (id, o);
-                            advanceEnabled = false;         // play() resets advanceScale
-                        }
-                        else engine.pause (id);
-                        break;
+                    case 2: togglePlayPause(); break;       // same toggle as Space
                     case 3:
                         // 2x engaged / disengaged. advance() starts playback if
                         // the transport is stopped, so engaging it also rolls.
@@ -524,8 +533,14 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
 
     for (int t = 0; t < n; ++t)
     {
-        if (lrRect (t, true).contains (p))  { auto& tr = d->tracks[(size_t) t]; tr.outLeft  = ! tr.outLeft;  commit(); repaint(); return; }
-        if (lrRect (t, false).contains (p)) { auto& tr = d->tracks[(size_t) t]; tr.outRight = ! tr.outRight; commit(); repaint(); return; }
+        for (int i = 0; i < 3; ++i)
+            if (outRect (t, i).contains (p))
+            {
+                auto& tr = d->tracks[(size_t) t];
+                tr.outLeft  = i != 2;    // L or L+R
+                tr.outRight = i != 0;    // R or L+R
+                commit(); repaint(); return;
+            }
         if (ctrlRect (t, 0).contains (p)) { if (t > 0)     { d->swapTracks (t + 1, t);     commit(); repaint(); } return; }
         if (ctrlRect (t, 1).contains (p)) { if (t < n - 1) { d->swapTracks (t + 1, t + 2); commit(); repaint(); } return; }
         if (ctrlRect (t, 2).contains (p)) { if (d->delTrack (t + 1)) { commit(); resizeToFit(); } return; }
@@ -602,10 +617,107 @@ void WindowComponent::mouseMove (const juce::MouseEvent& e)
                         : juce::MouseCursor::NormalCursor);
 }
 
+void WindowComponent::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    const auto p = e.getPosition();
+    if (p.getY() < kTitleH && ! closeBoxBounds().contains (p))
+        beginNameEdit();
+}
+
+// --- transport / rename -----------------------------------------------------
+
+void WindowComponent::togglePlayPause()
+{
+    auto* w = engine.windowById (id);
+    const auto state = w != nullptr ? w->transport->uiState() : se::TransportState::stopped;
+
+    // One toggle. Transport::pause() already flips playing <-> paused, so only a
+    // STOPPED transport needs play() — calling it while paused would restart from
+    // the top.
+    if (state == se::TransportState::stopped)
+    {
+        se::PlayOptions o; o.loop = loopEnabled;
+        engine.play (id, o);
+        advanceEnabled = false;         // play() resets advanceScale
+    }
+    else engine.pause (id);
+
+    repaint();
+}
+
+void WindowComponent::beginNameEdit()
+{
+    auto* d = doc();
+    if (d == nullptr || nameEditor != nullptr) return;
+
+    draggingTitle = false;   // the double-click's own mouseDown armed a title drag
+
+    nameEditor = std::make_unique<juce::TextEditor>();
+    auto& ed = *nameEditor;
+    ed.setBounds (nameBounds().reduced (0, 2));
+    ed.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    ed.setJustification (juce::Justification::centred);
+    ed.setMultiLine (false);
+    ed.setReturnKeyStartsNewLine (false);
+    ed.setBorder (juce::BorderSize<int> (1));
+    // A white well with a black frame: the same System 7 grammar as everything else.
+    ed.setColour (juce::TextEditor::backgroundColourId, kWhite);
+    ed.setColour (juce::TextEditor::textColourId, kInk);
+    ed.setColour (juce::TextEditor::outlineColourId, kInk);
+    ed.setColour (juce::TextEditor::focusedOutlineColourId, kInk);
+    ed.setColour (juce::TextEditor::highlightColourId, kInk.withAlpha (0.25f));
+    ed.setColour (juce::TextEditor::highlightedTextColourId, kInk);
+    ed.setText (juce::String (d->name), false);
+
+    ed.onReturnKey = [this] { endNameEdit (true);  grabKeyboardFocus(); };
+    ed.onEscapeKey = [this] { endNameEdit (false); grabKeyboardFocus(); };
+    ed.onFocusLost = [this] { endNameEdit (true); };   // clicking away commits
+
+    addAndMakeVisible (ed);
+    ed.grabKeyboardFocus();
+    ed.selectAll();
+    repaint();
+}
+
+void WindowComponent::endNameEdit (bool keepChanges)
+{
+    if (nameEditor == nullptr) return;
+
+    if (keepChanges)
+    {
+        const auto text = nameEditor->getText().trim();
+        // A nameless window is unusable in the mixer, so an empty box keeps the
+        // old name rather than committing a blank.
+        if (text.isNotEmpty())
+            if (auto* d = doc())
+                d->name = text.toStdString();
+        // The name is UI-only — the audio thread never reads it — so this does NOT
+        // go through commitEdit(), which would clone every sample to publish a
+        // string. The mixer reads uiDoc->name as it paints, so it follows anyway.
+    }
+
+    // Detach now, destroy later: this can arrive from the editor's own focus
+    // callback, and a component must not be deleted inside one.
+    auto* dying = nameEditor.release();
+    removeChildComponent (dying);
+    juce::MessageManager::callAsync ([dying] { delete dying; });
+
+    repaint();
+}
+
 bool WindowComponent::keyPressed (const juce::KeyPress& k)
 {
     auto* d = doc(); if (d == nullptr) return false;
     const int code = k.getKeyCode();
+
+    // Space: play/pause the ACTIVE Window — the one holding keyboard focus, which
+    // is the one the thick border is already pointing at. Same toggle as the
+    // transport's play button, so the two can never disagree.
+    if (code == juce::KeyPress::spaceKey && ! k.getModifiers().isAnyModifierKeyDown())
+    {
+        togglePlayPause();
+        return true;
+    }
 
     // Delete / Backspace: remove selected audio (like Cut — splices out, shortens).
     // Option/Alt + Delete: replace the selected audio with silence (no length change).

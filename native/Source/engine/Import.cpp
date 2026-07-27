@@ -39,6 +39,16 @@ std::unique_ptr<SoundDocument> makeDocumentFromFloat (
         }
     }
 
+    // A stereo file arrives as two tracks that ALREADY are the two output channels,
+    // so route them there. Leaving both on both would fold the image down to mono
+    // the moment it was opened, and the L/R selector would be lying about the file.
+    // Mono (and anything above two tracks) keeps the default L+R.
+    if (doc->numTracks() == 2)
+    {
+        doc->tracks[0].outLeft = true;  doc->tracks[0].outRight = false;
+        doc->tracks[1].outLeft = false; doc->tracks[1].outRight = true;
+    }
+
     if (doc->numTracks() > 0)
     {
         doc->firstSelTrack = 1;

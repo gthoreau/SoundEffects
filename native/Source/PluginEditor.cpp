@@ -32,7 +32,20 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
 
     setSize (960, 600);
     setResizable (true, true);
+    setWantsKeyboardFocus (true);   // so ⌘N / ⌘O still land with no Window focused
     startTimerHz (30);
+}
+
+bool SoundEffectAudioProcessorEditor::keyPressed (const juce::KeyPress& k)
+{
+    if (! k.getModifiers().isCommandDown()) return false;
+
+    // A Command-combo produces no text character on macOS, so match the key code
+    // (modifier-independent) and accept either case.
+    const int code = k.getKeyCode();
+    if (code == 'n' || code == 'N') { newWindow(); return true; }
+    if (code == 'o' || code == 'O') { openFile();  return true; }
+    return false;
 }
 
 void SoundEffectAudioProcessorEditor::updateViewStatus()

@@ -21,6 +21,9 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    /** ⌘N / ⌘O (Ctrl elsewhere). Reached by bubbling: the focused Window and the
+        canvas both decline the combo, so it arrives here. */
+    bool keyPressed (const juce::KeyPress&) override;
 
 private:
     void timerCallback() override;

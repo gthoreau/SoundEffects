@@ -2,8 +2,9 @@
 //
 // Draws the UI-authoritative document (engine.editDoc), edits it in place, and
 // publishes via engine.commitEdit — so edits apply mid-playback with no glitch.
-// Interactions: title drag, close, transport, L/R output toggles, add/move/trash
-// track, selection drag, and ⌘X/⌘C/⌘V clipboard.
+// Interactions: title drag, rename (double-click the title), close, transport
+// (Space toggles play/pause on the focused Window), the per-track output-channel
+// selector, add/move/trash track, selection drag, and ⌘X/⌘C/⌘V clipboard.
 //
 // Waveforms share one byte-time axis (spanning the window's longest track) so a
 // shorter track visibly ends partway and the selection lines up across tracks.
@@ -77,6 +78,7 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp   (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseEnter (const juce::MouseEvent&) override;
     void mouseExit  (const juce::MouseEvent&) override;
     // The active window is the one holding keyboard focus — i.e. the one ⌘X/⌘C/⌘V
@@ -104,7 +106,10 @@ private:
     juce::Rectangle<int> infoRect() const;
     juce::Rectangle<int> addTrackButton() const;
     juce::Rectangle<int> laneRect (int t) const;
-    juce::Rectangle<int> lrRect (int t, bool left) const;
+    /** One cell of a track's output-channel selector: 0 = L, 1 = L+R, 2 = R. */
+    juce::Rectangle<int> outRect (int t, int which) const;
+    /** Which cell a track's routing currently reads as, or -1 for neither channel. */
+    static int outSelection (const se::Track&) noexcept;
     juce::Rectangle<int> ctrlRect (int t, int which) const;   // 0=up 1=down 2=trash
     juce::Rectangle<int> waveRect (int t) const;
     juce::Rectangle<int> transportBounds() const;
@@ -115,6 +120,12 @@ private:
     void drawTransportSymbol (juce::Graphics&, int which, juce::Rectangle<int> button,
                               bool playing) const;
     juce::Rectangle<int> closeBoxBounds() const;
+    /** The title bar's name area — what the name is drawn in, and edited in. */
+    juce::Rectangle<int> nameBounds() const;
+
+    void togglePlayPause();
+    void beginNameEdit();
+    void endNameEdit (bool keepChanges);
     int    waveWidth() const noexcept;
     size_t byteAtX (int x, size_t maxSize) const noexcept;
     int    xAtByte (size_t b, size_t maxSize) const noexcept;
@@ -137,7 +148,9 @@ private:
     static constexpr int kInfoH = 28;
     static constexpr int kTransportH = kBtnSize + 2 * kBtnMargin;
     static constexpr int kLaneH = 48;      // default lane height
-    static constexpr int kLrW = 12;
+    // Wide enough for "L+R" — the output-channel selector is three stacked cells,
+    // not two boxes, and a label that cannot be read is not a control.
+    static constexpr int kLrW = 22;
     static constexpr int kCtrlW = 14;
     static constexpr int kGripW = 14;
 
@@ -172,6 +185,9 @@ private:
     bool resizingWindow = false;
     juce::Point<int> dragMouseStart, dragBoundsStart;
     juce::Point<int> resizeSizeStart;
+
+    // inline rename, over the title bar
+    std::unique_ptr<juce::TextEditor> nameEditor;
 
     // selection drag
     bool selecting = false;

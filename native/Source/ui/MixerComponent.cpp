@@ -151,9 +151,21 @@ void MixerStrip::setGainFromX (int x)
     repaint();
 }
 
-void MixerStrip::refreshMeter()
+void MixerStrip::refreshState()
 {
     auto* w = window();
+
+    // The name is edited on the Window's title bar, and nothing tells this strip
+    // when that happens — so poll it. A string compare per strip per tick is
+    // nothing next to the repaint it saves.
+    const juce::String name = w != nullptr && w->uiDoc != nullptr ? juce::String (w->uiDoc->name)
+                                                                 : juce::String();
+    if (name != lastName)
+    {
+        lastName = name;
+        repaint (nameRect());
+    }
+
     const float pos = w != nullptr ? ampToPos (w->meter.load (std::memory_order_relaxed)) : 0.0f;
 
     // Half a pixel of a ~130px trough: below that the repaint would show nothing.
@@ -323,7 +335,7 @@ void MixerComponent::refresh()
         repaint();
     }
 
-    for (auto& s : strips) s->refreshMeter();
+    for (auto& s : strips) s->refreshState();
 }
 
 Rectangle<int> MixerComponent::listArea() const

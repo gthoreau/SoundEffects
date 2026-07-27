@@ -52,8 +52,10 @@ public:
 
     uint64_t windowId() const noexcept { return id; }
 
-    /** Sample the engine's meter atomic; repaints only when the bar actually moved. */
-    void refreshMeter();
+    /** Sample what this channel looks like now — meter, and the name, which is
+        edited over on the Window and has nothing else to announce it. Repaints
+        only the part that actually changed. */
+    void refreshState();
 
     void paint (juce::Graphics&) override;
 
@@ -82,8 +84,9 @@ private:
     se::Engine& engine;
     uint64_t id = 0;
 
-    float meterLevel = 0.0f;     // last value sampled from the engine, 0..1 linear
-    bool  draggingFader = false; // while true the name cell shows the dB readout
+    float        meterLevel = 0.0f;   // last meter position drawn, 0..1 on the dB scale
+    juce::String lastName;            // last name drawn, so a rename can be spotted
+    bool  draggingFader = false;      // while true the name cell shows the dB readout
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerStrip)
 };

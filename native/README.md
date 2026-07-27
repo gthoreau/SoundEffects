@@ -22,8 +22,8 @@ native/
     ui/                     JUCE UI (message thread); reads engine UI-safe snapshots
       CanvasComponent       the board: the Window grid, zoom/pan, tint palette
       WindowComponent       one System-7 sound Window: info strip, track lanes
-                            (waveform + L/R indicators), transport wired to engine,
-                            corner grow box
+                            (waveform + the L / L+R / R output selector), transport
+                            wired to engine, inline rename, corner grow box
       MixerComponent        main mixer: New/Open, then one HORIZONTAL strip per
                             Window (name · mute · one trough carrying both the dB
                             fader and the VU meter), ≤250px wide, scrolling
@@ -136,8 +136,25 @@ freely. Toggling it back on re-packs them.
 
 **Resizing a Window** never scales its chrome. Total height is always
 `chrome + numTracks × laneHeight`, so a vertical drag changes the height of one
-track lane and the title bar, info strip, transport, L/R output toggles and
+track lane and the title bar, info strip, transport, output-channel selector and
 up/down/trash controls keep their fixed size. Only the waveforms grow.
+
+**Output channel.** Each track carries one three-way selector at the head of its
+lane — `L` / `L+R` / `R`, stacked top to bottom, the chosen cell inverted. It is a
+selector, not two independent switches, because those are the only three routings
+worth having: the old pair of toggles could also be set to *neither*, which is a
+silent track dressed up as a routing. (A document that arrives that way still
+draws honestly — no cell lit.) **A stereo file routes itself**: two tracks in from
+one file ARE the two output channels, so `makeDocumentFromFloat` sends track 1
+left and track 2 right rather than folding both to both. Mono, and anything with
+more than two tracks, keeps the `L+R` default.
+
+**Renaming.** Double-click a Window's title bar for an inline editor; `Return` or
+clicking away commits, `Esc` cancels, and an empty box keeps the old name. The
+name is UI-only — the audio thread never reads it — so a rename does NOT go
+through `commitEdit()`, which would clone every sample to publish a string. The
+mixer strip polls `uiDoc->name` on the editor's timer, since nothing else would
+tell it that its channel had been renamed.
 
 **Tint.** Each new Window is painted in one of twelve pastels, chosen at random
 but never the same as the one before it, persisted as an index in `Window::tint`.
@@ -165,6 +182,12 @@ toggle too, and because `Transport::advance()` starts playback when the transpor
 isn't rolling, engaging it also starts it; `play()` resets `advanceScale` to 1.0,
 so anything that (re)starts playback clears the 2× state with it. The record dot
 is red but **not wired up yet** — recording is a later increment.
+
+**Keyboard.** `Space` plays/pauses the ACTIVE Window — the one holding keyboard
+focus, which is the one the thick border is already pointing at — through the same
+toggle the play button calls, so the two can never disagree. `⌘N` / `⌘O` (`Ctrl`
+elsewhere) make a Window and open a file; they are handled on the editor, reached
+by bubbling, because neither the focused Window nor the canvas claims them.
 
 **View controls.**
 
