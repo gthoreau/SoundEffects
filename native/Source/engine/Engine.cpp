@@ -191,18 +191,35 @@ void Engine::render (float* left, float* right, int frames) noexcept
 
     const int cap = std::min (frames, static_cast<int> (scratchL.size()));
 
+    // VU fall-off, ~-60 dB over 300 ms, applied once per block. Doing the decay
+    // here rather than in the UI keeps the meters honest at any repaint rate: a
+    // Window that stops being rendered still falls instead of freezing lit.
+    const float meterDecay = std::exp (-static_cast<float> (frames)
+                                        / static_cast<float> (deviceRate * 0.043));
+
     for (Window* w : live)
     {
-        if (w->muted.load (std::memory_order_relaxed) || ! w->transport || w->audioDoc == nullptr) continue;
-        const float g = w->gain.load (std::memory_order_relaxed);
-        if (g <= 0.0f) continue;
+        float peak = 0.0f;
 
-        const int written = w->transport->render (*w->audioDoc, scratchL.data(), scratchR.data(), cap);
-        for (int i = 0; i < written; ++i)
+        const bool silent = w->muted.load (std::memory_order_relaxed)
+                            || w->transport == nullptr || w->audioDoc == nullptr;
+        const float g = w->gain.load (std::memory_order_relaxed);
+
+        if (! silent && g > 0.0f)
         {
-            left[i]  += scratchL[static_cast<size_t> (i)] * g;
-            right[i] += scratchR[static_cast<size_t> (i)] * g;
+            const int written = w->transport->render (*w->audioDoc, scratchL.data(), scratchR.data(), cap);
+            for (int i = 0; i < written; ++i)
+            {
+                const float l = scratchL[static_cast<size_t> (i)] * g;
+                const float r = scratchR[static_cast<size_t> (i)] * g;
+                left[i]  += l;
+                right[i] += r;
+                peak = std::max (peak, std::max (std::abs (l), std::abs (r)));
+            }
         }
+
+        const float held = w->meter.load (std::memory_order_relaxed) * meterDecay;
+        w->meter.store (std::max (peak, held), std::memory_order_relaxed);
     }
 
     for (int i = 0; i < frames; ++i)

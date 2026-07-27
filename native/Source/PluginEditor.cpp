@@ -4,7 +4,6 @@
 
 namespace {
 constexpr int kToolbarH = 30;
-constexpr int kMixerW = 240;
 }
 
 SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAudioProcessor& p)
@@ -13,16 +12,16 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
 {
     formatManager.registerBasicFormats();   // WAV, AIFF, and more
 
-    addAndMakeVisible (newButton);
-    addAndMakeVisible (openButton);
     addAndMakeVisible (mosaicButton);
     addAndMakeVisible (zoomResetButton);
     addAndMakeVisible (viewStatus);
     addAndMakeVisible (canvas);
     addAndMakeVisible (mixer);
 
-    newButton.onClick       = [this] { newWindow(); };
-    openButton.onClick      = [this] { openFile(); };
+    // New / Open live at the top of the mixer panel, not in the toolbar.
+    mixer.onNew  = [this] { newWindow(); };
+    mixer.onOpen = [this] { openFile(); };
+
     mosaicButton.onClick    = [this] { canvas.setMosaicMode (! canvas.isMosaicMode()); };
     zoomResetButton.onClick = [this] { canvas.resetView(); };
 
@@ -107,16 +106,14 @@ void SoundEffectAudioProcessorEditor::resized()
     auto area = getLocalBounds();
 
     auto bar = area.removeFromTop (kToolbarH).reduced (4, 3);
-    newButton.setBounds    (bar.removeFromLeft (60));
-    bar.removeFromLeft (4);
-    openButton.setBounds   (bar.removeFromLeft (60));
-    bar.removeFromLeft (4);
     mosaicButton.setBounds (bar.removeFromLeft (70));
     bar.removeFromLeft (4);
     zoomResetButton.setBounds (bar.removeFromLeft (52));
     bar.removeFromLeft (8);
     viewStatus.setBounds (bar);
 
-    mixer.setBounds  (area.removeFromRight (kMixerW));
+    // The mixer is a fixed column down the LEFT, kMaxWidth at most, and never more
+    // than half the editor — so a small host window still leaves a canvas to work on.
+    mixer.setBounds  (area.removeFromLeft (juce::jmin (MixerComponent::kMaxWidth, area.getWidth() / 2)));
     canvas.setBounds (area);
 }

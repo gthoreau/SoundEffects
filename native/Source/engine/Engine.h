@@ -51,6 +51,11 @@ struct Window
     std::atomic<float> gain  { 1.0f };
     std::atomic<bool>  muted { false };
 
+    // Post-gain peak of THIS Window's own contribution to the sum, published by
+    // the audio thread for the mixer's VU meters. It falls back on its own (see
+    // render()), so the UI can sample it at any rate and still see a decay.
+    std::atomic<float> meter { 0.0f };
+
     // Canvas placement, in canvas ("world") coordinates. Zero means "not placed
     // yet" — the canvas picks a spot and a size the first time it sees the Window.
     // `width` is the width the Window ASKS for; in the grid the whole column shares

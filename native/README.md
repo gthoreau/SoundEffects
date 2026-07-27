@@ -16,14 +16,17 @@ native/
   CMakeLists.txt            JUCE via FetchContent → Standalone + VST3 + AU
   Source/
     PluginProcessor.{h,cpp} the ONLY JUCE/host boundary; owns the engine
-    PluginEditor.{h,cpp}    hosts the canvas + mixer + toolbar (New/Open/Mosaic,
-                            zoom reset, and the zoom / grid / pan readout)
+    PluginEditor.{h,cpp}    hosts the canvas + mixer + toolbar (Mosaic, zoom reset,
+                            and the zoom / grid / pan readout); New/Open live at the
+                            top of the mixer panel
     ui/                     JUCE UI (message thread); reads engine UI-safe snapshots
       CanvasComponent       the board: the Window grid, zoom/pan, tint palette
       WindowComponent       one System-7 sound Window: info strip, track lanes
                             (waveform + L/R indicators), transport wired to engine,
                             corner grow box
-      MixerComponent        main mixer: one dB fader + mute strip per Window
+      MixerComponent        main mixer: New/Open, then one HORIZONTAL strip per
+                            Window (name · mute · one trough carrying both the dB
+                            fader and the VU meter), ≤250px wide, scrolling
     engine/                 host-agnostic core — ZERO JUCE includes
       SampleFormat.h        packed offset-binary / big-endian sample access
       Track.h               one lane: independent buffer + output channel + volume
@@ -73,7 +76,12 @@ for output routing and the mixer.
 - **Global additive playback.** `Engine` sums *every open window* at once. The
   infinite canvas is the spatial view of a bank of unsynchronised loopers.
 - **Per-window mixer.** Each `Window` has a `gain` + `mute` — the real "Level"
-  fader the original only stubbed out.
+  fader the original only stubbed out — plus a `meter` the audio thread publishes
+  (its own post-gain peak, decaying ~-60 dB in 300 ms so the UI may sample it at
+  any rate). In the panel the fader and the meter share ONE dB trough on ONE
+  scale, so a strip reads out and set-point in a single glance: the fill is what
+  the channel is putting out, the cap is where its gain sits, and the tick between
+  them is 0 dB — which is also 0 dBFS, so fill past the tick is clipping.
 - **Destructive edits, declared rate obeyed even when it lies** — carried over
   from the TS core (edits/effects still to be ported).
 
@@ -213,6 +221,15 @@ JUCE 8.0.4) 2026-07-18.
   drag between columns and out into a new one either side, drag above a column's
   top so it climbs past the origin line, tints, zoom, pan, and the grid/free toggle
   all confirmed on screen.
+- **UI/UX increment 4**: the mixer panel proper — New/Open moved to its head, one
+  horizontal strip per Window (name · mute · the combined fader/VU trough), a
+  ≤250px column with a scrolling list, and everything in it hand-painted System 7
+  (including the scrollbar). Engine side: `Window::meter`. **Builds and runs**
+  (Standalone, macOS arm64, JUCE 8.0.4); drive-tested on screen — Open from the
+  panel loads a file, the meter fills and falls with playback, dragging a fader
+  swaps the name cell for a live dB readout (−∞ … +6.0 dB) and the meter follows
+  the new gain, mute inverts the button and empties the meter, double-click
+  returns the fader to unity, and the list scrolls once the strips outgrow it.
 - **Next increments**: System 7 chrome polish; the effects port; recording;
   byte-accurate AIFF/WAV save; persisting canvas layout across launches (cell,
   size and tint live on the engine's `Window` but are not yet saved to disk).
