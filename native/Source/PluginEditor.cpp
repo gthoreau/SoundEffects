@@ -8,7 +8,7 @@ constexpr int kToolbarH = 30;
 
 SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAudioProcessor& p)
     : juce::AudioProcessorEditor (&p), processorRef (p),
-      canvas (p.engine()), mixer (p.engine())
+      canvas (p.engine()), mixer (p.engine()), effects (p.engine())
 {
     formatManager.registerBasicFormats();   // WAV, AIFF, and more
 
@@ -17,6 +17,22 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
     addAndMakeVisible (viewStatus);
     addAndMakeVisible (canvas);
     addAndMakeVisible (mixer);
+    addAndMakeVisible (effects);
+
+    // The effects panel acts on the canvas's SELECTED Window — not the focused
+    // one. Clicking into the panel takes keyboard focus away from the Window, and
+    // what the panel operates on has to survive that.
+    canvas.onSelectionChanged = [this] { effects.setTargetWindow (canvas.selectedWindowId()); };
+    effects.setTargetWindow (canvas.selectedWindowId());
+
+    // An effect rewrites the audio IN PLACE, so the Window's cached waveform peaks
+    // — keyed on track length — cannot tell anything happened. Drop them
+    // explicitly. There is no undo (§1); this is the only redraw there is.
+    effects.onDocumentChanged = [this] (uint64_t id)
+    {
+        canvas.invalidateWaveform (id);
+        canvas.refresh();
+    };
 
     // New / Open live at the top of the mixer panel, not in the toolbar.
     mixer.onNew  = [this] { newWindow(); };
@@ -66,6 +82,7 @@ void SoundEffectAudioProcessorEditor::timerCallback()
 {
     canvas.refresh();
     mixer.refresh();
+    effects.refresh();
 }
 
 void SoundEffectAudioProcessorEditor::newWindow()
@@ -125,8 +142,10 @@ void SoundEffectAudioProcessorEditor::resized()
     bar.removeFromLeft (8);
     viewStatus.setBounds (bar);
 
-    // The mixer is a fixed column down the LEFT, kMaxWidth at most, and never more
-    // than half the editor — so a small host window still leaves a canvas to work on.
-    mixer.setBounds  (area.removeFromLeft (juce::jmin (MixerComponent::kMaxWidth, area.getWidth() / 2)));
-    canvas.setBounds (area);
+    // The two panels are fixed columns, kMaxWidth at most and never more than a
+    // third of the editor each — so a small host window still leaves a canvas to
+    // work on between them.
+    mixer.setBounds   (area.removeFromLeft  (juce::jmin (MixerComponent::kMaxWidth, area.getWidth() / 3)));
+    effects.setBounds (area.removeFromRight (juce::jmin (EffectsPanelComponent::kMaxWidth, area.getWidth() / 2)));
+    canvas.setBounds  (area);
 }

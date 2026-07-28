@@ -462,9 +462,9 @@ void WindowComponent::paint (Graphics& g)
     // Border LAST, so the highlight is never partly overdrawn by the contents.
     // Weight is the whole signal: plain, hovered, active. Since Windows in the
     // grid touch, a thicker border grows inwards and never disturbs a neighbour.
-    const int border = hasKeyboardFocus (true) ? kBorderActive
-                     : hovered                 ? kBorderHover
-                                               : kBorderIdle;
+    const int border = selected ? kBorderActive
+                     : hovered  ? kBorderHover
+                                : kBorderIdle;
     g.setColour (kInk);
     g.drawRect (getLocalBounds(), border);
 }
@@ -473,6 +473,19 @@ void WindowComponent::mouseEnter (const juce::MouseEvent&) { hovered = true;  re
 void WindowComponent::mouseExit  (const juce::MouseEvent&) { hovered = false; repaint(); }
 void WindowComponent::focusGained (FocusChangeType) { repaint(); }
 void WindowComponent::focusLost   (FocusChangeType) { repaint(); }
+
+void WindowComponent::invalidateWaveform()
+{
+    cachedWidth = -1;
+    repaint();
+}
+
+void WindowComponent::setSelected (bool shouldBeSelected)
+{
+    if (selected == shouldBeSelected) return;
+    selected = shouldBeSelected;
+    repaint();
+}
 
 void WindowComponent::resized() { cachedWidth = -1; }
 
@@ -488,7 +501,10 @@ juce::Point<int> WindowComponent::parentPos (const juce::MouseEvent& e) const
 void WindowComponent::mouseDown (const juce::MouseEvent& e)
 {
     draggingTitle = false; selecting = false; resizingWindow = false;
+    // Focus for the keyboard shortcuts (⌘X/⌘C/⌘V, Delete, Space); selection for
+    // everything that has to outlive focus moving to a panel.
     grabKeyboardFocus();
+    if (onSelected) onSelected (id);
     auto* d = doc();
     if (d == nullptr) return;
     const auto p = e.getPosition();

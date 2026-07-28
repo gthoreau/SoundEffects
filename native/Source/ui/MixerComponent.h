@@ -20,29 +20,12 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "Sys7.h"
 #include "engine/Engine.h"
 
 #include <functional>
 #include <memory>
 #include <vector>
-
-/** A System 7 push button: rounded 1px black outline, inverted while held. */
-class Sys7Button : public juce::Button
-{
-public:
-    explicit Sys7Button (const juce::String& text) : juce::Button (text) { setButtonText (text); }
-
-    void paintButton (juce::Graphics&, bool shouldDrawHighlighted, bool shouldDrawDown) override;
-};
-
-/** Only what the panel actually borrows from JUCE: the list's scrollbar. */
-class Sys7LookAndFeel : public juce::LookAndFeel_V4
-{
-public:
-    void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height,
-                        bool isScrollbarVertical, int thumbStartPosition, int thumbSize,
-                        bool isMouseOver, bool isMouseDown) override;
-};
 
 /** One horizontal mixer channel: name, mute, and the combined fader/VU trough. */
 class MixerStrip : public juce::Component

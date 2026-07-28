@@ -67,6 +67,18 @@ public:
     /** Fired when zoom / pan mode / mosaic mode change, so the toolbar can update. */
     std::function<void()> onViewChanged;
 
+    /** The Window the effects panel acts on: the last one clicked, 0 for none.
+        Deliberately NOT keyboard focus — a panel with clickable controls takes
+        focus, and what a panel operates on must survive that. */
+    uint64_t selectedWindowId() const noexcept { return selectedId; }
+    void selectWindow (uint64_t id);
+
+    /** Something rewrote a Window's audio from outside (the effects panel) — make
+        it redraw its waveform rather than its cached peaks. Pass 0 for all. */
+    void invalidateWaveform (uint64_t id);
+    /** Selection changed, or the selected Window closed. */
+    std::function<void()> onSelectionChanged;
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -130,6 +142,8 @@ private:
     std::vector<std::unique_ptr<WindowComponent>> windows;
     std::unique_ptr<se::SoundDocument> clipboard;   // shared across windows (⌘X/C/V)
     int cascade = 0;
+
+    uint64_t selectedId = 0;
 
     bool mosaicEnabled = true;
     int  lastTint = -1;          // so two windows running never get the same coat

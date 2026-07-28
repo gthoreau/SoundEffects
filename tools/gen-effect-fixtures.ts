@@ -1,0 +1,865 @@
+/**
+ * Golden-vector generator for the native effect ports.
+ *
+ * The TypeScript effects in `src/effects/` are the byte-accurate reference (§8):
+ * they carry the disassembly's quirks on purpose — truncating integer divides,
+ * `y(n-1)` seeded with the first sample, Smooth's 2-point average that excludes
+ * the centre sample, Select Peak's skip-short-channels rule. None of that
+ * survives a port done by eye.
+ *
+ * So: run every module here over deterministic inputs, dump input + params +
+ * output as a binary fixture, and let `native/tests/` replay the same cases
+ * against the C++ and demand byte-identical results. A port is then either green
+ * or red — never "looks about right".
+ *
+ * Run:  npm run fixtures      (regenerates native/tests/fixtures/effects/)
+ *
+ * The output is COMMITTED. It is the contract between the two implementations,
+ * and the native test must not need a Node toolchain to run.
+ */
+
+import { mkdirSync, writeFileSync, readdirSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { SoundDocument } from "../src/document.js";
+import { Host } from "../src/runtime/host.js";
+import type { EffectModule } from "../src/runtime/module.js";
+import { DoExtend } from "../src/runtime/host.js";
+import { doubleToFixed, Unit } from "../src/units.js";
+import { setSample, frameSizeFor } from "../src/samples.js";
+import { EFFECTS } from "../src/effects/index.js";
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const OUT_DIR = join(HERE, "..", "native", "tests", "fixtures", "effects");
+
+/** Bump when the container layout changes; the native reader checks it. */
+const FIXTURE_VERSION = 1;
+
+// ---------------------------------------------------------------------------
+// Deterministic input material
+// ---------------------------------------------------------------------------
+
+/**
+ * A tiny LCG, used only to fill test buffers. Deliberately NOT one of the app's
+ * two RNGs (the Toolbox `_Random` trap, and the ANSI-C LCG the Norris modules
+ * use) — fixture content must never be confused with effect behaviour.
+ */
+function lcg(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s;
+  };
+}
+
+/**
+ * Fill a channel with material that actually exercises the kernels: a swept sine
+ * (zero-crossings for Weird Tempo and Zero Crosser), a passage of exact digital
+ * silence (Select Silence's metric, and the "silence passes through unchanged"
+ * paths), some near-full-scale peaks (the saturating clamp), and a noisy tail.
+ */
+function fillChannel(data: Uint8Array, bps: number, seed: number, scale: number): void {
+  const frameSize = frameSizeFor(bps);
+  const frames = Math.floor(data.length / frameSize);
+  const peak = Math.pow(2, Math.min(frameSize, 4) * 8 - 1) - 1;
+  const rand = lcg(seed);
+
+  for (let i = 0; i < frames; i++) {
+    const t = i / frames;
+    let v: number;
+    if (t < 0.4) {
+      // Swept sine, scaled well below full scale.
+      v = Math.trunc(Math.sin(i * (0.12 + t * 0.5)) * peak * 0.55 * scale);
+    } else if (t < 0.55) {
+      v = 0; // exact digital zero — the app's only definition of silence
+    } else if (t < 0.7) {
+      // Alternating near-full-scale, so anything with gain clips.
+      const loud = Math.trunc(peak * 0.97 * scale);
+      v = i % 2 === 0 ? loud : -loud;
+    } else {
+      v = Math.trunc(((rand() % (2 * peak + 1)) - peak) * scale);
+    }
+    setSample(data, i * frameSize, v, bps);
+  }
+}
+
+interface DocShape {
+  name: string;
+  bps: number;
+  /** One entry per track — its length in BYTES. Ragged on purpose. */
+  sizes: number[];
+  rateHz?: number;
+  /**
+   * The rate as a raw 16.16 Fixed, when the exact quantised value is the point
+   * and `rateHz` would round to the wrong tick. Wins over `rateHz`.
+   */
+  rateFixed?: number;
+  /**
+   * Amplitude scale for the generated material. Normalize is the reason this
+   * exists: on near-full-scale input its scale factor truncates to 1 and it
+   * correctly does nothing, which tests none of its arithmetic.
+   */
+  scale?: number;
+}
+
+/**
+ * Fixed 0x56EE8BA3 = 22254 6/11 Hz — the Mac "Standard" rate, read straight from
+ * Robotize's binary. See the shapes below for why the EXACT value is load-bearing.
+ */
+const NATIVE_RATE_FIXED = 0x56ee8ba3;
+
+const SHAPES: Record<string, DocShape> = {
+  mono8: { name: "mono8", bps: 8, sizes: [96] },
+  mono16: { name: "mono16", bps: 16, sizes: [192] },
+  // Ragged lengths are the point (§5): a selection past a short track must clamp
+  // per track, and effects must shorten only what they touch.
+  ragged8: { name: "ragged8", bps: 8, sizes: [96, 64, 128] },
+  stereo16: { name: "stereo16", bps: 16, sizes: [192, 160] },
+
+  // Robotize's comb delay is trunc(190 · rate / 22254.5454) ≈ 190 FRAMES at the
+  // native rate, and §8 #27 says a selection shorter than that is a silent no-op.
+  // Every short shape above is shorter than the delay, so Robotize needs its own.
+  long8: { name: "long8", bps: 8, sizes: [768] },
+  long16: { name: "long16", bps: 16, sizes: [1536] },
+  longRagged8: { name: "longRagged8", bps: 8, sizes: [768, 512, 1024] },
+
+  // Robotize's delay is trunc(190 × rate / 0x56EE8BA3), and that truncation is
+  // sharper than it looks. AT the native rate the division cancels and D is 190 on
+  // the nose; ONE 1/65536th BELOW it, D drops to 189. Only the second shape can
+  // tell the exact Fixed constant from a decimal approximation of it — a port
+  // using 22254.5454 gets 190 there and is wrong by a whole sample.
+  nativeRate8: { name: "nativeRate8", bps: 8, sizes: [768], rateFixed: NATIVE_RATE_FIXED },
+  belowNative8: { name: "belowNative8", bps: 8, sizes: [768], rateFixed: NATIVE_RATE_FIXED - 1 },
+
+  quiet8: { name: "quiet8", bps: 8, sizes: [96], scale: 0.12 },
+  quiet16: { name: "quiet16", bps: 16, sizes: [192], scale: 0.08 },
+  quietRagged8: { name: "quietRagged8", bps: 8, sizes: [96, 64, 128], scale: 0.15 },
+};
+
+function buildDoc(shape: DocShape): SoundDocument {
+  const doc = new SoundDocument({
+    name: shape.name,
+    bps: shape.bps,
+    rate: shape.rateFixed ?? doubleToFixed(shape.rateHz ?? 22254.5454),
+    numChans: 0,
+  });
+  shape.sizes.forEach((size, i) => {
+    const ch = doc.addChannel(doc.numChans + 1, size);
+    fillChannel(ch.data, shape.bps, 0x1234 + i * 977, shape.scale ?? 1);
+  });
+  doc.firstSelCh = 1;
+  doc.lastSelCh = doc.numChans;
+  return doc;
+}
+
+/** How a case scopes the selection, mirroring what the panel will offer. */
+type SelKind = "caret" | "mid" | "firstTrack" | "secondTrack" | "pastShort";
+
+function applySelection(doc: SoundDocument, kind: SelKind): void {
+  const frameSize = doc.frameSize;
+  const max = doc.maxChSize();
+  const snap = (b: number) => b - (b % frameSize);
+
+  switch (kind) {
+    case "caret":
+      // Empty selection ⇒ whole channels (Gain.c). The panel's "window selected,
+      // nothing selected inside" case resolves to exactly this.
+      doc.selSt = 0;
+      doc.selEnd = 0;
+      doc.firstSelCh = 1;
+      doc.lastSelCh = doc.numChans;
+      break;
+    case "mid":
+      doc.selSt = snap(Math.floor(max * 0.25));
+      doc.selEnd = snap(Math.floor(max * 0.75));
+      doc.firstSelCh = 1;
+      doc.lastSelCh = doc.numChans;
+      break;
+    case "firstTrack":
+      doc.selSt = snap(Math.floor(max * 0.1));
+      doc.selEnd = snap(Math.floor(max * 0.6));
+      doc.firstSelCh = 1;
+      doc.lastSelCh = 1;
+      break;
+    case "secondTrack":
+      doc.selSt = snap(Math.floor(max * 0.1));
+      doc.selEnd = snap(Math.floor(max * 0.6));
+      doc.firstSelCh = Math.min(2, doc.numChans);
+      doc.lastSelCh = Math.min(2, doc.numChans);
+      break;
+    case "pastShort":
+      // Runs past the END of the short track — the per-track clamp is the whole
+      // reason `channelRange` clamps before it frame-snaps.
+      doc.selSt = snap(Math.floor(max * 0.4));
+      doc.selEnd = max;
+      doc.firstSelCh = 1;
+      doc.lastSelCh = doc.numChans;
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The case matrix
+// ---------------------------------------------------------------------------
+
+type Params = Record<string, unknown>;
+
+interface CaseSpec {
+  shape: keyof typeof SHAPES;
+  sel: SelKind;
+  params?: Params;
+  seed?: number;
+  /** Answer to AskDoExtend() when the pref is "ask". */
+  extend?: boolean;
+  /**
+   * This case is EXPECTED to leave the document untouched, and that refusal is
+   * the behaviour under test — Replicate with extension refused has nowhere to
+   * put the copies, so it declines (`replicate.ts`). Undeclared no-ops are
+   * reported, because a fixture the port passes by doing nothing is worthless.
+   */
+  expectNoOp?: boolean;
+}
+
+/** The matrix every module gets unless it overrides. */
+const DEFAULT_CASES: CaseSpec[] = [
+  { shape: "mono8", sel: "caret" },
+  { shape: "mono16", sel: "mid" },
+  { shape: "ragged8", sel: "pastShort" },
+  { shape: "ragged8", sel: "secondTrack" },
+  { shape: "stereo16", sel: "mid" },
+];
+
+/**
+ * Per-module additions, keyed by `module.name` — the menu name, spaces and all
+ * ("Fade In", not FadeIn). Keying these by the export identifier instead is a
+ * silent failure: the override never matches, the module quietly runs on its
+ * defaults, and a Fade of 0 ms writes a fixture that proves nothing. `generate()`
+ * hard-fails on a name that matches no module, and on a param key the module's
+ * defaults don't declare, so that mistake cannot be made quietly again.
+ *
+ * Three reasons a module lands here:
+ *   1. its defaults are degenerate (Fade's 0 ms; Waveform Generator's 0 length),
+ *   2. its defaults are enormous — the Norris modules render 222000 bytes of new
+ *      audio (~10 s), and Echo/Delay's 3500-byte delay dwarfs a test buffer.
+ *      These are fixture sizes, not behaviours: the kernels are identical at 2000
+ *      bytes and the file stays diffable,
+ *   3. it needs a specific shape — the two-track modules (Sum, Difference,
+ *      Iterative Crossfade) are undefined on a mono document.
+ */
+const OVERRIDES: Record<string, CaseSpec[]> = {
+  // Both extension answers, because grow-and-silence is the fiddly half. Delay
+  // is in BYTES despite carrying a units popup, so it is scaled to the buffer.
+  Echo: [
+    { shape: "mono8", sel: "mid", params: { delay: 24, strength: 70 }, extend: false },
+    { shape: "mono8", sel: "mid", params: { delay: 24, strength: 70 }, extend: true },
+    { shape: "mono16", sel: "caret", params: { delay: 32, strength: 60 }, extend: true },
+    { shape: "ragged8", sel: "pastShort", params: { delay: 16, strength: 80 }, extend: false },
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: { delay: 24, strength: 70, onlyOn: true, onlyCount: 3 },
+      extend: true,
+    },
+  ],
+  Delay: [
+    { shape: "mono8", sel: "mid", params: { delay: 24, strength: 70 }, extend: false },
+    { shape: "mono8", sel: "mid", params: { delay: 24, strength: 70 }, extend: true },
+    { shape: "mono16", sel: "caret", params: { delay: 32, strength: 60 }, extend: true },
+    { shape: "ragged8", sel: "pastShort", params: { delay: 16, strength: 80 }, extend: false },
+  ],
+  "Fade In": [
+    { shape: "mono8", sel: "caret", params: { time: 48, units: Unit.bytes } },
+    { shape: "mono16", sel: "mid", params: { time: 40, units: Unit.bytes } },
+    { shape: "ragged8", sel: "pastShort", params: { time: 32, units: Unit.bytes } },
+  ],
+  "Fade Out": [
+    { shape: "mono8", sel: "caret", params: { time: 48, units: Unit.bytes } },
+    { shape: "mono16", sel: "mid", params: { time: 40, units: Unit.bytes } },
+    { shape: "ragged8", sel: "pastShort", params: { time: 32, units: Unit.bytes } },
+  ],
+  Amplify: [
+    { shape: "mono8", sel: "caret", params: { gain: 200 } },
+    { shape: "mono8", sel: "mid", params: { gain: 50 } },
+    // Deliberately clips, so the saturating clamp is exercised at both rails.
+    { shape: "mono16", sel: "caret", params: { gain: 900 } },
+    { shape: "ragged8", sel: "pastShort", params: { gain: 150 } },
+    { shape: "ragged8", sel: "secondTrack", params: { gain: 33 } },
+    { shape: "stereo16", sel: "mid", params: { gain: 250 } },
+  ],
+  // §8 #27: the comb delay is ~190 frames and a shorter selection is a silent
+  // no-op, so this is the one module that needs a buffer longer than its delay.
+  Robotize: [
+    { shape: "long8", sel: "caret" },
+    { shape: "long16", sel: "mid" },
+    { shape: "longRagged8", sel: "pastShort" },
+    { shape: "longRagged8", sel: "secondTrack" },
+    // The delay-constant edge: D = 190 at the native rate, 189 one Fixed tick
+    // below it. Without this pair a port can use a decimal approximation of
+    // 0x56EE8BA3 and pass everything else — verified by mutation.
+    { shape: "nativeRate8", sel: "caret" },
+    { shape: "belowNative8", sel: "caret" },
+  ],
+  // Near-full-scale input makes Normalize's scale factor truncate to 1 — correct,
+  // and a test of nothing. Quiet material is what exercises the arithmetic.
+  Normalize: [
+    { shape: "quiet8", sel: "caret" },
+    { shape: "quiet16", sel: "mid" },
+    { shape: "quietRagged8", sel: "pastShort" },
+    { shape: "quietRagged8", sel: "secondTrack" },
+    // Partial track coverage is the "Norm All / Just These" alert's scope.
+    { shape: "quietRagged8", sel: "firstTrack", params: { scope: 2 } },
+  ],
+  // The IIR family quantises coefficients to one decimal and truncates: 0.55
+  // must come back as 0.5. Feed it values that catch a port that rounds.
+  "High Pass IIR": iirCases(),
+  "Low Pass IIR": iirCases(),
+  Shelving: iirCases(),
+  Dither: [
+    { shape: "mono8", sel: "caret", params: { mode: 1, percent: 10 }, seed: 1 },
+    { shape: "mono16", sel: "caret", params: { mode: 1, percent: 10 }, seed: 1 },
+    { shape: "mono16", sel: "mid", params: { mode: 2, points: 500 }, seed: 7 },
+    { shape: "ragged8", sel: "pastShort", params: { mode: 1, percent: 25 }, seed: 42 },
+  ],
+  Noise: [
+    { shape: "mono8", sel: "mid", seed: 1 },
+    { shape: "mono16", sel: "mid", seed: 1 },
+    // An odd-boundary range: Noise writes 16 bits at a time whatever the depth,
+    // and fixes up the stray bytes at each end.
+    { shape: "ragged8", sel: "firstTrack", seed: 99 },
+    { shape: "stereo16", sel: "caret", seed: 3 },
+  ],
+  // Replicate extends the track in place, so with extension refused it has
+  // nowhere to put the copies and declines outright — worth pinning down.
+  Replicate: [
+    { shape: "mono8", sel: "mid", params: { copies: 3, gapMode: 1 }, extend: true },
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: { copies: 2, gapMode: 4, gapLength: 32, units: Unit.bytes },
+      extend: true,
+    },
+    {
+      shape: "ragged8",
+      sel: "pastShort",
+      params: { copies: 2, gapMode: 2, gapDivisor: 2 },
+      extend: true,
+    },
+    {
+      shape: "mono8",
+      sel: "mid",
+      params: { copies: 3, gapMode: 3, gapMultiplier: 2 },
+      extend: true,
+    },
+    { shape: "mono8", sel: "mid", params: { copies: 3 }, extend: false, expectNoOp: true },
+  ],
+  // Two-track modules: a mono document is not a valid input for them.
+  Sum: twoChannelCases(),
+  Difference: twoChannelCases(),
+  "Iterative Crossfade": [
+    {
+      shape: "stereo16",
+      sel: "mid",
+      params: { iterations: 4, silenceLength: 0, units: Unit.bytes },
+    },
+    {
+      shape: "ragged8",
+      sel: "mid",
+      params: { iterations: 3, silenceLength: 16, units: Unit.bytes },
+    },
+  ],
+  "Quick Mix": [
+    { shape: "stereo16", sel: "mid", params: { destination: 1, use: 1, usePan: false } },
+    { shape: "stereo16", sel: "caret", params: { destination: 2, use: 2, usePan: true } },
+    { shape: "ragged8", sel: "pastShort", params: { destination: 1, use: 1, usePan: false } },
+  ],
+  // Whole-document modules: a partial selection is a confirmation, not a scope.
+  "Resample Rate": [
+    { shape: "mono8", sel: "caret", params: { newRate: doubleToFixed(11025) } },
+    { shape: "mono16", sel: "caret", params: { newRate: doubleToFixed(44100) } },
+    { shape: "ragged8", sel: "caret", params: { newRate: doubleToFixed(8000) } },
+  ],
+  "Downsample Bits": [
+    { shape: "mono16", sel: "caret", params: { newBps: 8, expert: false }, seed: 5 },
+    // Expert + noise shaping injects RNG into the WHOLE document before the host
+    // truncates — the one path where Downsample touches audio itself.
+    {
+      shape: "mono16",
+      sel: "caret",
+      params: { newBps: 8, expert: true, expertMode: 2 },
+      seed: 5,
+    },
+  ],
+  "Upsample Bits": [
+    { shape: "mono8", sel: "caret", params: { newBps: 16 } },
+    { shape: "ragged8", sel: "caret", params: { newBps: 16 } },
+  ],
+  "Waveform Generator": [
+    { shape: "mono8", sel: "mid", params: { frequency: 440, amplitude: 80, waveType: 1 } },
+    { shape: "mono16", sel: "mid", params: { frequency: 220, amplitude: 100, waveType: 2 } },
+    { shape: "mono16", sel: "mid", params: { frequency: 110, amplitude: 60, waveType: 3 } },
+  ],
+  "Zero Crosser": [
+    { shape: "mono8", sel: "mid", params: { action: 1, side: 3 } },
+    { shape: "mono16", sel: "mid", params: { action: 2, side: 3 } },
+    { shape: "mono16", sel: "mid", params: { action: 1, side: 1 } },
+    // "mid" rather than "pastShort": a selection already ending at the longest
+    // track has no room to the right, so shrink-from-the-right finds nothing.
+    { shape: "ragged8", sel: "mid", params: { action: 2, side: 2 } },
+  ],
+  // Period is in bytes too: the factory 22255 would not complete one LFO cycle
+  // inside a test buffer, leaving the sweep — the whole effect — unexercised.
+  Flanger: [
+    { shape: "mono8", sel: "caret", params: { delay: 16, width: 8, period: 200 }, seed: 1 },
+    { shape: "mono16", sel: "mid", params: { delay: 16, width: 8, period: 200 }, seed: 1 },
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: { delay: 16, width: 8, period: 200, feedback: true },
+      seed: 1,
+    },
+    // Modulation 2 and 3 are the triangular and sawtooth accumulators — a
+    // different code path from the sinusoid, not a different constant.
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: { delay: 16, width: 8, period: 200, modulation: 2 },
+      seed: 1,
+    },
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: { delay: 16, width: 8, period: 200, modulation: 3 },
+      seed: 1,
+    },
+    {
+      shape: "stereo16",
+      sel: "caret",
+      params: {
+        delay: 16,
+        width: 8,
+        period: 200,
+        envelopeFollower: true,
+        depth: 8,
+        depthUnits: Unit.bytes,
+      },
+      seed: 1,
+    },
+  ],
+  "Granular Synthesis": [
+    {
+      shape: "mono8",
+      sel: "caret",
+      params: { newLength: 1024, units: Unit.bytes, initialGrainLength: 64, finalGrainLength: 64 },
+      seed: 11,
+    },
+    // A grain-length and density sweep, so the tween's pow() actually runs with
+    // a non-linear curvature.
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: {
+        newLength: 2048,
+        units: Unit.bytes,
+        initialGrainLength: 64,
+        finalGrainLength: 192,
+        curvature: 50,
+        initialDensity: 100,
+        finalDensity: 50,
+        fadeLevel: 25,
+        variance: 16,
+      },
+      seed: 11,
+    },
+  ],
+  "Sample Hose": [
+    {
+      shape: "mono8",
+      sel: "caret",
+      params: {
+        newLength: 1024,
+        units: Unit.bytes,
+        "period.initialValue": 256,
+        "period.finalValue": 256,
+      },
+      seed: 13,
+    },
+    // Rate ≠ 100 is the one linear-interpolation path in the whole app.
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: {
+        newLength: 2048,
+        units: Unit.bytes,
+        "rate.initialValue": 50,
+        "rate.finalValue": 200,
+        "rate.curvature": 50,
+        "gain.initialValue": 100,
+        "gain.finalValue": 40,
+        "period.initialValue": 256,
+        "period.finalValue": 384,
+        "bite.initialValue": 64,
+        "bite.finalValue": 64,
+      },
+      seed: 13,
+    },
+  ],
+  Keyboard: [
+    // Header-only: Change Pitch moves the declared rate and touches no audio.
+    { shape: "mono8", sel: "caret", params: { semitones: 12 } },
+    { shape: "mono16", sel: "caret", params: { semitones: -5 } },
+  ],
+};
+
+function iirCases(): CaseSpec[] {
+  return [
+    { shape: "mono8", sel: "caret", params: { a: 0.5, b: 0.5 } },
+    // 0.55 must truncate to 0.5, and 0.99 to 0.9 — a port that rounds fails here.
+    { shape: "mono16", sel: "mid", params: { a: 0.55, b: 0.99 } },
+    { shape: "mono16", sel: "caret", params: { a: 1, b: 0.5 } },
+    { shape: "ragged8", sel: "pastShort", params: { a: 0.3, b: 0.7 } },
+  ];
+}
+
+function twoChannelCases(): CaseSpec[] {
+  return [
+    { shape: "stereo16", sel: "mid" },
+    { shape: "stereo16", sel: "caret" },
+    { shape: "ragged8", sel: "mid" },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Binary container
+// ---------------------------------------------------------------------------
+
+class Writer {
+  private parts: Uint8Array[] = [];
+  private len = 0;
+
+  private push(a: Uint8Array): void {
+    this.parts.push(a);
+    this.len += a.length;
+  }
+
+  u8(v: number): void {
+    this.push(Uint8Array.of(v & 0xff));
+  }
+
+  u32(v: number): void {
+    const b = new Uint8Array(4);
+    new DataView(b.buffer).setUint32(0, v >>> 0, true);
+    this.push(b);
+  }
+
+  i32(v: number): void {
+    const b = new Uint8Array(4);
+    new DataView(b.buffer).setInt32(0, v | 0, true);
+    this.push(b);
+  }
+
+  i64(v: number): void {
+    const b = new Uint8Array(8);
+    new DataView(b.buffer).setBigInt64(0, BigInt(Math.trunc(v)), true);
+    this.push(b);
+  }
+
+  f64(v: number): void {
+    const b = new Uint8Array(8);
+    new DataView(b.buffer).setFloat64(0, v, true);
+    this.push(b);
+  }
+
+  str(s: string): void {
+    const bytes = new TextEncoder().encode(s);
+    this.u32(bytes.length);
+    this.push(bytes);
+  }
+
+  bytes(b: Uint8Array): void {
+    this.push(b.slice());
+  }
+
+  finish(): Uint8Array {
+    const out = new Uint8Array(this.len);
+    let o = 0;
+    for (const p of this.parts) {
+      out.set(p, o);
+      o += p.length;
+    }
+    return out;
+  }
+}
+
+function writeDoc(w: Writer, doc: SoundDocument): void {
+  w.str(doc.name);
+  w.i64(doc.rate); // 16.16 Fixed — the native side divides by 65536 for its double
+  w.i32(doc.bps);
+  w.i32(doc.baseFreq);
+  w.u32(doc.selSt);
+  w.u32(doc.selEnd);
+  w.i32(doc.firstSelCh);
+  w.i32(doc.lastSelCh);
+  w.u32(doc.loopSt);
+  w.u32(doc.loopEnd);
+  w.u32(doc.numChans);
+  for (const ch of doc.channels) {
+    w.u32(ch.data.length);
+    w.u8(ch.outLeft ? 1 : 0);
+    w.u8(ch.outRight ? 1 : 0);
+    w.i32(ch.volume);
+    w.bytes(ch.data);
+  }
+}
+
+/**
+ * Settings are written FLAT, with dotted keys — Sample Hose's five parameter
+ * groups are nested objects (`rate.initialValue`), and a flat string-keyed map is
+ * both what the native `Settings` type will be and what the schema-driven panel
+ * indexes into. One shape, three consumers.
+ */
+function flatten(obj: Params, prefix = ""): Params {
+  const out: Params = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+      Object.assign(out, flatten(v as Params, key));
+    } else {
+      out[key] = v;
+    }
+  }
+  return out;
+}
+
+/** Rebuild the nested shape the module's own settings struct expects. */
+function unflatten(flat: Params): Params {
+  const out: Params = {};
+  for (const [key, v] of Object.entries(flat)) {
+    const parts = key.split(".");
+    let node = out;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const p = parts[i]!;
+      if (typeof node[p] !== "object" || node[p] === null) node[p] = {};
+      node = node[p] as Params;
+    }
+    node[parts[parts.length - 1]!] = v;
+  }
+  return out;
+}
+
+/** Params are written typed, but the native reader coerces — a value that
+    happens to be integral (IIR's a = 1) must still read back as a double. */
+function writeParams(w: Writer, params: Params): void {
+  const keys = Object.keys(params).sort(); // stable order, so diffs are readable
+  w.u32(keys.length);
+  for (const key of keys) {
+    w.str(key);
+    const v = params[key];
+    if (typeof v === "boolean") {
+      w.u8(0);
+      w.i64(v ? 1 : 0);
+    } else if (typeof v === "number") {
+      if (Number.isInteger(v)) {
+        w.u8(0);
+        w.i64(v);
+      } else {
+        w.u8(1);
+        w.f64(v);
+      }
+    } else {
+      w.u8(2);
+      w.str(String(v));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Generation
+// ---------------------------------------------------------------------------
+
+function slug(name: string): string {
+  return name
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+}
+
+interface GeneratedCase {
+  name: string;
+  seed: number;
+  extend: boolean;
+  params: Params;
+  input: SoundDocument;
+  result: number;
+  output: SoundDocument;
+  spawned: SoundDocument[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function runCase(module: EffectModule<any>, spec: CaseSpec, index: number): GeneratedCase {
+  const shape = SHAPES[spec.shape]!;
+  const doc = buildDoc(shape);
+  applySelection(doc, spec.sel);
+
+  // Snapshot BEFORE the effect: it mutates in place, and the fixture needs both
+  // sides. There is no undo (§1) — cloning here is the test's privilege, not the
+  // app's.
+  const input = doc.clone();
+
+  // Merge FLAT, so a dotted override ("rate.initialValue") lands inside the
+  // nested group rather than sitting beside it as a key nobody reads.
+  const base = flatten(module.defaults ? module.defaults() : {});
+  const overrides = spec.params ?? {};
+
+  // A param key the module never declared is a typo, and a typo here is silent:
+  // the merge succeeds, the module ignores the extra key, and the fixture records
+  // default behaviour under an override's name. Modules with no defaults() take
+  // no params at all, so any key is wrong there too.
+  for (const key of Object.keys(overrides)) {
+    if (!(key in base)) {
+      throw new Error(
+        `unknown param '${key}' (declared: ${Object.keys(base).join(", ") || "none"})`,
+      );
+    }
+  }
+
+  const flat = { ...base, ...overrides };
+  const params = unflatten(flat);
+  const validated = module.validate ? module.validate(params) : params;
+
+  const seed = spec.seed ?? 1;
+  const extend = spec.extend ?? false;
+  const host = new Host({
+    randSeed: seed,
+    askDoExtend: () => extend,
+    // Every sample, so a module that polls the flag takes its cancel-check path
+    // deterministically. Nothing here ever cancels.
+    progressInterval: 1,
+  });
+  host.doExtend = DoExtend.ask;
+
+  const result = module.effect(doc, host, validated);
+
+  return {
+    name: `${spec.shape}-${spec.sel}-${index}`,
+    seed,
+    extend,
+    params: flatten(validated as Params),
+    input,
+    result,
+    output: doc,
+    spawned: [...host.spawnedDocuments],
+  };
+}
+
+/**
+ * Did this case actually do anything? A fixture whose output equals its input is
+ * a hole in the contract: the native port passes it by doing nothing at all.
+ *
+ * Compares the header too, not just the buffers — Keyboard's Change Pitch is a
+ * legitimate audio-untouched effect that moves only the declared rate (§8 #18),
+ * and it must not read as a no-op.
+ */
+function changedAnything(a: SoundDocument, b: SoundDocument, spawned: number): boolean {
+  if (spawned > 0) return true;
+  if (a.rate !== b.rate || a.bps !== b.bps || a.baseFreq !== b.baseFreq) return true;
+  if (a.selSt !== b.selSt || a.selEnd !== b.selEnd) return true;
+  if (a.firstSelCh !== b.firstSelCh || a.lastSelCh !== b.lastSelCh) return true;
+  if (a.numChans !== b.numChans) return true;
+  for (let i = 0; i < a.numChans; i++) {
+    const x = a.channels[i]!.data;
+    const y = b.channels[i]!.data;
+    if (x.length !== y.length) return true;
+    for (let p = 0; p < x.length; p++) if (x[p] !== y[p]) return true;
+  }
+  return false;
+}
+
+function generate(): void {
+  mkdirSync(OUT_DIR, { recursive: true });
+  // Stale fixtures are worse than none: a renamed module would otherwise leave a
+  // file the native test keeps passing against.
+  for (const f of readdirSync(OUT_DIR)) {
+    if (f.endsWith(".fx")) rmSync(join(OUT_DIR, f));
+  }
+
+  // An override keyed by a name no module answers to is dead config, and it fails
+  // exactly the way a missing override does — silently, on defaults.
+  const known = new Set(EFFECTS.map((m) => m.name));
+  const orphans = Object.keys(OVERRIDES).filter((n) => !known.has(n));
+  if (orphans.length > 0) {
+    throw new Error(
+      `OVERRIDES names match no module: ${orphans.join(", ")}\n` +
+        `(they are keyed by module.name — "Fade In", not FadeIn)`,
+    );
+  }
+
+  let totalCases = 0;
+  let noOps = 0;
+  const index: string[] = [];
+  const problems: string[] = [];
+
+  for (const module of EFFECTS) {
+    const specs = OVERRIDES[module.name] ?? DEFAULT_CASES;
+    const cases: GeneratedCase[] = [];
+
+    specs.forEach((spec, i) => {
+      try {
+        const c = runCase(module, spec, i);
+        const changed = changedAnything(c.input, c.output, c.spawned.length);
+        if (!changed && !spec.expectNoOp) {
+          noOps++;
+          problems.push(`  no-op   ${module.name} [${c.name}]`);
+        } else if (changed && spec.expectNoOp) {
+          problems.push(`  CHANGED ${module.name} [${c.name}]: expectNoOp, but it did something`);
+        }
+        cases.push(c);
+      } catch (err) {
+        // A module that throws on a shape it cannot handle is telling us the
+        // case is wrong, not that the module is broken. Say so loudly and skip:
+        // a silently-missing case is a hole in the contract.
+        problems.push(`  THREW   ${module.name} [${spec.shape}/${spec.sel}]: ${(err as Error).message}`);
+      }
+    });
+
+    if (cases.length === 0) {
+      problems.push(`  EMPTY   ${module.name}: no cases generated`);
+      continue;
+    }
+
+    const w = new Writer();
+    w.bytes(new TextEncoder().encode("SEFX"));
+    w.u32(FIXTURE_VERSION);
+    w.str(module.name);
+    w.str(module.signature);
+    w.u32(cases.length);
+
+    for (const c of cases) {
+      w.str(c.name);
+      w.u32(c.seed);
+      w.u8(2); // doExtend pref = "ask each time"
+      w.u8(c.extend ? 1 : 0);
+      writeParams(w, c.params);
+      writeDoc(w, c.input);
+      w.i32(c.result);
+      writeDoc(w, c.output);
+      w.u32(c.spawned.length);
+      for (const s of c.spawned) writeDoc(w, s);
+    }
+
+    const file = `${slug(module.name)}.fx`;
+    writeFileSync(join(OUT_DIR, file), w.finish());
+    index.push(`${file}  ${module.name} (${cases.length} cases)`);
+    totalCases += cases.length;
+  }
+
+  writeFileSync(join(OUT_DIR, "INDEX.txt"), index.sort().join("\n") + "\n");
+  console.log(`${EFFECTS.length} modules, ${totalCases} cases → ${OUT_DIR}`);
+
+  if (problems.length > 0) {
+    console.log(`\n${problems.length} to look at (${noOps} no-op):`);
+    console.log(problems.join("\n"));
+  }
+}
+
+generate();

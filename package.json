@@ -13,6 +13,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "fixtures": "vite-node tools/gen-effect-fixtures.ts",
     "resources": "python3 tools/uidump.py",
     "resources:check": "python3 tools/uidump.py --check"
   },

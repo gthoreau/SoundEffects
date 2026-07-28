@@ -56,11 +56,25 @@ public:
     /** Flat colour this window is painted in. */
     void setTint (juce::Colour c) { tint = c; repaint(); }
 
+    /** Canvas selection state — what the effects panel acts on. */
+    void setSelected (bool shouldBeSelected);
+    bool isSelected() const noexcept { return selected; }
+
+    /** The audio was rewritten under us — drop the cached peaks.
+        The cache is keyed on track SIZES, so it cannot notice a destructive effect
+        that rewrote every sample without changing the length. Amplify is exactly
+        that, and without this the window keeps drawing the old waveform. */
+    void invalidateWaveform();
+
     /** Shared clipboard slot (owned by the canvas). */
     std::unique_ptr<se::SoundDocument>* clipboard = nullptr;
 
     void refresh();
     std::function<void (uint64_t)> onClose;
+    /** Clicked — the canvas makes this the selected Window. Separate from keyboard
+        focus on purpose: focus moves away the moment a side panel is used, and the
+        thing a panel acts on must not evaporate under it. */
+    std::function<void (uint64_t)> onSelected;
     /** Size changed (user grip drag, or a track added/removed) — relayout the canvas. */
     std::function<void()> onGeometryChanged;
     /** The grip drag changed the width this window asks for. In the grid that is a
@@ -175,6 +189,11 @@ private:
     std::vector<std::vector<juce::Range<float>>> peaks;
 
     bool hovered = false;
+    // Selection, NOT keyboard focus. The two used to be the same thing — the
+    // active border was drawn from hasKeyboardFocus() — but a side panel with
+    // clickable controls steals focus, which would have blanked the very selection
+    // the panel depends on.
+    bool selected = false;
 
     // last drawn playhead state, so refresh() can skip idle repaints
     bool   lastPlaying = false;

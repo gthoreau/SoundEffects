@@ -129,6 +129,7 @@ void CanvasComponent::refresh()
             layoutGrid (raw);                 // reflow around the gap it will drop into
         };
         wc->onDropped = [this] { if (mosaicEnabled) layoutGrid(); };
+        wc->onSelected = [this] (uint64_t wid) { selectWindow (wid); };
         world.addAndMakeVisible (*wc);
         placeNew (*wc, newCount++);
         windows.push_back (std::move (wc));
@@ -137,9 +138,37 @@ void CanvasComponent::refresh()
 
     if (mosaicEnabled && (newCount > 0 || removedAny)) layoutGrid();
 
+    // A Window you just made or just opened is the one you mean — selecting it
+    // saves a click, and matches where your attention already is.
+    if (newCount > 0)
+        selectWindow (windows.back()->windowId());
+
+    // A closed Window takes the selection with it — leaving it dangling would let
+    // the effects panel offer to apply to something that no longer exists.
+    if (selectedId != 0 && find (selectedId) == nullptr)
+        selectWindow (0);
+
     // Refresh each (transport state / playhead / repaint).
     for (auto& w : windows)
         w->refresh();
+}
+
+void CanvasComponent::invalidateWaveform (uint64_t id)
+{
+    for (auto& w : windows)
+        if (id == 0 || w->windowId() == id)
+            w->invalidateWaveform();
+}
+
+void CanvasComponent::selectWindow (uint64_t id)
+{
+    if (selectedId == id) return;
+    selectedId = id;
+
+    for (auto& w : windows)
+        w->setSelected (w->windowId() == id);
+
+    if (onSelectionChanged) onSelectionChanged();
 }
 
 // --- layout ------------------------------------------------------------------
@@ -432,6 +461,10 @@ void CanvasComponent::setPanMode (bool shouldPan)
 void CanvasComponent::mouseDown (const juce::MouseEvent& e)
 {
     grabKeyboardFocus();
+    // This only fires for clicks that missed every Window (the world layer does
+    // not intercept), so it means "click on the board" — deselect. Panning is a
+    // view gesture, not a selection one, and must leave the selection alone.
+    if (! panMode) selectWindow (0);
     if (! panMode) return;
     panDragging = true;
     panDragStart = e.position;

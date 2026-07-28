@@ -41,6 +41,26 @@ target_sources(SoundEffect PRIVATE
     Source/engine/Import.cpp
     Source/engine/Edit.cpp
     Source/engine/Resample.cpp
+    # The effects runtime + one file per ported module. Kept in the plugin build
+    # even before the panel uses it, so the app target and native/tests (which is
+    # where the golden vectors run) cannot drift apart.
+    Source/effects/Host.cpp
+    Source/effects/Module.cpp
+    Source/effects/Registry.cpp
+    Source/effects/Skeleton.cpp
+    # Bridges the effects layer to the Engine (Windows, RCU commit, spawned
+    # documents). Not in native/tests: the golden vectors need no Engine.
+    Source/effects/EffectRunner.cpp
+    Source/effects/modules/Amplify.cpp
+    Source/effects/modules/Simple.cpp
+    Source/effects/modules/Smooth.cpp
+    Source/effects/modules/Dither.cpp
+    Source/effects/modules/Noise.cpp
+    Source/effects/modules/Robotize.cpp
+    Source/effects/modules/Fir.cpp
+    Source/effects/modules/Iir.cpp
+    Source/ui/Sys7.cpp
+    Source/ui/EffectsPanel.cpp
     Source/ui/CanvasComponent.cpp
     Source/ui/WindowComponent.cpp
     Source/ui/MixerComponent.cpp)

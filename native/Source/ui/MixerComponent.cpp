@@ -30,46 +30,6 @@ constexpr int kThumbW  = 7;
 constexpr int kGap     = 5;
 }
 
-// --- Sys7Button -------------------------------------------------------------
-
-void Sys7Button::paintButton (Graphics& g, bool over, bool down)
-{
-    auto r = getLocalBounds().toFloat().reduced (1.0f);
-
-    g.setColour (down ? kInk : kFace);
-    g.fillRoundedRectangle (r, 3.0f);
-
-    // Weight carries hover, exactly as the Windows' borders do on the canvas.
-    g.setColour (kInk);
-    g.drawRoundedRectangle (r, 3.0f, over && ! down ? 2.0f : 1.0f);
-
-    g.setColour (down ? kWhite : kInk);
-    g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
-    g.drawText (getButtonText(), getLocalBounds(), juce::Justification::centred, false);
-}
-
-// --- Sys7LookAndFeel --------------------------------------------------------
-
-void Sys7LookAndFeel::drawScrollbar (Graphics& g, juce::ScrollBar&, int x, int y, int w, int h,
-                                     bool isVertical, int thumbStart, int thumbSize,
-                                     bool isMouseOver, bool)
-{
-    const Rectangle<int> track (x, y, w, h);
-    g.setColour (kWhite);
-    g.fillRect (track);
-    g.setColour (kInk);
-    g.drawRect (track, 1);
-
-    if (thumbSize <= 0) return;
-
-    const auto thumb = (isVertical ? Rectangle<int> (x, thumbStart, w, thumbSize)
-                                   : Rectangle<int> (thumbStart, y, thumbSize, h)).reduced (1);
-    g.setColour (kFace);
-    g.fillRect (thumb);
-    g.setColour (kInk);
-    g.drawRect (thumb, isMouseOver ? 2 : 1);
-}
-
 // --- MixerStrip: the shared dB scale ----------------------------------------
 
 float MixerStrip::posToDb (float pos) noexcept

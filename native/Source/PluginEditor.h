@@ -1,8 +1,9 @@
-// PluginEditor — hosts the infinite canvas of sound Windows and the main mixer,
-// with a small toolbar (Mosaic / zoom / view state). New and Open sit at the top
-// of the mixer panel, which owns the whole left-hand column.
+// PluginEditor — hosts the infinite canvas of sound Windows between two panels:
+// the main mixer down the LEFT (New and Open sit at its top) and the destructive
+// effects down the RIGHT. A small toolbar carries Mosaic / zoom / view state.
 //
-// A 30 Hz timer refreshes the canvas + mixer (transport playhead, window set).
+// A 30 Hz timer refreshes the canvas, the mixer and the effects panel (transport
+// playhead, window set, selection scope).
 
 #pragma once
 
@@ -10,6 +11,7 @@
 
 #include "PluginProcessor.h"
 #include "ui/CanvasComponent.h"
+#include "ui/EffectsPanel.h"
 #include "ui/MixerComponent.h"
 
 class SoundEffectAudioProcessorEditor : public juce::AudioProcessorEditor,
@@ -37,8 +39,9 @@ private:
     juce::TextButton zoomResetButton { "100%" };
     juce::Label      viewStatus;
 
-    CanvasComponent canvas;
-    MixerComponent  mixer;
+    CanvasComponent       canvas;
+    MixerComponent        mixer;
+    EffectsPanelComponent effects;
 
     juce::AudioFormatManager formatManager;
     std::unique_ptr<juce::FileChooser> chooser;

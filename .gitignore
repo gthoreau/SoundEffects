@@ -4,6 +4,10 @@ dist/
 
 # Native (JUCE) build output — CMake cache, fetched JUCE tree, plugin artefacts.
 native/build/
+# The engine test build. The FIXTURES themselves are committed: they are the
+# contract between the TS reference and the C++ ports, and the native test must
+# not need a Node toolchain to run.
+native/tests/build/
 
 # Machine-local Claude Code state. .claude/launch.json IS tracked — it is the
 # shared dev-server config.
