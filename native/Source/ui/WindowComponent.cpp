@@ -477,6 +477,24 @@ void WindowComponent::focusLost   (FocusChangeType) { repaint(); }
 void WindowComponent::invalidateWaveform()
 {
     cachedWidth = -1;
+
+    // A module that ADDS tracks — Selection to Channel, Iterative Crossfade, and
+    // Quick Mix or Difference rendering to a New Channel — leaves this Window laid
+    // out for the count it had a moment ago. The extra lanes then draw underneath
+    // the transport bar and the last one is off the bottom entirely, so the effect
+    // reports success and the result is invisible until you resize by hand.
+    //
+    // Every explicit sizing path ends at `chromeHeight() + n * laneH`, which is
+    // exactly what preferredHeight() returns — so a mismatch here means the TRACK
+    // COUNT moved and nothing else. That makes this safe to check on every
+    // document change: a Window the user resized still matches, and only a real
+    // change in track count re-fits.
+    if (getHeight() != preferredHeight())
+    {
+        resizeToFit();   // repaints, re-stores geometry, and relays out the board
+        return;
+    }
+
     repaint();
 }
 

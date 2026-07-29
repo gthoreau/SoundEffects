@@ -15,7 +15,12 @@ const char* applicabilityText (Applicability a, const Requirements& reqs)
         case Applicability::Ok:              return "";
         case Applicability::NoWindow:        return "Select a sound window first.";
         case Applicability::NoAudio:         return "This window has no audio yet.";
-        case Applicability::NeedsTwoTracks:  return "Select exactly two tracks.";
+        // "At least" when it is a floor, "exactly" when it is a quota — the
+        // sentence has to match which one the module actually asked for, or it
+        // sends you off to change a selection that was already fine.
+        case Applicability::NeedsTwoTracks:
+            return reqs.exactSelectedTracks == 2 ? "Select exactly two tracks."
+                                                 : "Select at least two tracks.";
         case Applicability::NeedsExactTracks:
             // Written out rather than templated: the only values this takes are
             // small, and a sentence beats "requires N track(s)".
@@ -35,14 +40,17 @@ Applicability EffectRunner::check (uint64_t windowId, const EffectModule& module
     const SoundDocument& doc = *window->uiDoc;
     if (doc.maxTrackSize() == 0) return Applicability::NoAudio;
 
+    const int selected = doc.lastSelTrack - doc.firstSelTrack + 1;
+
     const int required = module.requires.exactSelectedTracks;
-    if (required > 0)
-    {
-        const int selected = doc.lastSelTrack - doc.firstSelTrack + 1;
-        if (selected != required)
-            return required == 2 ? Applicability::NeedsTwoTracks
-                                 : Applicability::NeedsExactTracks;
-    }
+    if (required > 0 && selected != required)
+        return required == 2 ? Applicability::NeedsTwoTracks
+                             : Applicability::NeedsExactTracks;
+
+    const int minimum = module.requires.minSelectedTracks;
+    if (minimum > 0 && selected < minimum)
+        return minimum == 2 ? Applicability::NeedsTwoTracks
+                            : Applicability::NeedsExactTracks;
 
     return Applicability::Ok;
 }

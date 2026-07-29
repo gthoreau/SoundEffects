@@ -63,6 +63,11 @@ target_sources(SoundEffect PRIVATE
     Source/effects/modules/Replicate.cpp
     Source/effects/modules/WeirdTempo.cpp
     Source/effects/modules/ZeroCrosser.cpp
+    Source/effects/modules/Channels.cpp
+    Source/effects/modules/Resampling.cpp
+    Source/effects/modules/QuickMix.cpp
+    Source/effects/modules/IterativeCrossfade.cpp
+    Source/effects/modules/Keyboard.cpp
     Source/ui/Sys7.cpp
     Source/ui/EffectsPanel.cpp
     Source/ui/CanvasComponent.cpp

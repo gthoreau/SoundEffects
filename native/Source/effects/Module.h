@@ -48,8 +48,18 @@ const char* groupName (EffectGroup) noexcept;
  */
 struct Requirements
 {
-    /** Difference, Sum and Iterative Crossfade are undefined on anything else. */
+    /** A module that is undefined on any other count. Nothing sets this yet — the
+        pairwise modules turned out to want a MINIMUM, not an exact count. */
     int exactSelectedTracks = 0;      // 0 = any
+    /**
+     * The fewest selected tracks the module can work with.
+     *
+     * Sum, Difference and Iterative Crossfade need TWO — but two is a floor, not a
+     * quota: each takes the first two selected and ignores the rest, and
+     * Difference documents a "…from the first one?" prompt for exactly that case.
+     * Demanding an exact count here would grey out work the original does.
+     */
+    int minSelectedTracks = 0;        // 0 = any
     /** Downsample Bits and Resample Rate convert the WHOLE document; a partial
         selection is a confirmation prompt, not a scope. */
     bool wholeDocumentOnly = false;

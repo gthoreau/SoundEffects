@@ -40,6 +40,17 @@ const std::vector<EffectModule>& effectRegistry()
         list.push_back (modules::makeWeirdTempo());
         list.push_back (modules::makeZeroCrosser());
 
+        // Wave C — the structural ones.
+        list.push_back (modules::makeSum());
+        list.push_back (modules::makeDifference());
+        list.push_back (modules::makeSelectionToChannel());
+        list.push_back (modules::makeResampleRate());
+        list.push_back (modules::makeDownsampleBits());
+        list.push_back (modules::makeUpsampleBits());
+        list.push_back (modules::makeQuickMix());
+        list.push_back (modules::makeIterativeCrossfade());
+        list.push_back (modules::makeKeyboard());
+
         return list;
     }();
 

@@ -45,7 +45,12 @@ set(EFFECT_SOURCES
     ${ENGINE_DIR}/effects/modules/EchoDelay.cpp
     ${ENGINE_DIR}/effects/modules/Replicate.cpp
     ${ENGINE_DIR}/effects/modules/WeirdTempo.cpp
-    ${ENGINE_DIR}/effects/modules/ZeroCrosser.cpp)
+    ${ENGINE_DIR}/effects/modules/ZeroCrosser.cpp
+    ${ENGINE_DIR}/effects/modules/Channels.cpp
+    ${ENGINE_DIR}/effects/modules/Resampling.cpp
+    ${ENGINE_DIR}/effects/modules/QuickMix.cpp
+    ${ENGINE_DIR}/effects/modules/IterativeCrossfade.cpp
+    ${ENGINE_DIR}/effects/modules/Keyboard.cpp)
 
 add_executable(effect-fixtures
     run_fixtures.cpp

@@ -101,6 +101,21 @@ interface DocShape {
    * correctly does nothing, which tests none of its arithmetic.
    */
   scale?: number;
+  /**
+   * Per-track output routing, `[left, right]`. Defaults to L+R on every track.
+   *
+   * Quick Mix's stereo mode routes BY these toggles — the routing you hear while
+   * editing is the routing you get when you mix (§3) — so a document where every
+   * track is L+R cannot tell that behaviour from ignoring the toggles entirely.
+   * Verified by mutation: it did not.
+   */
+  pans?: Array<[boolean, boolean]>;
+  /**
+   * Per-track 8.8 volume; 0x0100 is unity. "Use each channel's pan" scales by
+   * this, and at unity that multiply is invisible — and worse, it keeps every
+   * accumulator integral, which hides whether the mix truncates or rounds.
+   */
+  volumes?: number[];
 }
 
 /**
@@ -132,6 +147,26 @@ const SHAPES: Record<string, DocShape> = {
   nativeRate8: { name: "nativeRate8", bps: 8, sizes: [768], rateFixed: NATIVE_RATE_FIXED },
   belowNative8: { name: "belowNative8", bps: 8, sizes: [768], rateFixed: NATIVE_RATE_FIXED - 1 },
 
+  // Quick Mix is the only module that reads a track's routing and volume, and
+  // every other shape leaves both at their defaults. Three tracks, hard-panned
+  // L / R / centre, at 1.5x, 0.5x and unity — so stereo routing is observable,
+  // the volume multiply is observable, and the accumulator stops being integral.
+  panned16: {
+    name: "panned16",
+    bps: 16,
+    sizes: [192, 160, 176],
+    pans: [
+      [true, false],
+      [false, true],
+      [true, true],
+    ],
+    volumes: [0x0180, 0x0080, 0x0100],
+  },
+
+  // Two tracks, quiet enough that Difference's normalize gain has a remainder
+  // past half its divisor — see the Difference cases for the arithmetic.
+  quietStereo16: { name: "quietStereo16", bps: 16, sizes: [192, 160], scale: 0.35 },
+
   quiet8: { name: "quiet8", bps: 8, sizes: [96], scale: 0.12 },
   quiet16: { name: "quiet16", bps: 16, sizes: [192], scale: 0.08 },
   quietRagged8: { name: "quietRagged8", bps: 8, sizes: [96, 64, 128], scale: 0.15 },
@@ -147,6 +182,13 @@ function buildDoc(shape: DocShape): SoundDocument {
   shape.sizes.forEach((size, i) => {
     const ch = doc.addChannel(doc.numChans + 1, size);
     fillChannel(ch.data, shape.bps, 0x1234 + i * 977, shape.scale ?? 1);
+    const pan = shape.pans?.[i];
+    if (pan) {
+      ch.outLeft = pan[0];
+      ch.outRight = pan[1];
+    }
+    const volume = shape.volumes?.[i];
+    if (volume !== undefined) ch.volume = volume;
   });
   doc.firstSelCh = 1;
   doc.lastSelCh = doc.numChans;
@@ -416,7 +458,22 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
   ],
   // Two-track modules: a mono document is not a valid input for them.
   Sum: twoChannelCases(),
-  Difference: twoChannelCases(),
+  Difference: [
+    ...twoChannelCases(),
+    // Normalize is off by default, so nothing exercised the scale factor at all —
+    // and the whole point of the module is seeing how small the difference is.
+    { shape: "stereo16", sel: "mid", params: { normalize: true } },
+    // And the same thing on quiet material, because the gain is
+    // trunc(max·100/peak) and whether that TRUNCATION is observable depends
+    // entirely on where the peak lands. At full scale the remainder is 6212
+    // against a half-peak of 31447 — nowhere near, so truncating and rounding
+    // agree and the quirk goes untested. At 0.35 it is 18924 against 11006:
+    // trunc gives 148, rounding 149. Computed, not guessed.
+    { shape: "quietStereo16", sel: "mid", params: { normalize: true } },
+    // Rendering to a New Document instead of a new track: the spawned-document
+    // hand-back was untested for Difference.
+    { shape: "stereo16", sel: "mid", params: { destination: 2 } },
+  ],
   "Iterative Crossfade": [
     {
       shape: "stereo16",
@@ -428,11 +485,25 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
       sel: "mid",
       params: { iterations: 3, silenceLength: 16, units: Unit.bytes },
     },
+    // Silence is given in BYTES and divided down to frames. ragged8 is 8-bit, so
+    // that divide is a no-op there and the other case asks for no silence at all —
+    // between them the conversion was untested.
+    {
+      shape: "stereo16",
+      sel: "mid",
+      params: { iterations: 3, silenceLength: 32, units: Unit.bytes },
+    },
   ],
   "Quick Mix": [
     { shape: "stereo16", sel: "mid", params: { destination: 1, use: 1, usePan: false } },
     { shape: "stereo16", sel: "caret", params: { destination: 2, use: 2, usePan: true } },
     { shape: "ragged8", sel: "pastShort", params: { destination: 1, use: 1, usePan: false } },
+    // The two cases above run on tracks that are all L+R at unity volume, which
+    // makes stereo routing and the volume multiply invisible and keeps every
+    // accumulator integral. Mutation testing confirmed all four of Quick Mix's
+    // documented behaviours were untested until these landed.
+    { shape: "panned16", sel: "mid", params: { destination: 1, use: 2, usePan: true } },
+    { shape: "panned16", sel: "mid", params: { destination: 1, use: 1, usePan: true } },
   ],
   // Whole-document modules: a partial selection is a confirmation, not a scope.
   "Resample Rate": [
@@ -450,10 +521,26 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
       params: { newBps: 8, expert: true, expertMode: 2 },
       seed: 5,
     },
+    // 16 -> 8 keeps only the high byte, so a one-LSB difference in the injected
+    // noise survives the truncation about once per 256 samples — on a 96-sample
+    // shape, usually never. Dropping to 12 bits masks only the low 4, so the
+    // same difference shows up 16x as often, and a long buffer makes it certain.
+    // Without this, whether the injection truncates or rounds was untestable.
+    {
+      shape: "long16",
+      sel: "caret",
+      params: { newBps: 12, expert: true, expertMode: 2 },
+      seed: 5,
+    },
+    // "Use Upsample Bits": asking to downsample to the current depth or higher is
+    // declined outright, and that refusal was never pinned.
+    { shape: "mono16", sel: "caret", params: { newBps: 16 }, expectNoOp: true },
   ],
   "Upsample Bits": [
     { shape: "mono8", sel: "caret", params: { newBps: 16 } },
     { shape: "ragged8", sel: "caret", params: { newBps: 16 } },
+    // The nag, the other way round: upsampling to the current depth or lower.
+    { shape: "mono16", sel: "caret", params: { newBps: 8 }, expectNoOp: true },
   ],
   "Waveform Generator": [
     { shape: "mono8", sel: "mid", params: { frequency: 440, amplitude: 80, waveType: 1 } },
@@ -585,6 +672,17 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
     // Header-only: Change Pitch moves the declared rate and touches no audio.
     { shape: "mono8", sel: "caret", params: { semitones: 12 } },
     { shape: "mono16", sel: "caret", params: { semitones: -5 } },
+    // Unison is a no-op — there is no pitch to change. Both cases above are
+    // non-zero, so that early-out was untested.
+    { shape: "mono8", sel: "caret", params: { semitones: 0 }, expectNoOp: true },
+    // Down an octave, which HALVES the rate. The default rate's Fixed is odd
+    // (1458473887), so the halved value lands on exactly .5 of a tick — the one
+    // place where rounding to the nearest tick and truncating toward zero provably
+    // disagree. Every other case here lands on a whole tick or close enough to
+    // one that both give the same answer, which left "doubleToFixed ROUNDS" as an
+    // untested claim. Deterministic, not lucky: if the material's rate ever
+    // changes, check this case still straddles a half-tick.
+    { shape: "mono8", sel: "caret", params: { semitones: -12 } },
   ],
 };
 

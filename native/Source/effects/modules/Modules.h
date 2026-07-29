@@ -55,4 +55,23 @@ EffectModule makeReplicate();        // Replicate.cpp   copies + gaps, no skelet
 EffectModule makeWeirdTempo();       // WeirdTempo.cpp  period doubler, ignores doExtend
 EffectModule makeZeroCrosser();      // ZeroCrosser.cpp moves the SELECTION, writes nothing
 
+// --- Wave C: the structural ones ---------------------------------------------
+// These are the first modules to use the Host's document-restructuring surface —
+// addNewTrack, newDocument/spawnedDocuments, resampleSoundBits/Rate — which
+// nothing in waves A or B touched.
+
+// Channels.cpp — two tracks in, a third out; short tracks zero-pad, not skip
+EffectModule makeSum();
+EffectModule makeDifference();
+EffectModule makeSelectionToChannel();
+
+// Resampling.cpp — these implement NO conversion; they validate and delegate
+EffectModule makeResampleRate();
+EffectModule makeDownsampleBits();
+EffectModule makeUpsampleBits();
+
+EffectModule makeQuickMix();           // QuickMix.cpp   sums to a track or a document
+EffectModule makeIterativeCrossfade(); // IterativeCrossfade.cpp  linear, no tween
+EffectModule makeKeyboard();           // Keyboard.cpp   edits the rate, not the audio
+
 } // namespace se::modules
