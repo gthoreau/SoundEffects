@@ -59,6 +59,10 @@ target_sources(SoundEffect PRIVATE
     Source/effects/modules/Robotize.cpp
     Source/effects/modules/Fir.cpp
     Source/effects/modules/Iir.cpp
+    Source/effects/modules/EchoDelay.cpp
+    Source/effects/modules/Replicate.cpp
+    Source/effects/modules/WeirdTempo.cpp
+    Source/effects/modules/ZeroCrosser.cpp
     Source/ui/Sys7.cpp
     Source/ui/EffectsPanel.cpp
     Source/ui/CanvasComponent.cpp

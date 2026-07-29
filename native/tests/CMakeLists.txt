@@ -41,7 +41,11 @@ set(EFFECT_SOURCES
     ${ENGINE_DIR}/effects/modules/Noise.cpp
     ${ENGINE_DIR}/effects/modules/Robotize.cpp
     ${ENGINE_DIR}/effects/modules/Fir.cpp
-    ${ENGINE_DIR}/effects/modules/Iir.cpp)
+    ${ENGINE_DIR}/effects/modules/Iir.cpp
+    ${ENGINE_DIR}/effects/modules/EchoDelay.cpp
+    ${ENGINE_DIR}/effects/modules/Replicate.cpp
+    ${ENGINE_DIR}/effects/modules/WeirdTempo.cpp
+    ${ENGINE_DIR}/effects/modules/ZeroCrosser.cpp)
 
 add_executable(effect-fixtures
     run_fixtures.cpp

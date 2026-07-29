@@ -122,6 +122,14 @@ EffectRunner::Outcome EffectRunner::apply (uint64_t windowId, const EffectModule
     out.ran = true;
     out.message = errorVoice (out.result, module.strings);
 
+    // Anything the module said while running, in its own voice. A module can speak
+    // without failing — Weird Tempo warns on every run and still returns noErr.
+    for (const auto& reported : host.errors)
+    {
+        std::string voice = errorVoice (reported.errNum, module.strings);
+        if (! voice.empty()) out.notices.push_back (std::move (voice));
+    }
+
     // Publish to the audio thread. Safe mid-playback: the swap is a pointer
     // exchange and the old document is retired to be freed on this thread.
     engine.commitEdit (windowId);

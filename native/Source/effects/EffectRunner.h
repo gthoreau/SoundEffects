@@ -80,6 +80,20 @@ public:
         ModResult   result = kModNoError;
         /** The module's own STR# 1000 voice, when it has one (§7.7). */
         std::string message;
+        /**
+         * What the module said via ModShowError DURING the run, in its own voice.
+         *
+         * Distinct from `message`, which is the voice of the RESULT CODE: a module
+         * can speak without failing. Weird Tempo warns on every single run and
+         * still returns noErr, so without this its defining behaviour — the
+         * apology it makes before mangling your sound — would be collected by the
+         * Host and then silently dropped.
+         *
+         * The reference raises these as a modal alert with a Cancel button, BEFORE
+         * touching anything. Doing that properly needs the alert layer (step 7);
+         * reporting after the fact is the honest interim, not the finished thing.
+         */
+        std::vector<std::string> notices;
         /** Windows created because the effect rendered to a "New Document". */
         std::vector<uint64_t> spawnedWindows;
     };

@@ -53,7 +53,8 @@ struct Tally
 bool runPortedModule (const std::string& moduleName,
                       const se::fx::Case& testCase,
                       se::SoundDocument& doc,
-                      std::vector<se::SoundDocument>& spawned)
+                      std::vector<se::SoundDocument>& spawned,
+                      se::ModResult& result)
 {
     const se::EffectModule* module = se::findEffect (moduleName);
     if (module == nullptr) return false;
@@ -68,7 +69,7 @@ bool runPortedModule (const std::string& moduleName,
     se::Host host (std::move (opts));
     host.doExtend = static_cast<se::DoExtend> (testCase.doExtend);
 
-    se::runEffect (*module, doc, host, testCase.params);
+    result = se::runEffect (*module, doc, host, testCase.params);
 
     for (const auto& d : host.spawnedDocuments)
         spawned.push_back (*d);
@@ -144,14 +145,27 @@ int main (int argc, char** argv)
             // starting point for every run and must survive intact.
             se::SoundDocument doc = testCase.input;
             std::vector<se::SoundDocument> spawned;
+            se::ModResult result = se::kModNoError;
 
-            if (! runPortedModule (file.moduleName, testCase, doc, spawned))
+            if (! runPortedModule (file.moduleName, testCase, doc, spawned, result))
             {
                 ++pending;
                 continue;
             }
 
             std::string why = se::fx::diff (testCase.expected, doc);
+
+            // The OSErr is part of the contract, not commentary: its SIGN tells the
+            // host whether the buffer was touched (§7.7), and kModCancel is how a
+            // module says "I declined" — Replicate with extension refused, Zero
+            // Crosser finding no crossing. A port that mangles nothing but reports
+            // the wrong outcome produces identical bytes and a lying UI, so the
+            // document diff alone cannot catch it.
+            if (why.empty() && result != testCase.result)
+            {
+                why = "returned " + std::to_string (result) + ", expected "
+                    + std::to_string (testCase.result);
+            }
 
             if (why.empty() && spawned.size() != testCase.spawned.size())
             {

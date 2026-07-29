@@ -43,4 +43,16 @@ EffectModule makeHighPassIIR();
 EffectModule makeLowPassIIR();
 EffectModule makeShelving();
 
+// --- Wave B: the length-changing ones ----------------------------------------
+// These grow their own track's buffer, which is why runSkeleton recomputes each
+// pass immediately before its body instead of measuring them all up front.
+
+// EchoDelay.cpp — one kernel, two sweep directions
+EffectModule makeEcho();
+EffectModule makeDelay();
+
+EffectModule makeReplicate();        // Replicate.cpp   copies + gaps, no skeleton
+EffectModule makeWeirdTempo();       // WeirdTempo.cpp  period doubler, ignores doExtend
+EffectModule makeZeroCrosser();      // ZeroCrosser.cpp moves the SELECTION, writes nothing
+
 } // namespace se::modules

@@ -732,6 +732,19 @@ void EffectsPanelComponent::applyEffect()
         return;
     }
 
+    // Something the module said while running outranks the outcome: "it applied"
+    // is true but useless next to Weird Tempo's own apology for the noise it just
+    // introduced. (Properly this is a modal alert raised BEFORE the run, with a
+    // Cancel button — that arrives with the alert layer.)
+    if (! outcome.notices.empty())
+    {
+        resultLine = juce::String (outcome.notices.front());
+        lastScopeWindow = 0;
+        if (onDocumentChanged) onDocumentChanged (targetId);
+        repaint();
+        return;
+    }
+
     // The module's own STR# 1000 voice wins when it has one (§7.7) — that is the
     // whole point of modules carrying their own error strings.
     if (! outcome.message.empty())
@@ -889,9 +902,14 @@ void EffectsPanelComponent::paint (Graphics& g)
     // something irreversible, what it did matters more than how much is selected.
     g.setColour (resultLine.isNotEmpty() ? kInk : kDim);
     g.setFont (juce::FontOptions (10.0f));
+    // Ellipsised, unlike the scope line above it: a derived readout is short by
+    // construction, but a module speaking in its own voice is not. Weird Tempo's
+    // warning runs to 145 characters and a plain clip ends it mid-sentence, on a
+    // word that reads like the end of one ("…which may introduce"). A visible "…"
+    // is the difference between a truncated warning and a false one.
     g.drawText (resultLine.isNotEmpty() ? resultLine : statusLine,
                 scope.reduced (kPad, 0).removeFromBottom (14),
-                juce::Justification::centredLeft, false);
+                juce::Justification::centredLeft, true);
     g.setColour (kInk);
     g.drawHorizontalLine (scope.getBottom() - 1, (float) scope.getX(), (float) scope.getRight());
 

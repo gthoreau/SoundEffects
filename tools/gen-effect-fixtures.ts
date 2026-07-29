@@ -27,7 +27,7 @@ import { Host } from "../src/runtime/host.js";
 import type { EffectModule } from "../src/runtime/module.js";
 import { DoExtend } from "../src/runtime/host.js";
 import { doubleToFixed, Unit } from "../src/units.js";
-import { setSample, frameSizeFor } from "../src/samples.js";
+import { getSample, setSample, frameSizeFor } from "../src/samples.js";
 import { EFFECTS } from "../src/effects/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -154,7 +154,13 @@ function buildDoc(shape: DocShape): SoundDocument {
 }
 
 /** How a case scopes the selection, mirroring what the panel will offer. */
-type SelKind = "caret" | "mid" | "firstTrack" | "secondTrack" | "pastShort";
+type SelKind =
+  | "caret"
+  | "mid"
+  | "firstTrack"
+  | "secondTrack"
+  | "pastShort"
+  | "silenceEdge";
 
 function applySelection(doc: SoundDocument, kind: SelKind): void {
   const frameSize = doc.frameSize;
@@ -196,6 +202,35 @@ function applySelection(doc: SoundDocument, kind: SelKind): void {
       doc.firstSelCh = 1;
       doc.lastSelCh = doc.numChans;
       break;
+    case "silenceEdge": {
+      // Sits inside the run of exact digital zeros and ends EXACTLY on the first
+      // negative sample after it.
+      //
+      // Zero Crosser is why this exists. "Zero counts as positive" and the
+      // crossing search's own `limit` are both invisible on ordinary material —
+      // a sine sweep changes sign every few frames, so the search always finds
+      // something long before the convention or the bound can matter. Only with
+      // silence at the edge and the crossing sitting ON the boundary do they
+      // become observable, which mutation testing is how we found out.
+      //
+      // Located by SCANNING rather than by fractions of the buffer: the sample
+      // that matters is a property of the generated material, and a hard-coded
+      // offset would silently stop meaning anything the day fillChannel changes.
+      const data = doc.channels[0]!.data;
+      const floor = Math.floor(data.length * 0.45);
+      let firstNeg = 0;
+      for (let p = floor; p + frameSize <= data.length; p += frameSize) {
+        if (getSample(data, p, doc.bps) < 0) {
+          firstNeg = p;
+          break;
+        }
+      }
+      doc.selSt = snap(Math.max(0, firstNeg - 12 * frameSize));
+      doc.selEnd = firstNeg;
+      doc.firstSelCh = 1;
+      doc.lastSelCh = doc.numChans;
+      break;
+    }
   }
 }
 
@@ -261,6 +296,15 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
       params: { delay: 24, strength: 70, onlyOn: true, onlyCount: 3 },
       extend: true,
     },
+    // An ODD delay on a 16-bit shape. Every other case above is already
+    // frame-aligned, so nothing tested the `delay - delay % frameSize` snap —
+    // verified by mutation: dropping the alignment passed the whole suite.
+    { shape: "mono16", sel: "mid", params: { delay: 25, strength: 70 }, extend: true },
+    // Strength 99 is the only way to reach the 80-echo cap: at 70% the 8% decay
+    // floor stops the sizing loop after 8 echoes and the cap is dead code. Here
+    // amp falls ~1 per echo, so it would take ~92 — the cap bites first. Also
+    // verified by mutation (80 -> 40 passed everything without this case).
+    { shape: "mono8", sel: "mid", params: { delay: 8, strength: 99 }, extend: true },
   ],
   Delay: [
     { shape: "mono8", sel: "mid", params: { delay: 24, strength: 70 }, extend: false },
@@ -352,6 +396,23 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
       extend: true,
     },
     { shape: "mono8", sel: "mid", params: { copies: 3 }, extend: false, expectNoOp: true },
+    // Divide-by-zero is a documented BEHAVIOUR — a friendly alert, then gap =
+    // selection length — and nothing exercised it until mutation testing removed
+    // the fallback and the suite stayed green.
+    {
+      shape: "mono8",
+      sel: "mid",
+      params: { copies: 2, gapMode: 2, gapDivisor: 0 },
+      extend: true,
+    },
+    // An ODD gap on a 16-bit shape: every gap above is already frame-aligned, so
+    // the `gap -= gap % frameSize` snap was untested.
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: { copies: 2, gapMode: 4, gapLength: 25, units: Unit.bytes },
+      extend: true,
+    },
   ],
   // Two-track modules: a mono document is not a valid input for them.
   Sum: twoChannelCases(),
@@ -406,6 +467,22 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
     // "mid" rather than "pastShort": a selection already ending at the longest
     // track has no room to the right, so shrink-from-the-right finds nothing.
     { shape: "ragged8", sel: "mid", params: { action: 2, side: 2 } },
+    // Expanding out of silence, where "zero counts as positive" decides the
+    // answer on BOTH sides. Treat zero as negative instead and the left edge
+    // lands on a different crossing and the right edge on the one after — a
+    // difference no other case can see.
+    { shape: "mono8", sel: "silenceEdge", params: { action: 1, side: 3 } },
+    // Shrinking inward across a run of zeros that contains no crossing at all.
+    // The search runs into its own `limit` — the only case that does — and finds
+    // nothing, so the module declines and touches nothing. That refusal IS the
+    // fixture: an off-by-one in the bound examines the frame AT selEnd, finds the
+    // crossing sitting on it, and collapses the selection.
+    {
+      shape: "mono8",
+      sel: "silenceEdge",
+      params: { action: 2, side: 1 },
+      expectNoOp: true,
+    },
   ],
   // Period is in bytes too: the factory 22255 would not complete one LFO cycle
   // inside a test buffer, leaving the sweep — the whole effect — unexercised.

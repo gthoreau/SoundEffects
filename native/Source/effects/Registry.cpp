@@ -33,6 +33,13 @@ const std::vector<EffectModule>& effectRegistry()
         list.push_back (modules::makeLowPassIIR());
         list.push_back (modules::makeShelving());
 
+        // Wave B — the length-changing ones.
+        list.push_back (modules::makeEcho());
+        list.push_back (modules::makeDelay());
+        list.push_back (modules::makeReplicate());
+        list.push_back (modules::makeWeirdTempo());
+        list.push_back (modules::makeZeroCrosser());
+
         return list;
     }();
 
