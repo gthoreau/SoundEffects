@@ -163,6 +163,12 @@ const SHAPES: Record<string, DocShape> = {
     volumes: [0x0180, 0x0080, 0x0100],
   },
 
+  // Flanger's envelope follower scans 1024-SAMPLE blocks and interpolates between
+  // a block's peak and the reference peak. Every other shape is under one block, so
+  // the two are the same number and the interpolation is invisible. Four blocks,
+  // and fillChannel's four regions guarantee the block peaks genuinely differ.
+  veryLong8: { name: "veryLong8", bps: 8, sizes: [4096] },
+
   // Two tracks, quiet enough that Difference's normalize gain has a remainder
   // past half its divisor — see the Difference cases for the arithmetic.
   quietStereo16: { name: "quietStereo16", bps: 16, sizes: [192, 160], scale: 0.35 },
@@ -546,6 +552,17 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
     { shape: "mono8", sel: "mid", params: { frequency: 440, amplitude: 80, waveType: 1 } },
     { shape: "mono16", sel: "mid", params: { frequency: 220, amplitude: 100, waveType: 2 } },
     { shape: "mono16", sel: "mid", params: { frequency: 110, amplitude: 60, waveType: 3 } },
+    // Two holes in one case. At 220 Hz on a 48-frame selection the phase only
+    // reaches 0.47, so it never wraps and the fmod that keeps square and sawtooth
+    // periodic was doing nothing; 4000 Hz gives it 8 cycles to get wrong. And every
+    // case above leaves Length at 0 (meaning "the whole selection"), so the clamp
+    // of Length against the selection was never exercised either — 40 bytes of 96
+    // means three fifths of the selection must come back untouched.
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: { frequency: 4000, amplitude: 90, waveType: 2, length: 40, units: Unit.bytes },
+    },
   ],
   "Zero Crosser": [
     { shape: "mono8", sel: "mid", params: { action: 1, side: 3 } },
@@ -609,6 +626,34 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
       },
       seed: 1,
     },
+    // Sawtooth HARD-RESETS where triangular reflects, but only once the
+    // accumulator reaches Delay+Width. At period 200 on a 96-frame buffer it
+    // climbs a fraction of the way and the reset never fires, so the two shapes
+    // were indistinguishable. A short period on a long buffer wraps it repeatedly.
+    {
+      shape: "long16",
+      sel: "caret",
+      params: { delay: 16, width: 8, period: 64, modulation: 3 },
+      seed: 1,
+    },
+    // The envelope follower, over a buffer longer than ONE 1024-sample block, with
+    // "louder means shorter". Under one block the block peak and the reference peak
+    // are the same number, so the interpolation between them cancels; and every
+    // other case leaves louderMeans at Longer, so the subtraction branch never ran.
+    {
+      shape: "veryLong8",
+      sel: "caret",
+      params: {
+        delay: 16,
+        width: 8,
+        period: 200,
+        envelopeFollower: true,
+        depth: 8,
+        depthUnits: Unit.bytes,
+        louderMeans: 2,
+      },
+      seed: 1,
+    },
   ],
   "Granular Synthesis": [
     {
@@ -632,6 +677,23 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
         finalDensity: 50,
         fadeLevel: 25,
         variance: 16,
+      },
+      seed: 11,
+    },
+    // Density ABOVE 100%, which is the only way grains overlap — and overlapping is
+    // the whole reason the accumulator is a float buffer that adds rather than
+    // replaces. Both cases above sit at 100% or below, so grains never touched and
+    // add-vs-replace made no difference to a single byte.
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: {
+        newLength: 2048,
+        units: Unit.bytes,
+        initialGrainLength: 64,
+        finalGrainLength: 64,
+        initialDensity: 200,
+        finalDensity: 200,
       },
       seed: 11,
     },
@@ -664,6 +726,22 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
         "period.finalValue": 384,
         "bite.initialValue": 64,
         "bite.finalValue": 64,
+      },
+      seed: 13,
+    },
+    // A Pan SWEEP across the stereo field. Both cases above leave Pan at its
+    // factory 50 — dead centre — where left and right gains are both 0.5 and
+    // inverting the mapping changes nothing at all.
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: {
+        newLength: 2048,
+        units: Unit.bytes,
+        "pan.initialValue": 0,
+        "pan.finalValue": 100,
+        "period.initialValue": 256,
+        "period.finalValue": 256,
       },
       seed: 13,
     },

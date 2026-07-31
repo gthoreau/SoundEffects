@@ -672,7 +672,9 @@ void EffectsPanelComponent::buildParamControls()
             // which is prose finishing a sentence, not a unit; jammed beside the
             // field it gets clipped to "of rando". Measuring rather than guessing
             // means the rule stays right whatever a module's schema says.
-            if (item.type == se::ItemType::Ignore && ! params.empty()
+            // A heading titles what comes AFTER it, so it never joins the row
+            // above however well it would fit — see SchemaItem::heading.
+            if (item.type == se::ItemType::Ignore && ! item.heading && ! params.empty()
                 && params.back()->canFitSuffix (item.label))
             {
                 params.back()->setSuffix (item.label);

@@ -64,6 +64,23 @@ struct SchemaItem
         clamps (Gain caps gain at a short's 32767). */
     bool hasMin = false, hasMax = false;
     double min = 0.0, max = 0.0;
+
+    /**
+     * This Ignore item labels what FOLLOWS it, not what precedes it.
+     *
+     * The DITL places every item by rectangle, so the original never had to say
+     * this — you can see that "Gain" sits above its group and "%" sits beside its
+     * field. A flat item list cannot see it, and the panel's rule for pulling a
+     * short trailing Ignore onto the previous field's line ("Amplify by: [__] %")
+     * has no way to tell the two apart: it read Sample Hose's five group headings
+     * as units and glued each one to the last field of the PRECEDING group, so
+     * "Rate" was the only group that appeared to have a name at all.
+     *
+     * Measuring whether the text fits — the step 6 fix — cannot decide this, since
+     * "Gain" fits perfectly well. It is a question of what the label MEANS, so the
+     * schema has to say.
+     */
+    bool heading = false;
 };
 
 using SettingsSchema = std::vector<SchemaItem>;
@@ -135,6 +152,14 @@ inline SchemaItem staticText (std::string label)
     SchemaItem i;
     i.type = ItemType::Ignore;
     i.label = std::move (label);
+    return i;
+}
+
+/** Static text that titles the items BELOW it — a group heading, never a unit. */
+inline SchemaItem staticHeading (std::string label)
+{
+    SchemaItem i = staticText (std::move (label));
+    i.heading = true;
     return i;
 }
 

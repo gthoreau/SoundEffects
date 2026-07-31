@@ -74,4 +74,14 @@ EffectModule makeQuickMix();           // QuickMix.cpp   sums to a track or a do
 EffectModule makeIterativeCrossfade(); // IterativeCrossfade.cpp  linear, no tween
 EffectModule makeKeyboard();           // Keyboard.cpp   edits the rate, not the audio
 
+// --- Wave D: the float ones --------------------------------------------------
+// Norris.h carries the two verified formulas Granular and Sample Hose share.
+// These modules compute in real floating point and truncate only at the write —
+// the opposite of Ricci's integer-only house style, and authentic.
+
+EffectModule makeFlanger();            // Flanger.cpp    swept comb; feedback flips the sweep
+EffectModule makeGranularSynthesis();  // Granular.cpp   quasi-Gaussian grains
+EffectModule makeSampleHose();         // SampleHose.cpp the app's ONLY interpolating DSP
+EffectModule makeWaveformGenerator();  // Waveform.cpp   sine/square/saw into the selection
+
 } // namespace se::modules

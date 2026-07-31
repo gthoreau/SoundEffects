@@ -68,6 +68,10 @@ target_sources(SoundEffect PRIVATE
     Source/effects/modules/QuickMix.cpp
     Source/effects/modules/IterativeCrossfade.cpp
     Source/effects/modules/Keyboard.cpp
+    Source/effects/modules/Flanger.cpp
+    Source/effects/modules/Granular.cpp
+    Source/effects/modules/SampleHose.cpp
+    Source/effects/modules/Waveform.cpp
     Source/ui/Sys7.cpp
     Source/ui/EffectsPanel.cpp
     Source/ui/CanvasComponent.cpp

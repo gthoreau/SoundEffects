@@ -51,6 +51,12 @@ const std::vector<EffectModule>& effectRegistry()
         list.push_back (modules::makeIterativeCrossfade());
         list.push_back (modules::makeKeyboard());
 
+        // Wave D — the float ones.
+        list.push_back (modules::makeFlanger());
+        list.push_back (modules::makeGranularSynthesis());
+        list.push_back (modules::makeSampleHose());
+        list.push_back (modules::makeWaveformGenerator());
+
         return list;
     }();
 

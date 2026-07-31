@@ -50,7 +50,11 @@ set(EFFECT_SOURCES
     ${ENGINE_DIR}/effects/modules/Resampling.cpp
     ${ENGINE_DIR}/effects/modules/QuickMix.cpp
     ${ENGINE_DIR}/effects/modules/IterativeCrossfade.cpp
-    ${ENGINE_DIR}/effects/modules/Keyboard.cpp)
+    ${ENGINE_DIR}/effects/modules/Keyboard.cpp
+    ${ENGINE_DIR}/effects/modules/Flanger.cpp
+    ${ENGINE_DIR}/effects/modules/Granular.cpp
+    ${ENGINE_DIR}/effects/modules/SampleHose.cpp
+    ${ENGINE_DIR}/effects/modules/Waveform.cpp)
 
 add_executable(effect-fixtures
     run_fixtures.cpp

@@ -43,9 +43,13 @@ EffectModule makeQuickMix()
     m.schema = []
     {
         return SettingsSchema {
-            staticText ("Mix to"),
+            // Headings. These happen to render correctly as plain static text
+            // because a radio group declines a suffix — but that is the next
+            // item's business, not theirs, and saying what they are keeps them
+            // right if the row types around them ever change.
+            staticHeading ("Mix to"),
             radioGroup ("destination", { "New Channel", "New Document" }),
-            staticText ("Use"),
+            staticHeading ("Use"),
             radioGroup ("use", { "Mono", "Stereo" }),
             checkBox ("usePan", "Use each channel's pan"),
         };
