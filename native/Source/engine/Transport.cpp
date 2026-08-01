@@ -27,6 +27,11 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
     cachedFrameSize = doc.frameSize();
     const bool hasSelection = doc.selSt != doc.selEnd;
 
+    // The region published to the UI: the same span the ear gets, whichever branch
+    // below sets it. Track scope is every track unless a selection narrows it.
+    size_t regionEnd = 0;
+    int regionFirst = 1, regionLast = doc.numTracks();
+
     ctx = {};
     if (opts.loop && opts.useLoopRegion && doc.loopEnd > doc.loopSt)
     {
@@ -35,20 +40,26 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
         ctx.selSt = doc.loopSt; ctx.selEnd = doc.loopEnd;
         ctx.firstSelTrack = 1; ctx.lastSelTrack = doc.numTracks();
         pos = static_cast<double> (ctx.selSt);
+        regionEnd = ctx.selEnd;
     }
     else if (opts.loop && hasSelection)
     {
-        // Loop the selection, in the selected tracks (they stay in phase).
+        // Loop the selection, in the selected tracks (they stay in phase). This is
+        // a SNAPSHOT: from here on the loop is this range, whatever the user goes
+        // on to select. Stop and play again is how you re-aim it.
         ctx.mode = LoopMode::selection;
         ctx.selSt = doc.selSt; ctx.selEnd = doc.selEnd;
         ctx.firstSelTrack = doc.firstSelTrack; ctx.lastSelTrack = doc.lastSelTrack;
         pos = static_cast<double> (ctx.selSt);
+        regionEnd = ctx.selEnd;
+        regionFirst = ctx.firstSelTrack; regionLast = ctx.lastSelTrack;
     }
     else if (opts.loop)
     {
         // No selection: every track loops over ITS OWN length, independently.
         ctx.mode = LoopMode::all;
         pos = 0.0;
+        regionEnd = doc.maxTrackSize();
     }
     else
     {
@@ -60,11 +71,16 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
             pos = (playFrom == PlayFrom::insertionPoint) ? static_cast<double> (doc.selSt) : 0.0;
             playEnd = doc.maxTrackSize();
         }
+        regionEnd = playEnd;
     }
 
     if (opts.soloTrack >= 0) { monitor.soloed.clear(); monitor.soloed.insert (opts.soloTrack); }
 
     uiLoopModeCode.store (static_cast<uint8_t> (ctx.mode), std::memory_order_relaxed);
+    uiRegionSt.store (static_cast<size_t> (pos), std::memory_order_relaxed);
+    uiRegionEnd.store (regionEnd, std::memory_order_relaxed);
+    uiRegionFirst.store (regionFirst, std::memory_order_relaxed);
+    uiRegionLast.store (regionLast, std::memory_order_relaxed);
     setState (TransportState::playing);
     uiPos.store (static_cast<size_t> (pos), std::memory_order_relaxed);
 }
@@ -75,6 +91,11 @@ void Transport::stop() noexcept
     pos = 0.0;
     advanceScale = 1.0;
     uiPos.store (0, std::memory_order_relaxed);
+    // Nothing is playing, so there is no playing region. The UI falls back to the
+    // selection — which is what the next play() would loop. Pause does NOT clear
+    // it: a held loop is still that loop.
+    uiRegionSt.store (0, std::memory_order_relaxed);
+    uiRegionEnd.store (0, std::memory_order_relaxed);
 }
 
 void Transport::pause() noexcept

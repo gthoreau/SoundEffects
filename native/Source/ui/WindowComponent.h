@@ -8,6 +8,8 @@
 //
 // Waveforms share one byte-time axis (spanning the window's longest track) so a
 // shorter track visibly ends partway and the selection lines up across tracks.
+// That axis is a VIEW onto the document, not the whole of it: the navigator strip
+// under the lanes zooms and pans it, exactly as the original's did.
 //
 // The window is resizable by the grip in its bottom-right corner. The chrome
 // (title bar, info strip, transport) keeps a fixed height — resizing only ever
@@ -116,11 +118,11 @@ private:
     int numTracks() const noexcept;
     int laneHeight() const noexcept { return laneH; }
     // Title bar, then the content inset on all four sides, with a gap above and
-    // below the block of lanes — four margins of air: under the title, each side of
-    // the lanes, and under the transport. Plus the lane block's own padding, top and
-    // bottom, which is height the lanes themselves never get to use.
+    // below the block of lanes and another under the navigator — five margins of
+    // air. Plus the lane block's own padding, top and bottom, which is height the
+    // lanes themselves never get to use.
     static constexpr int chromeHeight() noexcept
-    { return kTitleH + kInfoH + kTransportH + 4 * kMargin + 2 * kPad; }
+    { return kTitleH + kInfoH + kNavH + kTransportH + 5 * kMargin + 2 * kPad; }
     juce::Rectangle<int> resizeGripBounds() const;
     /** Everything below the title bar, inset from the frame. The title bar is the
         only thing still running edge to edge: it belongs to the frame, not to the
@@ -140,6 +142,18 @@ private:
     static int outSelection (const se::Track&) noexcept;
     juce::Rectangle<int> ctrlRect (int t, int which) const;   // 0=up 1=down 2=trash
     juce::Rectangle<int> waveRect (int t) const;
+    /** The navigator strip: zoom in / zoom out / whole sound, then ◀ well ▶. */
+    juce::Rectangle<int> navRect() const;
+    /** One navigator button: 0 = zoom in, 1 = zoom out, 2 = whole sound,
+        3 = pan left, 4 = pan right. */
+    juce::Rectangle<int> navButton (int i) const;
+    /** The white well between the two arrows — the whole sound at a glance. */
+    juce::Rectangle<int> navWellRect() const;
+    /** Inside the well's frame, where the ticks, the loop block and the view bar
+        are actually drawn. Clicks map through the same rectangle, so what you aim
+        at is what you hit. */
+    juce::Rectangle<int> navWellInner() const;
+    void drawNavIcon (juce::Graphics&, int which, juce::Rectangle<int> button) const;
     juce::Rectangle<int> transportBounds() const;
     juce::Rectangle<int> transportButton (int i) const;       // 0..kNumTransportButtons-1
     /** Draw transport symbol `which` inside `button`, in the current colour. The
@@ -159,7 +173,22 @@ private:
     int    waveOriginX() const noexcept;
     int    waveWidth() const noexcept;
     size_t byteAtX (int x, size_t maxSize) const noexcept;
+    /** Where a byte lands on the axis. Zoomed in this is routinely OFF the lane, on
+        either side — every caller has to clamp or skip. */
     int    xAtByte (size_t b, size_t maxSize) const noexcept;
+
+    // --- the view (zoom / pan) ---
+    /** Smallest fraction of the document worth showing: one frame per pixel column.
+        Past that there is no more detail to reveal, only emptier columns. */
+    double minSpanFrac() const noexcept;
+    /** Pull the view back inside the document — after a zoom, a pan, a resize (the
+        floor moves with the lane width) or an edit that changed the length. */
+    void   clampView() noexcept;
+    void   zoomBy (double factor);
+    /** Scroll by `pages` screenfuls, signed. */
+    void   panBy (double pages);
+    /** Centre the view on the point of the well the pointer is over. */
+    void   setViewCentreFromWellX (int x);
     /** Which track a y in window coordinates falls in, clamped to the real ones. */
     int    trackAtY (int y, int numTracks) const noexcept;
 
@@ -188,6 +217,13 @@ private:
     static constexpr int kMargin = 5;
     static constexpr int kPad = 4;
     static constexpr int kTransportH = kBtnSize + 2 * kBtnMargin;
+
+    // Navigator: three square buttons, then ◀ well ▶ taking whatever is left.
+    static constexpr int kNavH = 20;
+    static constexpr int kNavBtnW = 20;
+    static constexpr int kNavArrowW = 16;
+    static constexpr int kNavGap = 3;
+
     static constexpr int kLaneH = 48;      // default lane height
     // Wide enough for "L+R" — the output-channel selector is three stacked cells,
     // not two boxes, and a label that cannot be read is not a control.
@@ -209,10 +245,19 @@ private:
 
     juce::Colour tint { 0xffbfbfbf };
 
+    // The visible slice of the document, as FRACTIONS of the longest track rather
+    // than byte counts — so a cut or a paste rescales the view instead of leaving
+    // it pointing off the end of a document that just got shorter.
+    double viewStartFrac = 0.0;   // fraction of the sound at the left edge
+    double viewSpanFrac  = 1.0;   // fraction of the sound visible; 1.0 = all of it
+
     // waveform peak cache (per track, one min/max per pixel column of waveWidth)
     int cachedWidth = -1;
     std::vector<size_t> cachedSizes;
     size_t cachedMax = 0;
+    // The peaks are computed for one view, so the view is part of the cache key.
+    // Without these, zooming redrew the same columns it had already cached.
+    double cachedStartFrac = -1.0, cachedSpanFrac = -1.0;
     std::vector<std::vector<juce::Range<float>>> peaks;
 
     bool hovered = false;
@@ -234,6 +279,9 @@ private:
 
     // inline rename, over the title bar
     std::unique_ptr<juce::TextEditor> nameEditor;
+
+    // navigator well drag (scrubbing the view across the sound)
+    bool navDragging = false;
 
     // selection drag
     bool selecting = false;

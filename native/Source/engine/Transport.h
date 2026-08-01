@@ -60,6 +60,21 @@ public:
         return static_cast<LoopMode> (uiLoopModeCode.load (std::memory_order_relaxed));
     }
 
+    /**
+     * The byte range this transport is ACTUALLY playing, and the 1-based track
+     * range it plays it in — both frozen at play(), both empty while stopped.
+     *
+     * NOT the document's selection, and the difference matters: a running loop is
+     * never re-aimed. Select somewhere else while it plays and the old region
+     * keeps looping until you stop and play again. Anything drawing the loop — the
+     * navigator's block, the playhead — has to read THIS, or it will show a region
+     * the ear is not hearing.
+     */
+    size_t uiPlaySt()  const noexcept { return uiRegionSt.load (std::memory_order_relaxed); }
+    size_t uiPlayEnd() const noexcept { return uiRegionEnd.load (std::memory_order_relaxed); }
+    int uiFirstPlayTrack() const noexcept { return uiRegionFirst.load (std::memory_order_relaxed); }
+    int uiLastPlayTrack()  const noexcept { return uiRegionLast.load (std::memory_order_relaxed); }
+
     int  masterVolume = VOLUME_FULL;   // 0..7
     TrackMonitor monitor;
     PlayFrom playFrom = PlayFrom::beginning;
@@ -90,6 +105,10 @@ private:
     std::atomic<size_t>  uiPos { 0 };
     std::atomic<uint8_t> uiStateCode { static_cast<uint8_t> (TransportState::stopped) };
     std::atomic<uint8_t> uiLoopModeCode { static_cast<uint8_t> (LoopMode::once) };
+    // Written only by play()/stop() — on the audio thread, like everything else
+    // here, since transport commands arrive through the engine's queue.
+    std::atomic<size_t>  uiRegionSt { 0 }, uiRegionEnd { 0 };
+    std::atomic<int>     uiRegionFirst { 1 }, uiRegionLast { 1 };
 };
 
 } // namespace se

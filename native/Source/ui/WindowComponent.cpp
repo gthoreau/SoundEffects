@@ -16,6 +16,7 @@ const Colour kWhite { 0xffffffff };
 const Colour kWave  { 0xff202020 };
 const Colour kSelFill { 0x553060c0 };
 const Colour kRecord { 0xffcc2222 };   // the record dot, red on any tint
+const Colour kNavView { 0xff2020cc };  // navigator: the slice of sound on screen
 }
 
 WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
@@ -92,7 +93,7 @@ Rectangle<int> WindowComponent::lanesRect() const
 {
     auto c = contentRect();
     c.removeFromTop (kInfoH + kMargin);
-    c.removeFromBottom (kTransportH + kMargin);
+    c.removeFromBottom (kTransportH + kMargin + kNavH + kMargin);
     return c;
 }
 
@@ -177,6 +178,84 @@ Rectangle<int> WindowComponent::transportBounds() const
     return contentRect().removeFromBottom (kTransportH);
 }
 
+// --- navigator geometry -----------------------------------------------------
+
+Rectangle<int> WindowComponent::navRect() const
+{
+    auto c = contentRect();
+    c.removeFromBottom (kTransportH + kMargin);
+    return c.removeFromBottom (kNavH);
+}
+
+Rectangle<int> WindowComponent::navWellRect() const
+{
+    auto bar = navRect();
+    const int left  = 3 * (kNavBtnW + kNavGap) + kNavArrowW + kNavGap;
+    const int right = kNavArrowW + kNavGap;
+    // The well is the elastic part: the buttons keep their size at every window
+    // width and the well takes what is left, down to a floor that keeps it a well
+    // rather than a sliver.
+    return { bar.getX() + left, bar.getY(),
+             std::max (8, bar.getWidth() - left - right), bar.getHeight() };
+}
+
+Rectangle<int> WindowComponent::navWellInner() const { return navWellRect().reduced (2, 2); }
+
+Rectangle<int> WindowComponent::navButton (int i) const
+{
+    auto bar = navRect();
+    if (i < 3) return { bar.getX() + i * (kNavBtnW + kNavGap), bar.getY(), kNavBtnW, bar.getHeight() };
+    if (i == 3) return { navWellRect().getX() - kNavGap - kNavArrowW, bar.getY(), kNavArrowW, bar.getHeight() };
+    return { navWellRect().getRight() + kNavGap, bar.getY(), kNavArrowW, bar.getHeight() };
+}
+
+// --- the view ---------------------------------------------------------------
+
+double WindowComponent::minSpanFrac() const noexcept
+{
+    auto* d = doc();
+    const size_t maxSize = d != nullptr ? d->maxTrackSize() : 0;
+    if (maxSize == 0) return 1.0;
+    // One frame per pixel column is the floor. Zoomed in further, every column
+    // would be the same sample repeated — more magnification, no more waveform.
+    const double frames = (double) waveWidth() * (double) std::max (1, d->frameSize());
+    return std::min (1.0, frames / (double) maxSize);
+}
+
+void WindowComponent::clampView() noexcept
+{
+    viewSpanFrac  = std::clamp (viewSpanFrac, minSpanFrac(), 1.0);
+    viewStartFrac = std::clamp (viewStartFrac, 0.0, 1.0 - viewSpanFrac);
+}
+
+void WindowComponent::zoomBy (double factor)
+{
+    // Zoom about the CENTRE of the view: whatever you were looking at is still
+    // what you are looking at, only nearer or further away.
+    const double centre = viewStartFrac + viewSpanFrac * 0.5;
+    viewSpanFrac = std::clamp (viewSpanFrac * factor, minSpanFrac(), 1.0);
+    viewStartFrac = centre - viewSpanFrac * 0.5;
+    clampView();
+    cachedWidth = -1;
+}
+
+void WindowComponent::panBy (double pages)
+{
+    viewStartFrac += pages * viewSpanFrac;
+    clampView();
+    cachedWidth = -1;
+}
+
+void WindowComponent::setViewCentreFromWellX (int x)
+{
+    auto well = navWellInner();
+    const double f = std::clamp ((double) (x - well.getX()) / (double) std::max (1, well.getWidth()),
+                                0.0, 1.0);
+    viewStartFrac = f - viewSpanFrac * 0.5;
+    clampView();
+    cachedWidth = -1;
+}
+
 Rectangle<int> WindowComponent::transportButton (int i) const
 {
     auto bar = transportBounds().reduced (kBtnMargin, kBtnMargin);
@@ -192,7 +271,8 @@ size_t WindowComponent::byteAtX (int x, size_t maxSize) const noexcept
 {
     if (maxSize == 0) return 0;
     const double frac = std::clamp ((double) (x - waveOriginX()) / (double) waveWidth(), 0.0, 1.0);
-    size_t b = (size_t) (frac * (double) maxSize);
+    const double docFrac = std::clamp (viewStartFrac + frac * viewSpanFrac, 0.0, 1.0);
+    size_t b = (size_t) (docFrac * (double) maxSize);
     const size_t fs = (size_t) std::max (1, doc() ? doc()->frameSize() : 1);
     return b - (b % fs);
 }
@@ -200,7 +280,11 @@ size_t WindowComponent::byteAtX (int x, size_t maxSize) const noexcept
 int WindowComponent::xAtByte (size_t b, size_t maxSize) const noexcept
 {
     if (maxSize == 0) return waveOriginX();
-    return waveOriginX() + (int) ((double) b / (double) maxSize * (double) waveWidth());
+    const double frac = ((double) b / (double) maxSize - viewStartFrac)
+                        / std::max (1.0e-12, viewSpanFrac);
+    // Deliberately unclamped: a byte outside the view has to read as off-lane so
+    // callers can drop it, not pile up on the edge pretending to be visible.
+    return waveOriginX() + (int) std::lround (frac * (double) waveWidth());
 }
 
 int WindowComponent::trackAtY (int y, int n) const noexcept
@@ -216,13 +300,16 @@ void WindowComponent::ensurePeaks (se::SoundDocument& d)
     const int w = waveWidth();
     const size_t maxSize = d.maxTrackSize();
 
-    bool changed = ((int) cachedSizes.size() != n) || (cachedWidth != w) || (cachedMax != maxSize);
+    bool changed = ((int) cachedSizes.size() != n) || (cachedWidth != w) || (cachedMax != maxSize)
+                   || ! juce::exactlyEqual (cachedStartFrac, viewStartFrac)
+                   || ! juce::exactlyEqual (cachedSpanFrac, viewSpanFrac);
     if (! changed)
         for (int t = 0; t < n; ++t)
             if (cachedSizes[(size_t) t] != d.tracks[(size_t) t].data.size()) { changed = true; break; }
     if (! changed) return;
 
     cachedWidth = w; cachedMax = maxSize;
+    cachedStartFrac = viewStartFrac; cachedSpanFrac = viewSpanFrac;
     cachedSizes.assign ((size_t) n, 0);
     peaks.assign ((size_t) n, {});
 
@@ -240,9 +327,15 @@ void WindowComponent::ensurePeaks (se::SoundDocument& d)
 
         for (int x = 0; x < w; ++x)
         {
-            size_t b0 = (size_t) ((double) x       / w * (double) maxSize);
-            size_t b1 = (size_t) ((double) (x + 1) / w * (double) maxSize);
+            // The column spans a slice of the VIEW, not of the whole sound.
+            const double f0 = viewStartFrac + (double) x       / w * viewSpanFrac;
+            const double f1 = viewStartFrac + (double) (x + 1) / w * viewSpanFrac;
+            size_t b0 = (size_t) (std::clamp (f0, 0.0, 1.0) * (double) maxSize);
+            size_t b1 = (size_t) (std::clamp (f1, 0.0, 1.0) * (double) maxSize);
             b0 -= b0 % (size_t) frameSize;
+            // Zoomed right in a column can be narrower than one frame, and a column
+            // that reads no samples draws as a gap. Always take at least one.
+            if (b1 <= b0) b1 = b0 + (size_t) frameSize;
             float lo = 0.0f, hi = 0.0f; bool any = false;
             for (size_t b = b0; b < b1 && b + (size_t) frameSize <= track.data.size(); b += (size_t) frameSize)
             {
@@ -338,12 +431,67 @@ void WindowComponent::drawTransportSymbol (Graphics& g, int which, Rectangle<int
     }
 }
 
+// --- navigator icons --------------------------------------------------------
+
+// The zoom pair is the original's mountain range, drawn twice: ONE big peak (zoomed
+// in — the sound magnified) against THREE small ones (zoomed out — more of it, each
+// feature smaller). Side by side the direction is unmistakable, which a magnifier
+// glyph at 10 pixels never is. Peaks, not the stroked waveform this used to draw:
+// a baseline with two ticks on it reads as a letter H at this size, not a sound.
+void WindowComponent::drawNavIcon (Graphics& g, int which, Rectangle<int> button) const
+{
+    const auto box = button.reduced (5, 5).toFloat();
+
+    switch (which)
+    {
+        case 0:     // zoom in
+        case 1:     // zoom out
+        {
+            const int n = which == 0 ? 1 : 3;
+            const float w = box.getWidth() / (float) n;
+            juce::Path p;
+            for (int i = 0; i < n; ++i)
+            {
+                const float x = box.getX() + (float) i * w;
+                p.addTriangle (x, box.getBottom(), x + w, box.getBottom(),
+                               x + w * 0.5f, box.getY());
+            }
+            g.fillPath (p);
+            break;
+        }
+
+        case 2:     // whole sound: three stacked rules, the "flat" view
+            for (int i = 0; i < 3; ++i)
+                g.fillRect (juce::Rectangle<float> (box.getX(),
+                                                    box.getY() + box.getHeight() * 0.5f * (float) i,
+                                                    box.getWidth(), 1.5f));
+            break;
+
+        case 3:     // pan left
+        case 4:     // pan right
+        {
+            const float w = box.getWidth() * 0.8f, h = box.getHeight() * 0.8f;
+            const auto a = juce::Rectangle<float> (w, h).withCentre (box.getCentre());
+            juce::Path p;
+            if (which == 3) p.addTriangle (a.getRight(), a.getY(), a.getRight(), a.getBottom(), a.getX(), a.getCentreY());
+            else            p.addTriangle (a.getX(), a.getY(), a.getX(), a.getBottom(), a.getRight(), a.getCentreY());
+            g.fillPath (p);
+            break;
+        }
+
+        default: break;
+    }
+}
+
 // --- paint ------------------------------------------------------------------
 
 void WindowComponent::paint (Graphics& g)
 {
     auto* d = doc();
     if (d == nullptr) return;
+    // An edit under us changes the length the view is a fraction OF, so re-anchor
+    // before anything is measured against it.
+    clampView();
     ensurePeaks (*d);
     const size_t maxSize = d->maxTrackSize();
 
@@ -385,6 +533,17 @@ void WindowComponent::paint (Graphics& g)
     const bool playing = wsnap && wsnap->transport->uiState() == se::TransportState::playing;
     const size_t playPos = wsnap ? wsnap->transport->uiPlayhead() : 0;
     const se::LoopMode loopMode = wsnap ? wsnap->transport->uiLoopMode() : se::LoopMode::once;
+
+    // What is ACTUALLY playing, frozen when play was pressed — not the document's
+    // selection. Selecting elsewhere mid-loop leaves the old region looping (stop
+    // and play again is how you re-aim it), so the playhead below and the block in
+    // the navigator both come from here. Reading the live selection instead put
+    // the playhead in a range the ear was not hearing.
+    const bool rolling = wsnap && wsnap->transport->uiState() != se::TransportState::stopped;
+    const size_t loopSt   = rolling ? wsnap->transport->uiPlaySt()  : 0;
+    const size_t loopEnd  = rolling ? wsnap->transport->uiPlayEnd() : 0;
+    const int loopFirstTr = rolling ? wsnap->transport->uiFirstPlayTrack() : 1;
+    const int loopLastTr  = rolling ? wsnap->transport->uiLastPlayTrack()  : 1;
     for (int t = 0; t < n; ++t)
     {
         // Output channel: one three-way selector, L / L+R / R top to bottom. The
@@ -421,7 +580,11 @@ void WindowComponent::paint (Graphics& g)
         const float mid = (float) wr.getCentreY();
         const float amp = (float) wr.getHeight() * 0.5f - 3.0f;
         const size_t lenT = track.data.size();
-        const int endX = std::min (xAtByte (lenT, maxSize), wr.getRight());
+        // Zoomed in, this track's end is routinely off one side of the lane or the
+        // other, so the split between "audio" and "past the end" is clamped rather
+        // than trusted: unclamped it drew the baseline backwards, or dotted the
+        // whole lane of a track that is entirely on screen.
+        const int endX = std::clamp (xAtByte (lenT, maxSize), wr.getX(), wr.getRight());
 
         g.setColour (kWave);
         g.drawHorizontalLine ((int) mid, (float) wr.getX(), (float) endX);   // silence: solid baseline
@@ -449,16 +612,21 @@ void WindowComponent::paint (Graphics& g)
                 case se::LoopMode::once: present = playPos < lenA; ph = playPos; break;
                 case se::LoopMode::all:  ph = lenA ? playPos % lenA : 0; break;
                 case se::LoopMode::selection:
-                    if (t >= d->firstSelTrack - 1 && t <= d->lastSelTrack - 1)
+                    if (t >= loopFirstTr - 1 && t <= loopLastTr - 1)
                     {
-                        const size_t selLen = d->selEnd > d->selSt ? d->selEnd - d->selSt : 0;
-                        if (selLen > 0) { ph = d->selSt + (playPos >= d->selSt ? playPos - d->selSt : 0) % selLen; present = ph < lenA; }
+                        const size_t loopLen = loopEnd > loopSt ? loopEnd - loopSt : 0;
+                        if (loopLen > 0) { ph = loopSt + (playPos >= loopSt ? playPos - loopSt : 0) % loopLen; present = ph < lenA; }
                         else ph = lenA ? playPos % lenA : 0;
                     }
                     else present = false;
                     break;
             }
-            if (present) { g.setColour (kInk); g.drawVerticalLine (xAtByte (ph, maxSize), (float) wr.getY(), (float) wr.getBottom()); }
+            // ...and only if it is inside the view. Zoomed in, the playhead spends
+            // most of its pass off-lane; drawn anyway it would sit on the edge and
+            // read as a playhead that had stopped there.
+            const int px = xAtByte (ph, maxSize);
+            if (present && px >= wr.getX() && px < wr.getRight())
+            { g.setColour (kInk); g.drawVerticalLine (px, (float) wr.getY(), (float) wr.getBottom()); }
         }
     }
 
@@ -480,12 +648,22 @@ void WindowComponent::paint (Graphics& g)
     // selection at the clicked byte) and paste has always honoured it, but nothing
     // drew it, so the click looked like it had done nothing at all. It is an I-beam
     // caret, serifed, so it cannot be read as the playhead: that is a plain rule.
+    //
+    // Both are CLIPPED to the lane. Zoomed in, the selection routinely runs off one
+    // or both ends of the view, and an unclipped fill would spill sideways over the
+    // control columns and the window frame.
     if (d->selSt != d->selEnd)
     {
-        const int x0 = xAtByte (d->selSt, maxSize), x1 = xAtByte (d->selEnd, maxSize);
+        const int rawL = xAtByte (d->selSt, maxSize), rawR = xAtByte (d->selEnd, maxSize);
         g.setColour (kSelFill);
         for (int t = d->firstSelTrack - 1; t <= d->lastSelTrack - 1 && t < n; ++t)
-            if (t >= 0) { auto wr = waveRect (t); g.fillRect (Rectangle<int> (x0, wr.getY(), std::max (1, x1 - x0), wr.getHeight())); }
+        {
+            if (t < 0) continue;
+            auto wr = waveRect (t);
+            if (rawR < wr.getX() || rawL > wr.getRight()) continue;   // wholly off-view
+            const int x0 = std::max (rawL, wr.getX()), x1 = std::min (rawR, wr.getRight());
+            g.fillRect (Rectangle<int> (x0, wr.getY(), std::max (1, x1 - x0), wr.getHeight()));
+        }
     }
     else
     {
@@ -495,10 +673,87 @@ void WindowComponent::paint (Graphics& g)
         {
             if (t < 0) continue;
             auto wr = waveRect (t).reduced (0, 2);
+            if (cx < wr.getX() + 2 || cx > wr.getRight() - 3) continue;   // serifs need room
             g.drawVerticalLine (cx, (float) wr.getY(), (float) wr.getBottom());
             g.fillRect (cx - 2, wr.getY(), 5, 1);              // serifs, top and bottom
             g.fillRect (cx - 2, wr.getBottom() - 1, 5, 1);
         }
+    }
+
+    // Navigator: zoom in · zoom out · whole sound, then ◀ well ▶. The well is the
+    // whole sound at a glance — the blue bar is the slice the lanes above are
+    // showing, the black block is what is PLAYING (stopped: what would play, i.e.
+    // the selection).
+    {
+        const bool canZoomIn  = viewSpanFrac > minSpanFrac();
+        const bool canZoomOut = viewSpanFrac < 1.0;
+        const bool canLeft    = viewStartFrac > 0.0;
+        const bool canRight   = viewStartFrac + viewSpanFrac < 1.0;
+        const bool enabled[5] = { canZoomIn, canZoomOut, canZoomOut, canLeft, canRight };
+
+        for (int i = 0; i < 5; ++i)
+        {
+            auto b = navButton (i);
+            g.setColour (face);  g.fillRect (b);
+            g.setColour (kInk);  g.drawRect (b, 1);
+            // A button with nothing left to do says so, rather than clicking and
+            // appearing to do nothing: fully zoomed out, that is three of the five.
+            g.setColour (enabled[i] ? kInk : kInk.withAlpha (0.30f));
+            drawNavIcon (g, i, b);
+        }
+
+        auto well = navWellRect();
+        g.setColour (kWhite); g.fillRect (well);
+        g.setColour (kInk);   g.drawRect (well, 1);
+
+        auto inner = navWellInner();
+        auto barRow = inner.removeFromBottom (std::max (4, inner.getHeight() / 2));
+        auto topRow = inner;
+
+        // Quarter ticks, so a glance at the well is a glance at a position.
+        g.setColour (kInk);
+        for (int i = 0; i <= 4; ++i)
+        {
+            const int x = topRow.getX() + (int) std::lround ((double) i / 4.0 * (topRow.getWidth() - 1));
+            g.drawVerticalLine (x, (float) topRow.getY(), (float) topRow.getBottom());
+        }
+
+        const auto spanX = [&] (Rectangle<int> row, double f0, double f1)
+        {
+            const int x0 = row.getX() + (int) std::lround (std::clamp (f0, 0.0, 1.0) * row.getWidth());
+            const int x1 = row.getX() + (int) std::lround (std::clamp (f1, 0.0, 1.0) * row.getWidth());
+            return Rectangle<int> (x0, row.getY(), std::max (2, x1 - x0), row.getHeight());
+        };
+
+        // The block: the looping region while it rolls, the selection while stopped.
+        // They usually coincide — until you select somewhere else mid-loop, and then
+        // the block is the only thing on screen still telling you what you can hear.
+        const bool showLoop = rolling && loopEnd > loopSt;
+        const bool hasSel   = d->selEnd > d->selSt;
+        const bool diverged = showLoop && hasSel && (d->selSt != loopSt || d->selEnd != loopEnd);
+
+        // Once they HAVE diverged, the selection gets a hollow box: solid is what
+        // the ear is getting, hollow is what the next play would take. Drawn FIRST,
+        // over its own white, so the quarter ticks do not run through it and split
+        // it in two — and so the solid loop block wins any overlap.
+        if (maxSize > 0 && diverged)
+        {
+            const auto r = spanX (topRow, (double) d->selSt  / (double) maxSize,
+                                          (double) d->selEnd / (double) maxSize);
+            g.setColour (kWhite); g.fillRect (r);
+            g.setColour (kInk);   g.drawRect (r, 1);
+        }
+
+        if (maxSize > 0 && (showLoop || hasSel))
+        {
+            const size_t b0 = showLoop ? loopSt  : d->selSt;
+            const size_t b1 = showLoop ? loopEnd : d->selEnd;
+            g.fillRect (spanX (topRow, (double) b0 / (double) maxSize,
+                                       (double) b1 / (double) maxSize));
+        }
+
+        g.setColour (kNavView);
+        g.fillRect (spanX (barRow, viewStartFrac, viewStartFrac + viewSpanFrac));
     }
 
     // Transport strip.
@@ -570,7 +825,9 @@ void WindowComponent::setSelected (bool shouldBeSelected)
     repaint();
 }
 
-void WindowComponent::resized() { cachedWidth = -1; }
+// A narrower lane holds fewer columns, so the zoom floor moves with the width —
+// a window shrunk while zoomed all the way in has to give some magnification back.
+void WindowComponent::resized() { cachedWidth = -1; clampView(); }
 
 // --- interaction ------------------------------------------------------------
 
@@ -583,7 +840,7 @@ juce::Point<int> WindowComponent::parentPos (const juce::MouseEvent& e) const
 
 void WindowComponent::mouseDown (const juce::MouseEvent& e)
 {
-    draggingTitle = false; selecting = false; resizingWindow = false;
+    draggingTitle = false; selecting = false; resizingWindow = false; navDragging = false;
     // Focus for the keyboard shortcuts (⌘X/⌘C/⌘V, Delete, Space); selection for
     // everything that has to outlive focus moving to a panel.
     grabKeyboardFocus();
@@ -605,6 +862,26 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
 
     if (closeBoxBounds().contains (p)) { if (onClose) onClose (id); return; }
     if (addTrackButton().contains (p)) { d->addTrack(); commit(); resizeToFit(); return; }
+
+    // Navigator. It only ever moves the VIEW — no click in this strip touches the
+    // document, the selection or the transport, so nothing here needs a commit.
+    if (navRect().contains (p))
+    {
+        if (navButton (0).contains (p)) { zoomBy (0.5); repaint(); return; }
+        if (navButton (1).contains (p)) { zoomBy (2.0); repaint(); return; }
+        if (navButton (2).contains (p)) { viewStartFrac = 0.0; viewSpanFrac = 1.0;
+                                          cachedWidth = -1; repaint(); return; }
+        if (navButton (3).contains (p)) { panBy (-0.5); repaint(); return; }
+        if (navButton (4).contains (p)) { panBy (+0.5); repaint(); return; }
+        if (navWellRect().contains (p))
+        {
+            // Click anywhere in the well to jump there; hold and it scrubs.
+            navDragging = true;
+            setViewCentreFromWellX (p.getX());
+            repaint();
+        }
+        return;
+    }
 
     if (transportBounds().contains (p))
     {
@@ -677,6 +954,12 @@ void WindowComponent::mouseDrag (const juce::MouseEvent& e)
         repaint();
         return;
     }
+    if (navDragging)
+    {
+        setViewCentreFromWellX (e.getPosition().getX());
+        repaint();
+        return;
+    }
     if (draggingTitle)
     {
         auto np = dragBoundsStart + (parentPos (e) - dragMouseStart);
@@ -712,7 +995,7 @@ void WindowComponent::mouseUp (const juce::MouseEvent&)
 {
     if (selecting) commit();       // publish the selection so Play can loop it
     if (draggingTitle && onDropped) onDropped();
-    draggingTitle = false; selecting = false; resizingWindow = false;
+    draggingTitle = false; selecting = false; resizingWindow = false; navDragging = false;
 }
 
 void WindowComponent::mouseMove (const juce::MouseEvent& e)

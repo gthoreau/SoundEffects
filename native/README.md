@@ -22,8 +22,10 @@ native/
     ui/                     JUCE UI (message thread); reads engine UI-safe snapshots
       CanvasComponent       the board: the Window grid, zoom/pan, tint palette
       WindowComponent       one System-7 sound Window: info strip, track lanes
-                            (waveform + the L / L+R / R output selector), transport
-                            wired to engine, inline rename, corner grow box
+                            (waveform + the L / L+R / R output selector), navigator
+                            (zoom in / out / whole sound, ◀ ▶, and a well showing
+                            the view in blue over the selection in black),
+                            transport wired to engine, inline rename, grow box
       MixerComponent        main mixer: New/Open, then one HORIZONTAL strip per
                             Window (name · mute · one trough carrying both the dB
                             fader and the VU meter), ≤250px wide, scrolling
