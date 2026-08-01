@@ -1,6 +1,7 @@
 #include "CanvasComponent.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace {
@@ -51,6 +52,39 @@ WindowComponent* CanvasComponent::find (uint64_t id) const
     return nullptr;
 }
 
+int CanvasComponent::pickTint()
+{
+    // Take the colour out of the pool for as long as a Window is wearing it, so a
+    // fresh Window cannot come up in a coat already on the board. Closing a Window
+    // hands its colour back — otherwise a session that opened and closed a dozen
+    // sounds would run out of paint.
+    //
+    // Past twelve open Windows the pool is empty by definition, so it falls back to
+    // the LEAST-worn colours: with 13 open, the repeat is a colour used once rather
+    // than one of a pair. Same rule, one level down, and it never has no answer.
+    std::array<int, (size_t) kNumTints> worn {};
+    for (uint64_t wid : engine.windowIds())
+        if (auto* w = engine.windowById (wid))
+            if (w->tint >= 0 && w->tint < kNumTints)
+                ++worn[(size_t) w->tint];
+
+    const int fewest = *std::min_element (worn.begin(), worn.end());
+
+    std::vector<int> pool;
+    pool.reserve ((size_t) kNumTints);
+    for (int i = 0; i < kNumTints; ++i)
+        if (worn[(size_t) i] == fewest) pool.push_back (i);
+
+    // Never twice running, as long as the pool leaves a choice — two Windows made
+    // back to back are the pair most likely to be compared.
+    if (pool.size() > 1)
+        pool.erase (std::remove (pool.begin(), pool.end(), lastTint), pool.end());
+
+    const int pick = pool[(size_t) juce::Random::getSystemRandom().nextInt ((int) pool.size())];
+    lastTint = pick;
+    return pick;
+}
+
 void CanvasComponent::placeNew (WindowComponent& wc, int indexAmongNew)
 {
     auto* w = engine.windowById (wc.windowId());
@@ -61,16 +95,10 @@ void CanvasComponent::placeNew (WindowComponent& wc, int indexAmongNew)
     else
         wc.setSize (wc.preferredWidth(), wc.preferredHeight());
 
-    // A coat of paint, picked at random but never twice running.
+    // A coat of paint, drawn from the colours no OPEN Window is already wearing.
     if (w != nullptr)
     {
-        if (w->tint < 0)
-        {
-            int pick = juce::Random::getSystemRandom().nextInt (kNumTints);
-            if (pick == lastTint) pick = (pick + 1 + juce::Random::getSystemRandom().nextInt (kNumTints - 1)) % kNumTints;
-            w->tint = pick;
-            lastTint = pick;
-        }
+        if (w->tint < 0) w->tint = pickTint();
         wc.setTint (tintFromPalette (w->tint));
     }
 

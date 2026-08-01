@@ -115,10 +115,24 @@ private:
     // geometry
     int numTracks() const noexcept;
     int laneHeight() const noexcept { return laneH; }
-    static constexpr int chromeHeight() noexcept { return kTitleH + kInfoH + kTransportH; }
+    // Title bar, then the content inset on all four sides, with a gap above and
+    // below the block of lanes — four margins of air: under the title, each side of
+    // the lanes, and under the transport. Plus the lane block's own padding, top and
+    // bottom, which is height the lanes themselves never get to use.
+    static constexpr int chromeHeight() noexcept
+    { return kTitleH + kInfoH + kTransportH + 4 * kMargin + 2 * kPad; }
     juce::Rectangle<int> resizeGripBounds() const;
+    /** Everything below the title bar, inset from the frame. The title bar is the
+        only thing still running edge to edge: it belongs to the frame, not to the
+        contents. */
+    juce::Rectangle<int> contentRect() const;
     juce::Rectangle<int> infoRect() const;
     juce::Rectangle<int> addTrackButton() const;
+    /** The block holding every lane — between the info strip and the transport. This
+        is the FRAMED box; the lanes live inside lanesInner(). */
+    juce::Rectangle<int> lanesRect() const;
+    /** Inside the lane block's frame, where the lanes are actually laid out. */
+    juce::Rectangle<int> lanesInner() const;
     juce::Rectangle<int> laneRect (int t) const;
     /** One cell of a track's output-channel selector: 0 = L, 1 = L+R, 2 = R. */
     juce::Rectangle<int> outRect (int t, int which) const;
@@ -140,9 +154,14 @@ private:
     void togglePlayPause();
     void beginNameEdit();
     void endNameEdit (bool keepChanges);
+    /** Left edge of the shared byte-time axis, and its width. Every lane's waveform
+        is drawn on it, so the selection lines up across tracks. */
+    int    waveOriginX() const noexcept;
     int    waveWidth() const noexcept;
     size_t byteAtX (int x, size_t maxSize) const noexcept;
     int    xAtByte (size_t b, size_t maxSize) const noexcept;
+    /** Which track a y in window coordinates falls in, clamped to the real ones. */
+    int    trackAtY (int y, int numTracks) const noexcept;
 
     se::Engine& engine;
     uint64_t id;
@@ -160,6 +179,14 @@ private:
 
     static constexpr int kTitleH = 18;
     static constexpr int kInfoH = 28;
+    // Two different kinds of air, and they are not interchangeable:
+    //   kMargin — OUTSIDE each box. Between the window frame and the content block,
+    //             and between the stacked boxes (info / lanes / transport).
+    //   kPad    — INSIDE a box. Between a box's own border and what sits in it, so
+    //             the selector column, the waveform and the info text stop touching
+    //             the frame they are drawn in.
+    static constexpr int kMargin = 5;
+    static constexpr int kPad = 4;
     static constexpr int kTransportH = kBtnSize + 2 * kBtnMargin;
     static constexpr int kLaneH = 48;      // default lane height
     // Wide enough for "L+R" — the output-channel selector is three stacked cells,

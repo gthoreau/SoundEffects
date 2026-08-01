@@ -116,6 +116,9 @@ private:
     };
 
     WindowComponent* find (uint64_t id) const;
+    /** A palette index no open Window is wearing, at random. See the .cpp for what
+        happens once there are more Windows than colours. */
+    int  pickTint();
     void placeNew (WindowComponent& wc, int indexAmongNew);
 
     /** Gather the assigned Windows into columns and measure them. Cell addresses are

@@ -83,9 +83,29 @@ void WindowComponent::resizeToFit()
 
 // --- geometry ---------------------------------------------------------------
 
-int WindowComponent::waveWidth() const noexcept { return std::max (1, getWidth() - kLrW - kCtrlW); }
+Rectangle<int> WindowComponent::contentRect() const
+{
+    return getLocalBounds().withTrimmedTop (kTitleH).reduced (kMargin);
+}
 
-Rectangle<int> WindowComponent::infoRect() const { return { 0, kTitleH, getWidth(), kInfoH }; }
+Rectangle<int> WindowComponent::lanesRect() const
+{
+    auto c = contentRect();
+    c.removeFromTop (kInfoH + kMargin);
+    c.removeFromBottom (kTransportH + kMargin);
+    return c;
+}
+
+Rectangle<int> WindowComponent::lanesInner() const { return lanesRect().reduced (kPad); }
+
+int WindowComponent::waveOriginX() const noexcept { return lanesInner().getX() + kLrW; }
+
+int WindowComponent::waveWidth() const noexcept
+{
+    return std::max (1, lanesInner().getWidth() - kLrW - kCtrlW);
+}
+
+Rectangle<int> WindowComponent::infoRect() const { return contentRect().withHeight (kInfoH); }
 
 Rectangle<int> WindowComponent::nameBounds() const
 {
@@ -94,13 +114,14 @@ Rectangle<int> WindowComponent::nameBounds() const
 
 Rectangle<int> WindowComponent::addTrackButton() const
 {
-    auto r = infoRect();
-    return { r.getRight() - 20, r.getY() + 6, 15, 15 };
+    auto r = infoRect().reduced (kPad);
+    return { r.getRight() - 15, r.getCentreY() - 7, 15, 15 };
 }
 
 Rectangle<int> WindowComponent::laneRect (int t) const
 {
-    return { 0, kTitleH + kInfoH + t * laneH, getWidth(), laneH };
+    auto lanes = lanesInner();
+    return { lanes.getX(), lanes.getY() + t * laneH, lanes.getWidth(), laneH };
 }
 
 Rectangle<int> WindowComponent::resizeGripBounds() const
@@ -109,15 +130,20 @@ Rectangle<int> WindowComponent::resizeGripBounds() const
 }
 
 // The output-channel selector and the up/down/trash controls are chrome: they keep
-// a fixed size no matter how tall the lane is, pinned to the top of the lane. Only
-// the waveform between them grows.
+// a fixed size no matter how tall the lane is. Only the waveform between them grows.
+//
+// Both clusters are CENTRED on the lane, which puts them on the waveform's zero
+// line — the horizontal rule running through the middle of the trace. Pinned to the
+// top of the lane, as they were, they drifted further from it the taller the lane
+// got, and a tall window ended up with its controls huddled at the top of a lot of
+// empty space.
 
 Rectangle<int> WindowComponent::outRect (int t, int which) const
 {
     auto lane = laneRect (t);
     auto col = lane.removeFromLeft (kLrW).reduced (2, 0);
     const int h = std::clamp ((lane.getHeight() - 4) / 3, 4, 10);
-    const int top = lane.getY() + 2;
+    const int top = lane.getCentreY() - (3 * h) / 2;   // removeFromLeft left the height alone
     return { col.getX(), top + which * h, col.getWidth(), h };
 }
 
@@ -134,7 +160,8 @@ Rectangle<int> WindowComponent::ctrlRect (int t, int which) const
     auto lane = laneRect (t);
     auto col = lane.removeFromRight (kCtrlW);
     const int h = std::min (12, col.getHeight() / 3);
-    return { col.getX(), col.getY() + which * h, col.getWidth(), h };
+    const int top = col.getCentreY() - (3 * h) / 2;
+    return { col.getX(), top + which * h, col.getWidth(), h };
 }
 
 Rectangle<int> WindowComponent::waveRect (int t) const
@@ -147,7 +174,7 @@ Rectangle<int> WindowComponent::waveRect (int t) const
 
 Rectangle<int> WindowComponent::transportBounds() const
 {
-    return { 0, getHeight() - kTransportH, getWidth(), kTransportH };
+    return contentRect().removeFromBottom (kTransportH);
 }
 
 Rectangle<int> WindowComponent::transportButton (int i) const
@@ -164,7 +191,7 @@ Rectangle<int> WindowComponent::closeBoxBounds() const { return { 5, 4, 11, 11 }
 size_t WindowComponent::byteAtX (int x, size_t maxSize) const noexcept
 {
     if (maxSize == 0) return 0;
-    const double frac = std::clamp ((double) (x - kLrW) / (double) waveWidth(), 0.0, 1.0);
+    const double frac = std::clamp ((double) (x - waveOriginX()) / (double) waveWidth(), 0.0, 1.0);
     size_t b = (size_t) (frac * (double) maxSize);
     const size_t fs = (size_t) std::max (1, doc() ? doc()->frameSize() : 1);
     return b - (b % fs);
@@ -172,8 +199,13 @@ size_t WindowComponent::byteAtX (int x, size_t maxSize) const noexcept
 
 int WindowComponent::xAtByte (size_t b, size_t maxSize) const noexcept
 {
-    if (maxSize == 0) return kLrW;
-    return kLrW + (int) ((double) b / (double) maxSize * (double) waveWidth());
+    if (maxSize == 0) return waveOriginX();
+    return waveOriginX() + (int) ((double) b / (double) maxSize * (double) waveWidth());
+}
+
+int WindowComponent::trackAtY (int y, int n) const noexcept
+{
+    return std::clamp ((y - lanesInner().getY()) / std::max (1, laneH), 0, std::max (0, n - 1));
 }
 
 // --- waveform peaks (shared byte axis over the longest track) ---------------
@@ -341,7 +373,8 @@ void WindowComponent::paint (Graphics& g)
     g.setFont (juce::FontOptions (10.0f));
     juce::String l; l << juce::String (d->rateHz / 1000.0, 1) << " kHz; " << d->bps << " bits    "
                      << d->numTracks() << (d->numTracks() == 1 ? " track   " : " tracks   ") << (int) maxSize << " bytes";
-    g.drawText (l, info.reduced (6, 2).withTrimmedRight (24), juce::Justification::centredLeft, false);
+    g.drawText (l, info.reduced (kPad * 2, kPad).withTrimmedRight (24),
+                juce::Justification::centredLeft, false);
     auto add = addTrackButton();
     g.setColour (face); g.fillRect (add); g.setColour (kInk); g.drawRect (add, 1);
     g.drawText ("+", add, juce::Justification::centred, false);
@@ -354,9 +387,6 @@ void WindowComponent::paint (Graphics& g)
     const se::LoopMode loopMode = wsnap ? wsnap->transport->uiLoopMode() : se::LoopMode::once;
     for (int t = 0; t < n; ++t)
     {
-        auto lane = laneRect (t);
-        g.setColour (kInk); g.drawHorizontalLine (lane.getBottom() - 1, 0.0f, (float) getWidth());
-
         // Output channel: one three-way selector, L / L+R / R top to bottom. The
         // chosen cell is inverted, the same "on" convention as the transport.
         const auto& track = d->tracks[(size_t) t];
@@ -373,7 +403,12 @@ void WindowComponent::paint (Graphics& g)
             g.drawText (outLabels[i], b, juce::Justification::centred, false);
         }
 
-        // Right controls: move up / down / trash.
+        // Right controls: move up / down / trash. The colour has to be set here:
+        // without it these inherited whatever the selector loop above left behind,
+        // so a track routed to R — the last cell drawn, and the lit one — painted
+        // its three controls in WHITE and they all but disappeared. Every R track
+        // and the right half of every stereo import was affected.
+        g.setColour (kInk);
         g.setFont (juce::FontOptions (9.0f));
         g.drawText (juce::String::fromUTF8 ("\xE2\x96\xB2"), ctrlRect (t, 0), juce::Justification::centred, false);
         g.drawText (juce::String::fromUTF8 ("\xE2\x96\xBC"), ctrlRect (t, 1), juce::Justification::centred, false);
@@ -427,13 +462,43 @@ void WindowComponent::paint (Graphics& g)
         }
     }
 
-    // Selection overlay (across the selected track range).
+    // Rules LAST, so the beds cannot paint over them: the block is one framed well
+    // with a hairline between each pair of lanes, spanning the padded width rather
+    // than running into the frame. (Drawn per lane before the bed, as they used to
+    // be, every separator vanished across the waveform region and survived only in
+    // the two control columns either side of it.)
+    g.setColour (kInk);
+    for (int t = 0; t < n - 1; ++t)
+    {
+        auto lane = laneRect (t);
+        g.drawHorizontalLine (lane.getBottom() - 1, (float) lane.getX(), (float) lane.getRight());
+    }
+    g.drawRect (lanesRect(), 1);
+
+    // Selection overlay (across the selected track range) — or, when it is empty,
+    // the INSERTION POINT. A click without a drag has always set one (an empty
+    // selection at the clicked byte) and paste has always honoured it, but nothing
+    // drew it, so the click looked like it had done nothing at all. It is an I-beam
+    // caret, serifed, so it cannot be read as the playhead: that is a plain rule.
     if (d->selSt != d->selEnd)
     {
         const int x0 = xAtByte (d->selSt, maxSize), x1 = xAtByte (d->selEnd, maxSize);
         g.setColour (kSelFill);
         for (int t = d->firstSelTrack - 1; t <= d->lastSelTrack - 1 && t < n; ++t)
             if (t >= 0) { auto wr = waveRect (t); g.fillRect (Rectangle<int> (x0, wr.getY(), std::max (1, x1 - x0), wr.getHeight())); }
+    }
+    else
+    {
+        const int cx = xAtByte (d->selSt, maxSize);
+        g.setColour (kInk);
+        for (int t = d->firstSelTrack - 1; t <= d->lastSelTrack - 1 && t < n; ++t)
+        {
+            if (t < 0) continue;
+            auto wr = waveRect (t).reduced (0, 2);
+            g.drawVerticalLine (cx, (float) wr.getY(), (float) wr.getBottom());
+            g.fillRect (cx - 2, wr.getY(), 5, 1);              // serifs, top and bottom
+            g.fillRect (cx - 2, wr.getBottom() - 1, 5, 1);
+        }
     }
 
     // Transport strip.
@@ -625,10 +690,16 @@ void WindowComponent::mouseDrag (const juce::MouseEvent& e)
     }
     if (selecting)
     {
+        // Not until the pointer has really travelled. A click is meant to leave an
+        // insertion point, and without the threshold a few pixels of hand-shake
+        // between press and release turned it into a one-frame selection instead —
+        // which looks the same but is NOT the same thing to paste or to Play.
+        if (! e.mouseWasDraggedSinceMouseDown()) return;
+
         auto* d = doc(); if (d == nullptr) return;
         const size_t maxSize = d->maxTrackSize();
         const int n = d->numTracks();
-        const int curTrack = std::clamp ((e.getPosition().getY() - (kTitleH + kInfoH)) / laneH, 0, n - 1);
+        const int curTrack = trackAtY (e.getPosition().getY(), n);
         const size_t curByte = byteAtX (e.getPosition().getX(), maxSize);
         d->firstSelTrack = std::min (selAnchorTrack, curTrack) + 1;
         d->lastSelTrack  = std::max (selAnchorTrack, curTrack) + 1;
