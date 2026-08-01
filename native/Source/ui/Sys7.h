@@ -22,6 +22,13 @@ inline const juce::Colour kDim   { 0xff7a7a7a };   // disabled / secondary text
 inline constexpr int kBorderIdle = 1;
 inline constexpr int kBorderHover = 2;
 
+// The twelve pastels a Window is coated in, one per hue clock position. They live
+// here rather than on the canvas because the mixer wears them too: a channel strip
+// carries its Window's tint, so the eye pairs strip to Window without reading a
+// single name.
+inline constexpr int kNumTints = 12;
+juce::Colour tintFromPalette (int index) noexcept;
+
 } // namespace sys7
 
 /** A System 7 push button: rounded 1px black outline, inverted while held. */

@@ -72,6 +72,13 @@ bool Engine::removeWindow (uint64_t id)
     return true;
 }
 
+bool Engine::anyWindowSoloed() const noexcept
+{
+    for (const auto& kv : registry)
+        if (kv.second->soloed.load (std::memory_order_relaxed)) return true;
+    return false;
+}
+
 Window* Engine::windowById (uint64_t id) noexcept
 {
     auto it = registry.find (id);
@@ -197,24 +204,45 @@ void Engine::render (float* left, float* right, int frames) noexcept
     const float meterDecay = std::exp (-static_cast<float> (frames)
                                         / static_cast<float> (deviceRate * 0.043));
 
+    // Solo is a filter over the whole desktop, so it has to be resolved before any
+    // Window is rendered: one pass to ask whether ANY channel is soloed, then the
+    // per-Window test below. Cheap — a handful of relaxed loads over `live`.
+    bool anySolo = false;
+    for (Window* w : live)
+        if (w->soloed.load (std::memory_order_relaxed)) { anySolo = true; break; }
+
     for (Window* w : live)
     {
         float peak = 0.0f;
 
-        const bool silent = w->muted.load (std::memory_order_relaxed)
-                            || w->transport == nullptr || w->audioDoc == nullptr;
+        const bool playable = w->transport != nullptr && w->audioDoc != nullptr;
+        const bool audible  = ! w->muted.load (std::memory_order_relaxed)
+                              && (! anySolo || w->soloed.load (std::memory_order_relaxed));
         const float g = w->gain.load (std::memory_order_relaxed);
 
-        if (! silent && g > 0.0f)
+        if (playable)
         {
+            // Render even when this channel will not be heard, and throw the samples
+            // away. It is the render call that ADVANCES the transport, and the
+            // free-running loops of different lengths phasing against each other is
+            // the whole point of running several Windows at once — a channel that
+            // froze while muted, un-soloed, or faded to zero would come back at the
+            // wrong point and take that phase relationship with it.
+            //
+            // It costs nothing for a channel that is not rolling: a stopped
+            // transport returns 0 frames before doing any work.
             const int written = w->transport->render (*w->audioDoc, scratchL.data(), scratchR.data(), cap);
-            for (int i = 0; i < written; ++i)
+
+            if (audible && g > 0.0f)
             {
-                const float l = scratchL[static_cast<size_t> (i)] * g;
-                const float r = scratchR[static_cast<size_t> (i)] * g;
-                left[i]  += l;
-                right[i] += r;
-                peak = std::max (peak, std::max (std::abs (l), std::abs (r)));
+                for (int i = 0; i < written; ++i)
+                {
+                    const float l = scratchL[static_cast<size_t> (i)] * g;
+                    const float r = scratchR[static_cast<size_t> (i)] * g;
+                    left[i]  += l;
+                    right[i] += r;
+                    peak = std::max (peak, std::max (std::abs (l), std::abs (r)));
+                }
             }
         }
 

@@ -64,10 +64,24 @@ add_executable(effect-fixtures
 
 target_include_directories(effect-fixtures PRIVATE ${ENGINE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 
+# The Engine's own tests: the desktop-wide mixer (gain / mute / the cumulative solo
+# filter) and the rule that none of them stops a transport. Nothing to do with the
+# effect fixtures, so it is its own binary — and JUCE-free for the same reason.
+add_executable(engine-tests
+    run_engine.cpp
+    ${ENGINE_DIR}/engine/Engine.cpp
+    ${ENGINE_DIR}/engine/Transport.cpp
+    ${ENGINE_DIR}/engine/Mixer.cpp
+    ${ENGINE_SOURCES})
+
+target_include_directories(engine-tests PRIVATE ${ENGINE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+
 if(MSVC)
     target_compile_options(effect-fixtures PRIVATE /W4)
+    target_compile_options(engine-tests    PRIVATE /W4)
 else()
     target_compile_options(effect-fixtures PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(engine-tests    PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 # Run from the tests directory so the default fixture path resolves.

@@ -22,9 +22,10 @@ constexpr int kHeaderH   = 15;
 constexpr int kButtonBar = kButtonH + 2 * kPad;
 
 // Strip metrics.
-constexpr int kNameW   = 66;
-constexpr int kMuteW   = 17;
-constexpr int kMuteH   = 13;
+constexpr int kNameW   = 62;
+constexpr int kBtnW    = 17;
+constexpr int kBtnH    = 13;
+constexpr int kBtnGap  = 3;    // between the two buttons: they are one cluster
 constexpr int kTroughH = 12;
 constexpr int kThumbW  = 7;
 constexpr int kGap     = 5;
@@ -32,17 +33,57 @@ constexpr int kGap     = 5;
 
 // --- MixerStrip: the shared dB scale ----------------------------------------
 
+namespace {
+// The fader taper. Position across the trough on the left, the dB it means on the
+// right; between the breakpoints the mapping is linear in dB, which is what a
+// log-taper fader pot does and why hardware faders use one.
+//
+// Splitting -60..+6 dB EVENLY over the travel — what this was — is the mapping that
+// is hard to mix on: unity landed at 91% of the throw, so everything above it was
+// the last handful of pixels, while nearly a third of the trough went on -60 to
+// -40 dB, where nothing is audible either way. The taper buys that throw back for
+// the range actually worked in. On a ~115px trough:
+//   top HALF          -12 .. +6 dB    0.31 dB/px   (was a flat 0.57 dB/px)
+//   bottom quarter    -60 .. -30 dB   2.34 dB/px   (the part that just gets out
+//                                                   of the way on the way to off)
+// and unity sits at 80% of the travel rather than 91%.
+struct TaperPoint { float pos, db; };
+constexpr TaperPoint kTaper[] = {
+    { 0.00f, -60.0f },
+    { 0.25f, -30.0f },
+    { 0.50f, -12.0f },
+    { 0.80f,   0.0f },
+    { 1.00f,   6.0f },
+};
+constexpr int kTaperN = (int) (sizeof (kTaper) / sizeof (kTaper[0]));
+
+float lerp (float a, float b, float t) noexcept { return a + (b - a) * t; }
+}
+
 float MixerStrip::posToDb (float pos) noexcept
 {
     // The bottom of the travel is silence, not kMinDb, so the fader can shut the
     // channel completely rather than leaving it quietly running.
     if (pos <= 0.005f) return -96.0f;
-    return kMinDb + pos * (kMaxDb - kMinDb);
+    pos = juce::jlimit (0.0f, 1.0f, pos);
+
+    for (int i = 1; i < kTaperN; ++i)
+        if (pos <= kTaper[i].pos)
+            return lerp (kTaper[i - 1].db, kTaper[i].db,
+                         (pos - kTaper[i - 1].pos) / (kTaper[i].pos - kTaper[i - 1].pos));
+    return kMaxDb;
 }
 
 float MixerStrip::dbToPos (float db) noexcept
 {
-    return juce::jlimit (0.0f, 1.0f, (db - kMinDb) / (kMaxDb - kMinDb));
+    if (db <= kMinDb) return 0.0f;
+    if (db >= kMaxDb) return 1.0f;
+
+    for (int i = 1; i < kTaperN; ++i)
+        if (db <= kTaper[i].db)
+            return lerp (kTaper[i - 1].pos, kTaper[i].pos,
+                         (db - kTaper[i - 1].db) / (kTaper[i].db - kTaper[i - 1].db));
+    return 1.0f;
 }
 
 namespace {
@@ -67,14 +108,37 @@ Rectangle<int> MixerStrip::muteRect() const
 {
     auto r = getLocalBounds().reduced (kPad, 0);
     r.removeFromLeft (kNameW + kGap);
-    return r.removeFromLeft (kMuteW).withSizeKeepingCentre (kMuteW, kMuteH);
+    return r.removeFromLeft (kBtnW).withSizeKeepingCentre (kBtnW, kBtnH);
+}
+
+Rectangle<int> MixerStrip::soloRect() const
+{
+    auto r = getLocalBounds().reduced (kPad, 0);
+    r.removeFromLeft (kNameW + kGap + kBtnW + kBtnGap);
+    return r.removeFromLeft (kBtnW).withSizeKeepingCentre (kBtnW, kBtnH);
 }
 
 Rectangle<int> MixerStrip::troughRect() const
 {
     auto r = getLocalBounds().reduced (kPad, 0);
-    r.removeFromLeft (kNameW + kGap + kMuteW + kGap);
+    r.removeFromLeft (kNameW + kGap + kBtnW + kBtnGap + kBtnW + kGap);
     return r.withSizeKeepingCentre (r.getWidth(), kTroughH);
+}
+
+juce::Colour MixerStrip::tintColour() const
+{
+    auto* w = window();
+    // A Window the canvas has not placed yet has no coat: wear the panel's own face
+    // until it does, rather than guessing at a colour that would then change.
+    return w != nullptr && w->tint >= 0 ? sys7::tintFromPalette (w->tint) : kFace;
+}
+
+bool MixerStrip::silenced() const
+{
+    auto* w = window();
+    if (w == nullptr) return true;
+    return w->muted.load (std::memory_order_relaxed)
+           || (soloFilter && ! w->soloed.load (std::memory_order_relaxed));
 }
 
 namespace {
@@ -111,7 +175,7 @@ void MixerStrip::setGainFromX (int x)
     repaint();
 }
 
-void MixerStrip::refreshState()
+void MixerStrip::refreshState (bool soloFilterOn)
 {
     auto* w = window();
 
@@ -126,12 +190,36 @@ void MixerStrip::refreshState()
         repaint (nameRect());
     }
 
+    // Same story for the tint: a brand-new strip exists before the canvas has laid
+    // its Window out and picked a colour for it, so the coat arrives a tick late.
+    const int tint = w != nullptr ? w->tint : -1;
+    if (tint != lastTint)
+    {
+        lastTint = tint;
+        repaint();
+    }
+
+    // Whether this channel is silenced can change without this strip being touched
+    // — it is somebody ELSE clicking solo. The whole row greys, so repaint it all.
+    if (soloFilterOn != soloFilter)
+    {
+        soloFilter = soloFilterOn;
+        repaint();
+    }
+
     const float pos = w != nullptr ? ampToPos (w->meter.load (std::memory_order_relaxed)) : 0.0f;
 
-    // Half a pixel of a ~130px trough: below that the repaint would show nothing.
+    // Half a pixel of a ~115px trough: below that the repaint would show nothing.
     if (std::abs (pos - meterLevel) < 0.004f) return;
     meterLevel = pos;
     repaint (troughRect());
+}
+
+void MixerStrip::setSelected (bool shouldBeSelected)
+{
+    if (selected == shouldBeSelected) return;
+    selected = shouldBeSelected;
+    repaint();
 }
 
 void MixerStrip::paint (Graphics& g)
@@ -140,8 +228,14 @@ void MixerStrip::paint (Graphics& g)
     if (w == nullptr) return;
 
     const bool muted = w->muted.load (std::memory_order_relaxed);
+    const bool solo  = w->soloed.load (std::memory_order_relaxed);
+    const bool off   = silenced();
 
-    g.setColour (kFace);
+    // The strip wears its Window's coat — washed out towards the panel face when the
+    // channel is silenced, so a dead channel reads as dead from across the room
+    // without the pairing being lost.
+    const Colour face = off ? tintColour().interpolatedWith (kFace, 0.6f) : tintColour();
+    g.setColour (face);
     g.fillRect (getLocalBounds());
     g.setColour (kInk);
     g.drawHorizontalLine (getHeight() - 1, 0.0f, (float) getWidth());
@@ -149,7 +243,7 @@ void MixerStrip::paint (Graphics& g)
     // Name — or the dB readout, which takes the cell over for the length of a
     // fader drag so the strip needs no permanent numeric column.
     g.setFont (juce::FontOptions (10.0f));
-    g.setColour (muted ? kDim : kInk);
+    g.setColour (off ? kDim : kInk);
     juce::String label;
     if (draggingFader)
     {
@@ -164,12 +258,17 @@ void MixerStrip::paint (Graphics& g)
     }
     g.drawText (label, nameRect(), juce::Justification::centredLeft, true);   // long names ellipse
 
-    // Mute, lit = inverted (the transport buttons' convention).
-    auto m = muteRect();
-    g.setColour (muted ? kInk : kFace);   g.fillRect (m);
-    g.setColour (muted ? kWhite : kInk);  g.drawRect (m, 1);
-    g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
-    g.drawText ("M", m, juce::Justification::centred, false);
+    // Mute and solo, lit = inverted (the transport buttons' convention). Solo is
+    // cumulative: several can be lit, and together they are the filter.
+    auto drawToggle = [&g, &face] (Rectangle<int> r, bool on, const char* letter)
+    {
+        g.setColour (on ? kInk : face);   g.fillRect (r);
+        g.setColour (on ? kWhite : kInk); g.drawRect (r, 1);
+        g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+        g.drawText (letter, r, juce::Justification::centred, false);
+    };
+    drawToggle (muteRect(), muted, "M");
+    drawToggle (soloRect(), solo,  "S");
 
     // The combined fader / VU trough. One scale, three marks: the fill is what
     // the channel is putting out, the tick is 0 dB, the cap is the gain.
@@ -182,7 +281,7 @@ void MixerStrip::paint (Graphics& g)
     {
         auto fill = t.reduced (1);
         const int end = xForPos (t, meterLevel);
-        g.setColour (muted ? kDim : kMeter);
+        g.setColour (off ? kDim : kMeter);
         g.fillRect (fill.withRight (std::min (end, unityX)));
         if (end > unityX)   // past 0 dBFS: the same red the record dot uses
         {
@@ -198,18 +297,39 @@ void MixerStrip::paint (Graphics& g)
     // Fader cap: a face-coloured handle riding the meter, notched down the middle.
     const int cx = xForPos (t, gainPos());
     Rectangle<int> cap (cx - kThumbW / 2, t.getY() - 2, kThumbW, t.getHeight() + 4);
-    g.setColour (kFace); g.fillRect (cap);
-    g.setColour (kInk);  g.drawRect (cap, 1);
+    g.setColour (face); g.fillRect (cap);
+    g.setColour (kInk); g.drawRect (cap, 1);
     g.drawVerticalLine (cx, (float) (cap.getY() + 2), (float) (cap.getBottom() - 2));
+
+    // Selection, last: the same weight-carries-state idiom the canvas Windows use,
+    // so the strip whose Window is selected is framed rather than recoloured. Rows
+    // touch, so like the Windows in the grid the frame grows inwards only.
+    if (selected)
+    {
+        g.setColour (kInk);
+        g.drawRect (getLocalBounds(), sys7::kBorderHover);
+    }
 }
 
 void MixerStrip::mouseDown (const juce::MouseEvent& e)
 {
+    // Touching a channel at all means you are working on that Window: bring it to
+    // the front of the canvas first, whatever the click then turns out to do.
+    if (onFocusRequested) onFocusRequested (id);
+
     if (muteRect().contains (e.getPosition()))
     {
         if (auto* w = window())
             w->muted.store (! w->muted.load (std::memory_order_relaxed), std::memory_order_relaxed);
         repaint();
+        return;
+    }
+
+    if (soloRect().contains (e.getPosition()))
+    {
+        if (auto* w = window())
+            w->soloed.store (! w->soloed.load (std::memory_order_relaxed), std::memory_order_relaxed);
+        repaint();   // the OTHER strips catch up on the next refresh (soloFilter)
         return;
     }
 
@@ -283,8 +403,15 @@ void MixerComponent::refresh()
                                        { return s->windowId() == id; });
         if (! have)
         {
-            strips.push_back (std::make_unique<MixerStrip> (engine, id));
-            stripHolder.addAndMakeVisible (*strips.back());
+            auto strip = std::make_unique<MixerStrip> (engine, id);
+            strip->onFocusRequested = [this] (uint64_t wid)
+            {
+                setSelectedWindow (wid);   // frame it here immediately...
+                if (onChannelClicked) onChannelClicked (wid);   // ...and raise it there
+            };
+            strip->setSelected (id == selectedId);
+            stripHolder.addAndMakeVisible (*strip);
+            strips.push_back (std::move (strip));
             changed = true;
         }
     }
@@ -295,7 +422,16 @@ void MixerComponent::refresh()
         repaint();
     }
 
-    for (auto& s : strips) s->refreshState();
+    // One question for the whole panel, not one per strip: is the solo filter on?
+    const bool soloFilterOn = engine.anyWindowSoloed();
+    for (auto& s : strips) s->refreshState (soloFilterOn);
+}
+
+void MixerComponent::setSelectedWindow (uint64_t id)
+{
+    if (selectedId == id) return;
+    selectedId = id;
+    for (auto& s : strips) s->setSelected (s->windowId() == id);
 }
 
 Rectangle<int> MixerComponent::listArea() const

@@ -17,27 +17,14 @@ constexpr int kWorldOrigin = kWorldSize / 2;
 // so the board is visibly open above and to the left of the first Window.
 constexpr int kOriginInset = 48;
 
-// Twelve pastels, one per hue clock position: HSL(h, 55%, 84%) worked out to hex
-// so individual entries can be nudged without disturbing the rest.
-const juce::Colour kTints[CanvasComponent::kNumTints] = {
-    juce::Colour (0xffedc0c0),   // red
-    juce::Colour (0xffedd6c0),   // orange
-    juce::Colour (0xffededc0),   // yellow
-    juce::Colour (0xffd6edc0),   // chartreuse
-    juce::Colour (0xffc0edc0),   // green
-    juce::Colour (0xffc0edd6),   // spring
-    juce::Colour (0xffc0eded),   // cyan
-    juce::Colour (0xffc0d6ed),   // azure
-    juce::Colour (0xffc0c0ed),   // blue
-    juce::Colour (0xffd6c0ed),   // violet
-    juce::Colour (0xffedc0ed),   // magenta
-    juce::Colour (0xffedc0d6),   // rose
-};
+// A Window revealed by focusWindow() is left at least this far inside the viewport,
+// so it never lands flush against an edge (or half under a panel's shadow).
+constexpr int kRevealMargin = 24;
 }
 
 juce::Colour CanvasComponent::tintFromPalette (int index) noexcept
 {
-    return kTints[(size_t) juce::jlimit (0, kNumTints - 1, index)];
+    return sys7::tintFromPalette (index);   // the palette itself lives in Sys7
 }
 
 CanvasComponent::CanvasComponent (se::Engine& e) : engine (e)
@@ -169,6 +156,37 @@ void CanvasComponent::selectWindow (uint64_t id)
         w->setSelected (w->windowId() == id);
 
     if (onSelectionChanged) onSelectionChanged();
+}
+
+void CanvasComponent::focusWindow (uint64_t id)
+{
+    auto* wc = find (id);
+    if (wc == nullptr) return;
+
+    selectWindow (id);   // no-op if it was already the selected one...
+    wc->toFront (true);  // ...but raising and revealing are worth repeating
+
+    // Reveal: the Window's bounds are in world coordinates, so put them through the
+    // view transform to find where they actually are on screen. Only pan by as much
+    // as it takes to get each edge inside — a Window already in view does not move,
+    // and one taller than the viewport is aligned to its top-left rather than being
+    // dragged back and forth by two contradictory clamps.
+    const auto b = wc->getBounds().toFloat();
+    const juce::Rectangle<float> onScreen { b.getX() * zoom + pan.x, b.getY() * zoom + pan.y,
+                                            b.getWidth() * zoom, b.getHeight() * zoom };
+
+    const float left   = (float) kRevealMargin;
+    const float top    = (float) kRevealMargin;
+    const float right  = (float) getWidth()  - kRevealMargin;
+    const float bottom = (float) getHeight() - kRevealMargin;
+
+    float dx = 0.0f, dy = 0.0f;
+    if (onScreen.getRight()  > right)  dx = right  - onScreen.getRight();
+    if (onScreen.getBottom() > bottom) dy = bottom - onScreen.getBottom();
+    if (onScreen.getX() + dx < left)   dx = left - onScreen.getX();
+    if (onScreen.getY() + dy < top)    dy = top  - onScreen.getY();
+
+    if (dx != 0.0f || dy != 0.0f) setPan (pan + juce::Point<float> (dx, dy));
 }
 
 // --- layout ------------------------------------------------------------------

@@ -29,6 +29,7 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "Sys7.h"
 #include "WindowComponent.h"
 #include "engine/Engine.h"
 
@@ -50,9 +51,10 @@ public:
     void setMosaicMode (bool shouldTile);
     bool isMosaicMode() const noexcept { return mosaicEnabled; }
 
-    /** The 12 pastels new Windows are tinted from. */
+    /** The 12 pastels new Windows are tinted from (sys7's, so the mixer can wear
+        them too — a strip is painted in its Window's coat). */
     static juce::Colour tintFromPalette (int index) noexcept;
-    static constexpr int kNumTints = 12;
+    static constexpr int kNumTints = sys7::kNumTints;
 
     /** Hand-drag panning (H to enter, V to leave). */
     void setPanMode (bool shouldPan);
@@ -72,6 +74,13 @@ public:
         focus, and what a panel operates on must survive that. */
     uint64_t selectedWindowId() const noexcept { return selectedId; }
     void selectWindow (uint64_t id);
+
+    /** Select a Window AND put it in front of you: raised above its neighbours (the
+        visible part of that in free placement, where Windows overlap) and panned
+        back into the viewport if it had been scrolled off. What the mixer does when
+        you click a channel — a channel that pointed at a Window you cannot see
+        would otherwise look like it did nothing. */
+    void focusWindow (uint64_t id);
 
     /** Something rewrote a Window's audio from outside (the effects panel) — make
         it redraw its waveform rather than its cached peaks. Pass 0 for all. */

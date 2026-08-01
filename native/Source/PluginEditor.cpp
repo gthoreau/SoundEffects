@@ -22,8 +22,19 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
     // The effects panel acts on the canvas's SELECTED Window — not the focused
     // one. Clicking into the panel takes keyboard focus away from the Window, and
     // what the panel operates on has to survive that.
-    canvas.onSelectionChanged = [this] { effects.setTargetWindow (canvas.selectedWindowId()); };
+    canvas.onSelectionChanged = [this]
+    {
+        effects.setTargetWindow (canvas.selectedWindowId());
+        mixer.setSelectedWindow (canvas.selectedWindowId());
+    };
     effects.setTargetWindow (canvas.selectedWindowId());
+    mixer.setSelectedWindow (canvas.selectedWindowId());
+
+    // The mixer is a list OF the Windows: clicking a channel selects its Window and
+    // brings it to the front — and, if it had been scrolled off the board, back into
+    // view. Selection flows the other way through onSelectionChanged above, so the
+    // framed strip and the framed Window are always the same one.
+    mixer.onChannelClicked = [this] (uint64_t id) { canvas.focusWindow (id); };
 
     // An effect rewrites the audio IN PLACE, so the Window's cached waveform peaks
     // — keyed on track length — cannot tell anything happened. Drop them

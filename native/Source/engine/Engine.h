@@ -51,6 +51,16 @@ struct Window
     std::atomic<float> gain  { 1.0f };
     std::atomic<bool>  muted { false };
 
+    // Solo is CUMULATIVE and, like the per-track solo in Mixer.h, a filter rather
+    // than a flag: if ANY Window is soloed, only the soloed ones sound. Mute still
+    // wins over solo on the same Window — an explicit "off" outranks an implicit
+    // "on", so soloing does not resurrect a channel you deliberately shut.
+    //
+    // None of gain / muted / soloed stops a Window's transport: an unheard channel
+    // is still rendered and thrown away, so it stays in phase with the ones you can
+    // hear. See render().
+    std::atomic<bool>  soloed { false };
+
     // Post-gain peak of THIS Window's own contribution to the sum, published by
     // the audio thread for the mixer's VU meters. It falls back on its own (see
     // render()), so the UI can sample it at any rate and still see a decay.
@@ -91,6 +101,10 @@ public:
     uint64_t addWindow (std::unique_ptr<SoundDocument> doc);
     bool     removeWindow (uint64_t id);
     size_t   numWindows() const noexcept { return order.size(); }
+    /** Is ANY Window soloed — i.e. is the solo filter on at all? The same question
+        render() asks before it mixes; the mixer asks it to grey the channels solo
+        is silencing. */
+    bool     anyWindowSoloed() const noexcept;
     const std::vector<uint64_t>& windowIds() const noexcept { return order; }
     Window*  windowById (uint64_t id) noexcept;
 
