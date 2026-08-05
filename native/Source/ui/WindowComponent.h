@@ -4,7 +4,8 @@
 // publishes via engine.commitEdit — so edits apply mid-playback with no glitch.
 // Interactions: title drag, rename (double-click the title), close, transport
 // (Space toggles play/pause on the focused Window), the per-track output-channel
-// selector, add/move/trash track, selection drag, and ⌘X/⌘C/⌘V clipboard.
+// selector, add/move/trash track, selection drag (double-click a lane for the
+// whole track, triple-click or ⌘A for everything), and ⌘X/⌘C/⌘V clipboard.
 //
 // Waveforms share one byte-time axis (spanning the window's longest track) so a
 // shorter track visibly ends partway and the selection lines up across tracks.
@@ -166,6 +167,8 @@ private:
     juce::Rectangle<int> nameBounds() const;
 
     void togglePlayPause();
+    /** Select every track end to end (triple-click, ⌘A) and publish it. */
+    void selectAllAudio();
     void beginNameEdit();
     void endNameEdit (bool keepChanges);
     /** Left edge of the shared byte-time axis, and its width. Every lane's waveform

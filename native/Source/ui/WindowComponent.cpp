@@ -922,6 +922,17 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
         if (ctrlRect (t, 2).contains (p)) { if (d->delTrack (t + 1)) { commit(); resizeToFit(); } return; }
         if (waveRect (t).contains (p))
         {
+            // Double-click: the whole track. Triple-click: every track, all of it.
+            // Neither arms a drag — the selection is final on the click itself, so
+            // it is published here rather than waiting for mouseUp.
+            const int clicks = e.getNumberOfClicks();
+            if (clicks >= 3) { selectAllAudio(); return; }
+            if (clicks == 2)
+            {
+                d->firstSelTrack = d->lastSelTrack = t + 1;
+                se::setSelection (*d, 0, d->tracks[(size_t) t].data.size());
+                commit(); return;
+            }
             selecting = true; selAnchorTrack = t; selAnchorByte = byteAtX (p.getX(), maxSize);
             d->firstSelTrack = d->lastSelTrack = t + 1;
             se::setSelection (*d, selAnchorByte, selAnchorByte);
@@ -1013,6 +1024,15 @@ void WindowComponent::mouseDoubleClick (const juce::MouseEvent& e)
 }
 
 // --- transport / rename -----------------------------------------------------
+
+void WindowComponent::selectAllAudio()
+{
+    auto* d = doc(); if (d == nullptr) return;
+    d->firstSelTrack = 1;
+    d->lastSelTrack  = d->numTracks();
+    se::setSelection (*d, 0, d->maxTrackSize());
+    commit();   // publish, so Play can loop it — same as a drag's mouseUp
+}
 
 void WindowComponent::togglePlayPause()
 {
@@ -1122,6 +1142,7 @@ bool WindowComponent::keyPressed (const juce::KeyPress& k)
     // On macOS a Command-combo yields no text character, so match on the key code
     // (modifier-independent), accepting either case.
     const auto is = [code] (int lo, int up) { return code == lo || code == up; };
+    if (is ('a', 'A')) { selectAllAudio(); return true; }
     if (is ('c', 'C')) { if (clipboard) *clipboard = se::copy (*d); return true; }
     if (is ('x', 'X')) { if (clipboard) { *clipboard = se::cut (*d); commit(); resizeToFit(); } return true; }
     if (is ('v', 'V')) { if (clipboard && *clipboard) { se::paste (*d, **clipboard); commit(); resizeToFit(); } return true; }
