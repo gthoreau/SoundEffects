@@ -172,7 +172,7 @@ namespace {
 SettingsSchema fadeSchema()
 {
     return SettingsSchema {
-        durationField ("time", "Fading time:"),
+        spanField ("time", "Fading time:"),
         unitsPopup ("units"),
     };
 }

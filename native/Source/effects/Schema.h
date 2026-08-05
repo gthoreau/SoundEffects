@@ -81,6 +81,18 @@ struct SchemaItem
      * schema has to say.
      */
     bool heading = false;
+
+    /**
+     * Prefill this duration from what the effect is about to act on: the
+     * selection's length, or the longest track's when nothing is selected.
+     *
+     * Only for fields that MEAN "how much of the target to touch" — the ones
+     * whose kernels read 0 as "the whole selection" (the fades' time, Waveform's
+     * length). It changes what the field SHOWS, never what an unedited Apply
+     * does, so the golden vectors are untouched. Native-panel extension, like
+     * `heading`; not recovered behaviour.
+     */
+    bool scopeDefault = false;
 };
 
 using SettingsSchema = std::vector<SchemaItem>;
@@ -196,6 +208,15 @@ inline SchemaItem durationField (std::string key, std::string label)
     i.type = ItemType::EditFieldUnitDependent;
     i.key = std::move (key);
     i.label = std::move (label);
+    return i;
+}
+
+/** A duration meaning "how much audio to touch" — the host prefills it from the
+    current scope rather than starting at 0. See SchemaItem::scopeDefault. */
+inline SchemaItem spanField (std::string key, std::string label)
+{
+    SchemaItem i = durationField (std::move (key), std::move (label));
+    i.scopeDefault = true;
     return i;
 }
 

@@ -38,6 +38,7 @@
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <vector>
 
 /**
@@ -59,6 +60,15 @@ public:
 
     /** Value changed; the panel refreshes anything derived (the units readout). */
     std::function<void()> onChanged;
+
+    /** The user typed a value that differs from what was shown. The panel uses
+        it to stop auto-filling a scope-defaulted field the user has overridden;
+        a click into and out of the field does not count. */
+    std::function<void (const std::string& key)> onUserEdit;
+
+    /** The schema item this row renders — the panel asks when re-deriving
+        scope-defaulted values. */
+    const se::SchemaItem& schemaItem() const { return item; }
 
     /** Re-read the settings into the control, after a units change rescales a
         duration field. */
@@ -89,6 +99,8 @@ private:
 
     se::SchemaItem item;
     juce::String suffix;
+    /** What the editor last showed from settings — commit compares against it. */
+    juce::String shownText;
     se::Settings& settings;
     const se::SoundDocument* doc;   // for unit conversion; may be null
 
@@ -161,6 +173,7 @@ private:
     void buildParamControls();
     void applyEffect();
     void updateScope();
+    void prefillSpanFields();
 
     int rowAt (int y) const;
     /** Height of the expanded parameter form under the open effect, 0 if none. */
@@ -179,6 +192,8 @@ private:
     const se::EffectModule* openModule = nullptr;
     se::Settings working;             // the open module's live settings
     bool allowExtend = false;         // answers AskDoExtend() for modules that grow
+    /** Scope-defaulted keys the user has typed over — theirs now, not derived. */
+    std::set<std::string> touchedSpanKeys;
 
     juce::Viewport viewport;
     RowList rowList { *this };

@@ -59,7 +59,7 @@ EffectModule makeWaveformGenerator()
     m.schema = []
     {
         return SettingsSchema {
-            durationField ("length", "Length:"),
+            spanField ("length", "Length:"),
             unitsPopup ("units"),
             decimalField ("frequency", "Frequency:"),
             staticText ("Hz"),

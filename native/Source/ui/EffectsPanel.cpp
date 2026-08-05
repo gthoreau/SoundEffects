@@ -158,6 +158,8 @@ void ParamRow::refreshFromSettings()
 {
     if (editor == nullptr) return;
 
+    juce::String text;
+
     if (isDurationField (item))
     {
         // Stored in BYTES, always — the unit is a display choice (§2.3). Show it
@@ -168,27 +170,36 @@ void ParamRow::refreshFromSettings()
             ? se::bytesToUnit ((size_t) se::getInt (settings, item.key), unit, doc->rateHz, doc->bps)
             : (double) se::getInt (settings, item.key);
 
-        editor->setText (juce::String (shown, shown == std::floor (shown) ? 0 : 3), false);
+        text = juce::String (shown, shown == std::floor (shown) ? 0 : 3);
     }
     else if (isDecimalField (item))
     {
-        editor->setText (juce::String (se::getDouble (settings, item.key), 2), false);
+        text = juce::String (se::getDouble (settings, item.key), 2);
     }
     else if (isTextField (item))
     {
         const auto it = settings.find (item.key);
-        editor->setText (it == settings.end() ? juce::String() : juce::String (it->second.asString()), false);
+        text = it == settings.end() ? juce::String() : juce::String (it->second.asString());
     }
     else
     {
-        editor->setText (juce::String (se::getInt (settings, item.key)), false);
+        text = juce::String (se::getInt (settings, item.key));
     }
+
+    editor->setText (text, false);
+    shownText = text;
 }
 
 void ParamRow::commitText()
 {
     if (editor == nullptr) return;
     const juce::String text = editor->getText();
+
+    // Unchanged text is not a commit. Converting the display back through the
+    // unit can nudge the stored bytes by a rounding step, and a click into and
+    // out of the field must not count as the user overriding a derived default.
+    if (text == shownText) return;
+    shownText = text;
 
     if (isDurationField (item))
     {
@@ -218,6 +229,7 @@ void ParamRow::commitText()
         settings[item.key] = se::Value (v);
     }
 
+    if (onUserEdit) onUserEdit (item.key);
     if (onChanged) onChanged();
 }
 
@@ -453,6 +465,7 @@ void EffectsPanelComponent::setTargetWindow (uint64_t windowId)
 
     rebuildRows();
     updateScope();
+    prefillSpanFields();
     repaint();
 }
 
@@ -485,6 +498,7 @@ void EffectsPanelComponent::refresh()
     // the whole list's greying is re-derived, not just the scope line.
     rebuildRows();
     updateScope();
+    prefillSpanFields();
     repaint();
 }
 
@@ -636,12 +650,14 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     applyButton.reset();
     extendToggle.reset();
     working.clear();
+    touchedSpanKeys.clear();
 
     if (openModule != nullptr)
     {
         working = openModule->defaults ? openModule->defaults() : se::Settings{};
         openApplicability = runner.check (targetId, *openModule);
         buildParamControls();
+        prefillSpanFields();
     }
 
     layoutRows();
@@ -689,6 +705,8 @@ void EffectsPanelComponent::buildParamControls()
                 for (auto& p : params) p->refreshFromSettings();
                 rowList.repaint();
             };
+            if (item.scopeDefault)
+                row->onUserEdit = [this] (const std::string& key) { touchedSpanKeys.insert (key); };
             rowList.addAndMakeVisible (*row);
             params.push_back (std::move (row));
         }
@@ -712,6 +730,29 @@ void EffectsPanelComponent::buildParamControls()
     applyButton->onClick = [this] { applyEffect(); };
     applyButton->setEnabled (openApplicability == se::Applicability::Ok);
     rowList.addAndMakeVisible (*applyButton);
+}
+
+void EffectsPanelComponent::prefillSpanFields()
+{
+    if (openModule == nullptr) return;
+
+    const se::SoundDocument* doc = targetDoc();
+    if (doc == nullptr || doc->maxTrackSize() == 0) return;
+
+    // The selection's length when there is one, the longest track's when there is
+    // not — the same span the scope readout reports, so the field and the readout
+    // can never disagree. The kernels read 0 as "the whole selection" anyway;
+    // this only makes the field SAY what Apply was already going to do.
+    const se::Scope s = runner.scope (targetId);
+    const auto span = (int64_t) (s.endByte - s.startByte);
+
+    for (auto& p : params)
+    {
+        const se::SchemaItem& item = p->schemaItem();
+        if (! item.scopeDefault || touchedSpanKeys.count (item.key) > 0) continue;
+        working[item.key] = se::Value (span);
+        p->refreshFromSettings();
+    }
 }
 
 void EffectsPanelComponent::applyEffect()
