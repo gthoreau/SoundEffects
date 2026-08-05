@@ -1128,11 +1128,13 @@ bool WindowComponent::keyPressed (const juce::KeyPress& k)
     }
 
     // Delete / Backspace: remove selected audio (like Cut — splices out, shortens).
-    // Option/Alt + Delete: replace the selected audio with silence (no length change).
+    // Option/Alt + Delete: crop — keep the selection, discard the rest.
+    // Shift + Delete: replace the selected audio with silence (no length change).
     if (code == juce::KeyPress::deleteKey || code == juce::KeyPress::backspaceKey)
     {
-        if (k.getModifiers().isAltDown()) se::silenceSelection (*d);
-        else                             se::clear (*d);
+        if (k.getModifiers().isAltDown())        se::crop (*d);
+        else if (k.getModifiers().isShiftDown()) se::silenceSelection (*d);
+        else                                     se::clear (*d);
         commit(); resizeToFit();
         return true;
     }

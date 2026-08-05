@@ -162,6 +162,28 @@ int paste (SoundDocument& doc, const SoundDocument& clip)
     return pasted;
 }
 
+bool crop (SoundDocument& doc)
+{
+    if (doc.selSt == doc.selEnd) return false;
+    bool changed = false;
+    for (int i : doc.selectedTrackIndices())
+    {
+        auto& data = doc.tracks[static_cast<size_t> (i)].data;
+        const auto r = trackRange (doc, i, doc.selSt, doc.selEnd);
+        // A selected track wholly before the selection crops to empty — the
+        // clamp collapses its range, same as slicing past a short track's end.
+        data.erase (data.begin() + static_cast<std::ptrdiff_t> (r.end), data.end());
+        data.erase (data.begin(), data.begin() + static_cast<std::ptrdiff_t> (r.start));
+        changed = true;
+    }
+    if (changed)
+    {
+        doc.selSt = 0;
+        doc.selEnd = doc.maxSelectedTrackSize();
+    }
+    return changed;
+}
+
 void insertSilence (SoundDocument& doc, size_t bytes)
 {
     const size_t frameSize = static_cast<size_t> (doc.frameSize());

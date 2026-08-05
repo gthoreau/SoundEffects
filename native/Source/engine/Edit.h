@@ -48,6 +48,13 @@ std::unique_ptr<SoundDocument> cut (SoundDocument& doc);
     Surplus clipboard tracks are dropped. Returns tracks that received audio. */
 int paste (SoundDocument& doc, const SoundDocument& clip);
 
+/** Edit ▸ Crop — keep the selection, discard the rest (§5, `[INTERPRETED]`).
+    Applied to the selected tracks only, consistent with Clear: unselected tracks
+    keep their full length and drift out of alignment with the cropped ones.
+    Afterwards the time selection is reset to everything. A caret does nothing.
+    Returns true if anything changed. */
+bool crop (SoundDocument& doc);
+
 /** Edit ▸ Insert Silence — insert `bytes` of real silent samples at the caret in
     every selected track (grows those tracks). Silence IS audio, distinct from
     absence past a track's end. */
