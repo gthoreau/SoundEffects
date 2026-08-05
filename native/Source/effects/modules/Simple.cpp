@@ -12,6 +12,7 @@
 #include "../Skeleton.h"
 #include "engine/SampleFormat.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace se::modules {
@@ -126,19 +127,47 @@ EffectModule makeDrawLine()
     m.version = "1.0";
     m.author = "Alberto Ricci";
     m.progressText = "Drawing…";
-    m.strings = { kNoOptions };
     // Replaces the selection with a straight line from its first sample to its
     // last: a de-click tool, and an instant ramp generator.
+    //
+    // The Length field is a native addition — the original had no options here
+    // (its voice said so: "Sorry, man. I haven't got any options."). 0 keeps the
+    // recovered behaviour, the whole selection; a positive Length clamps to it,
+    // as the fades' time does; and on a brand-new Window it grows the empty
+    // tracks first, so a flat line is how a sound can start from nothing.
+    m.requires.worksOnEmpty = true;
 
-    m.effect = [] (SoundDocument& doc, Host& host, const Settings&) -> ModResult
+    m.defaults = [] { return Settings { { "length", Value (int64_t (0)) },
+                                        { "units", Value (int64_t (Unit::Milliseconds)) } }; };
+    m.schema = [] { return SettingsSchema { spanField ("length", "Length:"),
+                                            unitsPopup ("units") }; };
+
+    m.effect = [] (SoundDocument& doc, Host& host, const Settings& prefs) -> ModResult
     {
         const size_t frameSize = static_cast<size_t> (doc.frameSize());
         const int bps = doc.bps;
+        const int64_t length = getInt (prefs, "length");
+
+        // Same dance as Waveform Generator: an empty track never reaches the
+        // kernel, so grow it to the requested Length before the skeleton runs.
+        const size_t wanted = length > 0
+            ? static_cast<size_t> (length) - static_cast<size_t> (length) % frameSize
+            : 0;
+        if (wanted > 0)
+            for (int t = doc.firstSelTrack - 1; t < doc.lastSelTrack; ++t)
+                if (t >= 0 && t < doc.numTracks()
+                    && doc.tracks[static_cast<size_t> (t)].data.empty())
+                    growAndSilence (doc, t, wanted);
 
         return runSkeleton (doc, host, { "Drawing…", false },
-                            [frameSize, bps] (const TrackPass& pass, Progress& progress) -> ModResult
+                            [frameSize, bps, length] (const TrackPass& pass, Progress& progress) -> ModResult
         {
-            const size_t frames = (pass.end - pass.start) / frameSize;
+            const size_t available = pass.end - pass.start;
+            const size_t span = length > 0
+                ? std::min (static_cast<size_t> (length), available)
+                : available;
+
+            const size_t frames = span / frameSize;
             if (frames < 2) return kModNoError;
 
             const int32_t first = getSample (pass.data, pass.start, bps);

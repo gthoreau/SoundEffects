@@ -49,6 +49,7 @@ EffectModule makeWaveformGenerator()
     m.version = "1.1";
     m.author = "Alberto Ricci";
     m.progressText = "Generating…";
+    m.requires.worksOnEmpty = true;
 
     m.defaults = [] { return Settings { { "length", Value (int64_t (0)) },
                                         { "units", Value (int64_t (Unit::Milliseconds)) },
@@ -86,6 +87,21 @@ EffectModule makeWaveformGenerator()
         // its own.
         const double amp = (static_cast<double> (limits.max) * static_cast<double> (getInt (prefs, "amplitude")))
                          / 100.0;
+
+        // An empty track never reaches the kernel — the skeleton skips a track
+        // whose clamped range is empty (Gain.c's start != end). Growing it to the
+        // requested Length FIRST is what makes the module work on a brand-new
+        // Window: the grown silence becomes the whole-window selection the
+        // skeleton then expands into. Tracks that already carry audio are not
+        // grown — Length stays clamped to the selection there (§14 inference).
+        const size_t wanted = length > 0
+            ? static_cast<size_t> (length) - static_cast<size_t> (length) % frameSize
+            : 0;
+        if (wanted > 0)
+            for (int t = doc.firstSelTrack - 1; t < doc.lastSelTrack; ++t)
+                if (t >= 0 && t < doc.numTracks()
+                    && doc.tracks[static_cast<size_t> (t)].data.empty())
+                    growAndSilence (doc, t, wanted);
 
         return runSkeleton (doc, host, { "Generating…", false },
                             [=] (const TrackPass& pass, Progress& progress) -> ModResult

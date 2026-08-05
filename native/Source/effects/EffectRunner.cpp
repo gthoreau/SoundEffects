@@ -38,7 +38,8 @@ Applicability EffectRunner::check (uint64_t windowId, const EffectModule& module
     if (window == nullptr || window->uiDoc == nullptr) return Applicability::NoWindow;
 
     const SoundDocument& doc = *window->uiDoc;
-    if (doc.maxTrackSize() == 0) return Applicability::NoAudio;
+    if (doc.maxTrackSize() == 0 && ! module.requires.worksOnEmpty)
+        return Applicability::NoAudio;
 
     const int selected = doc.lastSelTrack - doc.firstSelTrack + 1;
 

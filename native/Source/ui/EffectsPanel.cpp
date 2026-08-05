@@ -737,14 +737,21 @@ void EffectsPanelComponent::prefillSpanFields()
     if (openModule == nullptr) return;
 
     const se::SoundDocument* doc = targetDoc();
-    if (doc == nullptr || doc->maxTrackSize() == 0) return;
+    if (doc == nullptr) return;
 
     // The selection's length when there is one, the longest track's when there is
     // not — the same span the scope readout reports, so the field and the readout
     // can never disagree. The kernels read 0 as "the whole selection" anyway;
     // this only makes the field SAY what Apply was already going to do.
+    //
+    // An empty Window has no span to derive, so the generators that can run there
+    // (Waveform Generator, Draw Line — Requirements::worksOnEmpty) seed at
+    // 1000 ms. The greyed effects show it too, harmlessly: their Apply is dead.
     const se::Scope s = runner.scope (targetId);
-    const auto span = (int64_t) (s.endByte - s.startByte);
+    auto span = (int64_t) (s.endByte - s.startByte);
+    if (span <= 0)
+        span = (int64_t) se::unitToBytes (1000.0, se::Unit::Milliseconds,
+                                          doc->rateHz, doc->bps);
 
     for (auto& p : params)
     {

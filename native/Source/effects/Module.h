@@ -65,6 +65,11 @@ struct Requirements
     bool wholeDocumentOnly = false;
     /** The module grows a track, so refusing extension makes it a no-op. */
     bool mayExtend = false;
+    /** The module can run on a Window with no audio at all: it CREATES its
+        material, growing the empty tracks to its Length first. Waveform
+        Generator and Draw Line. Native extension, not recovered behaviour —
+        the original had no reason to run an effect on an empty document. */
+    bool worksOnEmpty = false;
     /** The module renders into new tracks or a new document. */
     bool createsTracks = false;
     bool createsDocument = false;
