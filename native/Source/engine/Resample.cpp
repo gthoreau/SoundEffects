@@ -23,8 +23,10 @@ void resampleSoundBits (SoundDocument& doc, int newBps)
             std::vector<uint8_t> dst (frames * static_cast<size_t> (newFrameSize));
             for (size_t f = 0; f < frames; ++f)
             {
-                const size_t s = f * oldFrameSize, d = f * newFrameSize;
-                for (int b = 0; b < newFrameSize; ++b) dst[d + b] = src[s + b];
+                const size_t s = f * static_cast<size_t> (oldFrameSize);
+                const size_t d = f * static_cast<size_t> (newFrameSize);
+                for (int b = 0; b < newFrameSize; ++b)
+                    dst[d + static_cast<size_t> (b)] = src[s + static_cast<size_t> (b)];
                 if (newFrameSize == 1) dst[d] = static_cast<uint8_t> ((dst[d] ^ 0x80) & 0xff);
             }
             t.data = std::move (dst);
@@ -39,7 +41,7 @@ void resampleSoundBits (SoundDocument& doc, int newBps)
             const size_t frames = t.data.size() / static_cast<size_t> (oldFrameSize);
             for (size_t f = 0; f < frames; ++f)
             {
-                const size_t off = f * oldFrameSize;
+                const size_t off = f * static_cast<size_t> (oldFrameSize);
                 int remaining = drop;
                 for (int b = oldFrameSize - 1; b >= 0 && remaining > 0; --b)
                 {
@@ -61,12 +63,13 @@ void resampleSoundBits (SoundDocument& doc, int newBps)
             std::vector<uint8_t> dst (frames * static_cast<size_t> (newFrameSize), 0);
             for (size_t f = 0; f < frames; ++f)
             {
-                const size_t s = f * oldFrameSize, d = f * newFrameSize;
+                const size_t s = f * static_cast<size_t> (oldFrameSize);
+                const size_t d = f * static_cast<size_t> (newFrameSize);
                 for (int b = 0; b < oldFrameSize; ++b)
                 {
-                    uint8_t byte = src[s + b];
+                    uint8_t byte = src[s + static_cast<size_t> (b)];
                     if (oldFrameSize == 1) byte = static_cast<uint8_t> ((byte ^ 0x80) & 0xff);   // un-offset first
-                    dst[d + b] = byte;
+                    dst[d + static_cast<size_t> (b)] = byte;
                 }
             }
             t.data = std::move (dst);
