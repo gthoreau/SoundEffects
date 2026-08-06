@@ -5,6 +5,13 @@
 // beneath it; Apply runs it. Only one effect is ever open at a time — this is a
 // column ~250px wide, and two open forms would mean neither is readable.
 //
+// Above the list is a strip of buttons: the effects that have no parameters at all,
+// A–Z across every group. A form with nothing in it is not a form, and expanding one
+// to reach a lone Apply spends the column's whole height saying nothing. As buttons
+// they cost four lines and one click — and because that click is now the entire
+// interaction, it goes through a confirmation alert (Sys7AlertDialog) rather than
+// straight into an edit that cannot be undone. See Chip.
+//
 // ## What it acts on
 //
 //   - no Window selected, or the Window has no audio → everything is greyed;
@@ -157,6 +164,26 @@ public:
     void resized() override;
 
 private:
+    /**
+     * One button in the strip above the list.
+     *
+     * The parameterless effects (Invert, Reverse, Sum, …) have nothing to fill in:
+     * their inline form is a lone Apply under a disclosure triangle, which is two
+     * clicks and a scroll for something that has exactly one decision in it. As
+     * buttons they are one click, and ten of them fit in the space four rows used.
+     *
+     * The four FIR filters are parameterless too and stay in the list: they are
+     * four variants of one filter, and the submenu that holds them together is
+     * the only thing that tells you they ARE variants.
+     */
+    struct Chip
+    {
+        const se::EffectModule* module = nullptr;
+        juce::String label;
+        juce::Rectangle<int> bounds;
+        se::Applicability applicability = se::Applicability::Ok;
+    };
+
     /** One line in the scrolling list: a group heading, or an effect. */
     struct Row
     {
@@ -180,20 +207,34 @@ private:
         void mouseMove (const juce::MouseEvent&) override;
         void mouseExit (const juce::MouseEvent&) override;
 
+        void paintChips (juce::Graphics&);
+
     private:
         EffectsPanelComponent& owner;
         int hoverRow = -1;
+        int hoverChip = -1;
     };
 
     void rebuildRows();
     void layoutRows();
+    /** Flow the chips into the panel's width; returns the height they take. */
+    int layoutChips (int width);
     void openEffect (const se::EffectModule* module);
+    /** A chip was clicked: ask, then run — or just run, with 1-click Apply on.
+        Nothing is expanded; these have no form. */
+    void confirmAndApply (const se::EffectModule& module);
+    /** Set the 1-click state and the checkbox that shows it, together. */
+    void setOneClickApply (bool shouldBeOneClick);
     void buildParamControls();
     void applyEffect();
+    /** Run `module` with `settings` and say what happened. Shared by Apply and the
+        chips' alert, so both report an outcome the same way. */
+    void runModule (const se::EffectModule& module, const se::Settings& settings);
     void updateScope();
     void prefillSpanFields();
 
     int rowAt (int y) const;
+    int chipAt (juce::Point<int>) const;
     /** Height of the expanded parameter form under the open effect, 0 if none. */
     int formHeight() const;
 
@@ -206,6 +247,17 @@ private:
 
     uint64_t targetId = 0;
 
+    std::vector<Chip> chips;
+    int chipsHeight = 0;              // the strip's total height, heading included
+    /**
+     * Skip the alert and run a chip on the single click.
+     *
+     * Off every time the panel is built. Nothing in this app persists yet
+     * (getStateInformation is a stub), so there is nowhere honest to keep it — and
+     * of the two ways to be wrong about a setting that disarms a confirmation on an
+     * irreversible edit, forgetting it is the harmless one.
+     */
+    bool oneClickApply = false;
     std::vector<Row> rows;
     const se::EffectModule* openModule = nullptr;
     se::Settings working;             // the open module's live settings
@@ -215,6 +267,7 @@ private:
 
     juce::Viewport viewport;
     RowList rowList { *this };
+    std::unique_ptr<juce::ToggleButton> oneClickToggle;
     std::vector<std::unique_ptr<ParamRow>> params;
     std::unique_ptr<Sys7Button> applyButton;
     std::unique_ptr<juce::ToggleButton> extendToggle;
@@ -240,6 +293,17 @@ private:
     static constexpr int kRowH = 18;
     static constexpr int kGroupH = 17;
     static constexpr int kButtonH = 22;
+
+    // The chip strip. The label runs two points larger than a list row's 11: a
+    // button carries its name alone, with no triangle and no column beside it to
+    // be read against, so it has to be legible on its own.
+    static constexpr float kChipFont = 13.0f;
+    static constexpr int kChipH = 20;
+    static constexpr int kChipGap = 4;
+    static constexpr int kChipPadX = 8;
+    // 18, not 20: a ToggleButton sizes its own text at three quarters of its height,
+    // and at 20 the switch shouts louder than the buttons it governs.
+    static constexpr int kOneClickH = 18;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectsPanelComponent)
 };

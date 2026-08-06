@@ -77,6 +77,19 @@ const char* unitName (se::Unit u)
     return "?";
 }
 
+/**
+ * Does this module get a button in the strip instead of a row in the list?
+ *
+ * Derived, not listed: "has no schema" is exactly "has nothing to fill in", so a
+ * module that grows a parameter tomorrow leaves the strip on its own. The FIR
+ * filters are the one exception — parameterless, but four variants of one filter,
+ * and pulled out of their submenu they stop reading as a set.
+ */
+bool isChipEffect (const se::EffectModule& m)
+{
+    return ! m.schema && m.group != se::EffectGroup::FirIirFilters;
+}
+
 /** A duration, said the way a person would. */
 juce::String sayDuration (size_t bytes, const se::SoundDocument& doc)
 {
@@ -465,6 +478,15 @@ EffectsPanelComponent::EffectsPanelComponent (se::Engine& e)
     // to the parents, so the canvas's own shortcuts are not swallowed by holding it.
     rowList.setWantsKeyboardFocus (true);
 
+    oneClickToggle = std::make_unique<juce::ToggleButton> ("1-click Apply");
+    oneClickToggle->setColour (juce::ToggleButton::textColourId, kInk);
+    oneClickToggle->setColour (juce::ToggleButton::tickColourId, kInk);
+    // The box's OUTLINE is the disabled-tick colour, which defaults to a grey that
+    // vanishes on this near-white panel — leaving a label with no checkbox.
+    oneClickToggle->setColour (juce::ToggleButton::tickDisabledColourId, kInk);
+    oneClickToggle->onClick = [this] { oneClickApply = oneClickToggle->getToggleState(); };
+    rowList.addAndMakeVisible (*oneClickToggle);
+
     rebuildRows();
 }
 
@@ -568,11 +590,24 @@ void EffectsPanelComponent::updateScope()
 void EffectsPanelComponent::rebuildRows()
 {
     rows.clear();
+    chips.clear();
 
     const se::EffectMenu menu = se::buildEffectMenu();
 
     const auto addEffect = [this] (const se::EffectModule* m)
     {
+        // The parameterless ones are buttons at the top now, and a name that
+        // appears in both places is two controls claiming to be one effect.
+        if (isChipEffect (*m))
+        {
+            Chip c;
+            c.module = m;
+            c.label = m->name;
+            c.applicability = runner.check (targetId, *m);
+            chips.push_back (c);
+            return;
+        }
+
         Row r;
         r.kind = Row::Kind::Effect;
         r.module = m;
@@ -585,12 +620,29 @@ void EffectsPanelComponent::rebuildRows()
 
     for (const auto& group : menu.groups)
     {
+        std::vector<const se::EffectModule*> listed;
+        for (const auto* m : group.modules)
+        {
+            if (isChipEffect (*m)) { addEffect (m); continue; }
+            listed.push_back (m);
+        }
+
+        // A heading over an empty group is a heading over nothing — Misc keeps its
+        // own once Invert and Sum have gone up to the strip, but a group made
+        // entirely of parameterless effects would leave one behind.
+        if (listed.empty()) continue;
+
         Row header;
         header.kind = Row::Kind::GroupHeader;
         header.label = group.name;
         rows.push_back (header);
-        for (const auto* m : group.modules) addEffect (m);
+        for (const auto* m : listed) addEffect (m);
     }
+
+    // The menu is already A–Z per group, but the strip draws from every group at
+    // once, so it sorts again across the lot of them.
+    std::sort (chips.begin(), chips.end(),
+               [] (const Chip& a, const Chip& b) { return a.label < b.label; });
 
     // The open module may have just become inapplicable — the Window was
     // deselected, a track was deleted, the audio was cleared. Apply has to follow:
@@ -621,9 +673,50 @@ int EffectsPanelComponent::formHeight() const
     return h;
 }
 
+int EffectsPanelComponent::layoutChips (int width)
+{
+    if (oneClickToggle != nullptr)
+        oneClickToggle->setVisible (! chips.empty());
+
+    if (chips.empty()) return 0;
+
+    const juce::Font font (juce::FontOptions (kChipFont, juce::Font::bold));
+
+    int y = kGroupH;                       // room for the strip's heading
+    int x = kPad;
+    const int right = width - kPad;
+
+    for (auto& c : chips)
+    {
+        const int w = juce::GlyphArrangement::getStringWidthInt (font, c.label) + kChipPadX * 2;
+
+        // Wrap, unless this is the first chip on the line — a name too wide for the
+        // column has to overhang somewhere, and starting it on a fresh line at
+        // least keeps every other chip where it belongs.
+        if (x > kPad && x + w > right)
+        {
+            x = kPad;
+            y += kChipH + kChipGap;
+        }
+
+        c.bounds = juce::Rectangle<int> (x, y, w, kChipH);
+        x += w + kChipGap;
+    }
+
+    // The strip's own switch, under the buttons it governs.
+    const int toggleY = y + kChipH + kChipGap;
+    if (oneClickToggle != nullptr)
+        oneClickToggle->setBounds (kPad, toggleY, width - kPad * 2, kOneClickH);
+
+    return toggleY + kOneClickH + kPad;
+}
+
 void EffectsPanelComponent::layoutRows()
 {
-    int y = 0;
+    const int listWidth = std::max (1, viewport.getMaximumVisibleWidth());
+    chipsHeight = layoutChips (listWidth);
+
+    int y = chipsHeight;
     for (auto& r : rows)
     {
         r.y = y;
@@ -634,7 +727,7 @@ void EffectsPanelComponent::layoutRows()
             y += formHeight();
     }
 
-    const int width = std::max (1, viewport.getMaximumVisibleWidth());
+    const int width = listWidth;
     rowList.setSize (width, std::max (y, 1));
 
     // Position the open module's controls inside the gap just reserved.
@@ -801,8 +894,62 @@ void EffectsPanelComponent::applyEffect()
     // survives only by that accident is a value waiting to be lost.)
     for (auto& p : params) p->commitPendingText();
 
+    runModule (*openModule, working);
+}
+
+void EffectsPanelComponent::confirmAndApply (const se::EffectModule& module)
+{
+    // A greyed chip says why rather than doing nothing. The list can put its reason
+    // in the form it expands; a button has nowhere to put one but the status line,
+    // which is where the panel already speaks.
+    const se::Applicability a = runner.check (targetId, module);
+    if (a != se::Applicability::Ok)
+    {
+        resultLine = juce::String (se::applicabilityText (a, module.requires));
+        repaint();
+        return;
+    }
+
+    const se::Settings settings = module.defaults ? module.defaults() : se::Settings{};
+
+    // The whole point of the switch: once it is on, the click IS the apply. The
+    // scope readout above the strip still says what that will eat, which is the
+    // reason it can be turned on at all.
+    if (oneClickApply)
+    {
+        runModule (module, settings);
+        return;
+    }
+
+    Sys7AlertDialog::show (*this, juce::String (module.name), "Don't show this again",
+                           "Apply", "Cancel",
+                           [safe = juce::Component::SafePointer<EffectsPanelComponent> (this),
+                            &module, settings] (bool confirmed, bool ticked)
+    {
+        // The panel can be gone by the time the alert closes — the editor closing
+        // cancels every modal component, and the callback still runs.
+        if (! confirmed || safe == nullptr) return;
+
+        // "Don't show this again" IS the strip's switch, not a second setting that
+        // happens to agree with it: one state, two places to reach it, so the
+        // checkbox below the chips shows what the alert was just told.
+        if (ticked) safe->setOneClickApply (true);
+
+        safe->runModule (module, settings);
+    });
+}
+
+void EffectsPanelComponent::setOneClickApply (bool shouldBeOneClick)
+{
+    oneClickApply = shouldBeOneClick;
+    if (oneClickToggle != nullptr)
+        oneClickToggle->setToggleState (shouldBeOneClick, juce::dontSendNotification);
+}
+
+void EffectsPanelComponent::runModule (const se::EffectModule& module, const se::Settings& settings)
+{
     const se::EffectRunner::Outcome outcome =
-        runner.apply (targetId, *openModule, working, allowExtend);
+        runner.apply (targetId, module, settings, allowExtend);
 
     if (! outcome.ran)
     {
@@ -814,7 +961,7 @@ void EffectsPanelComponent::applyEffect()
     // Something the module said while running outranks the outcome: "it applied"
     // is true but useless next to Weird Tempo's own apology for the noise it just
     // introduced. (Properly this is a modal alert raised BEFORE the run, with a
-    // Cancel button — that arrives with the alert layer.)
+    // Cancel button — the chips have one; the forms still do not.)
     if (! outcome.notices.empty())
     {
         resultLine = juce::String (outcome.notices.front());
@@ -829,11 +976,11 @@ void EffectsPanelComponent::applyEffect()
     if (! outcome.message.empty())
         resultLine = juce::String (outcome.message);
     else if (outcome.result == se::kModCancel)
-        resultLine = juce::String (openModule->name) + ": nothing to do";
+        resultLine = juce::String (module.name) + ": nothing to do";
     else if (se::isError (outcome.result))
-        resultLine = juce::String (openModule->name) + " failed";
+        resultLine = juce::String (module.name) + " failed";
     else
-        resultLine = juce::String (openModule->name) + " applied";
+        resultLine = juce::String (module.name) + " applied";
 
     if (! outcome.spawnedWindows.empty())
         resultLine << "  (" << (int) outcome.spawnedWindows.size() << " new)";
@@ -873,11 +1020,57 @@ int EffectsPanelComponent::rowAt (int y) const
     return -1;
 }
 
+int EffectsPanelComponent::chipAt (juce::Point<int> p) const
+{
+    for (int i = 0; i < (int) chips.size(); ++i)
+        if (chips[(size_t) i].bounds.contains (p))
+            return i;
+    return -1;
+}
+
 // --- RowList ----------------------------------------------------------------
+
+void EffectsPanelComponent::RowList::paintChips (Graphics& g)
+{
+    if (owner.chips.empty()) return;
+
+    // The strip's own heading, drawn like a group's so the list reads as one thing
+    // with a band at the top rather than as two unrelated panels stacked.
+    g.setColour (kInk);
+    g.drawHorizontalLine (owner.kGroupH / 2, 6.0f, 10.0f);
+    g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+    g.drawText ("No Options",
+                Rectangle<int> (14, 0, getWidth() - 14, owner.kGroupH),
+                juce::Justification::centredLeft, false);
+
+    for (int i = 0; i < (int) owner.chips.size(); ++i)
+    {
+        const auto& c = owner.chips[(size_t) i];
+        const bool usable = (c.applicability == se::Applicability::Ok);
+        const auto r = c.bounds.toFloat().reduced (0.5f);
+
+        g.setColour (sys7::kFace);
+        g.fillRoundedRectangle (r, 3.0f);
+
+        // Weight for hover, as everywhere else in this UI — no second colour.
+        g.setColour (usable ? kInk : kDim);
+        g.drawRoundedRectangle (r, 3.0f, (i == hoverChip && usable) ? 2.0f : 1.0f);
+
+        g.setFont (juce::FontOptions (owner.kChipFont, juce::Font::bold));
+        g.drawText (c.label, c.bounds, juce::Justification::centred, false);
+    }
+
+    // Closed off at the bottom, so the strip is a band and not a spill into the
+    // first effect's name.
+    g.setColour (kInk);
+    g.drawHorizontalLine (owner.chipsHeight - 1, 0.0f, (float) getWidth());
+}
 
 void EffectsPanelComponent::RowList::paint (Graphics& g)
 {
     g.fillAll (kPanel);
+
+    paintChips (g);
 
     // The open effect's form, on hard white: the list is a shelf of 37 names,
     // and the one form standing open on it is where all the reading and typing
@@ -962,6 +1155,13 @@ void EffectsPanelComponent::RowList::paint (Graphics& g)
 
 void EffectsPanelComponent::RowList::mouseDown (const juce::MouseEvent& e)
 {
+    if (const int c = owner.chipAt (e.getPosition()); c >= 0)
+    {
+        grabKeyboardFocus();
+        owner.confirmAndApply (*owner.chips[(size_t) c].module);
+        return;
+    }
+
     const int i = owner.rowAt (e.y);
     if (i < 0) return;
 
@@ -979,16 +1179,22 @@ void EffectsPanelComponent::RowList::mouseDown (const juce::MouseEvent& e)
 
 void EffectsPanelComponent::RowList::mouseMove (const juce::MouseEvent& e)
 {
-    const int i = owner.rowAt (e.y);
-    if (i == hoverRow) return;
-    hoverRow = i;
+    const int chip = owner.chipAt (e.getPosition());
+    // Inside the strip nothing below it is hovered, and vice versa — two highlights
+    // at once would offer two things the one click cannot both do.
+    const int row = chip >= 0 ? -1 : owner.rowAt (e.y);
+
+    if (chip == hoverChip && row == hoverRow) return;
+    hoverChip = chip;
+    hoverRow = row;
     repaint();
 }
 
 void EffectsPanelComponent::RowList::mouseExit (const juce::MouseEvent&)
 {
-    if (hoverRow < 0) return;
+    if (hoverRow < 0 && hoverChip < 0) return;
     hoverRow = -1;
+    hoverChip = -1;
     repaint();
 }
 
