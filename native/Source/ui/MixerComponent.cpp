@@ -9,7 +9,8 @@ using juce::Rectangle;
 
 namespace {
 // The same flat System 7 palette the canvas Windows are painted in.
-const Colour kFace   { 0xffbfbfbf };
+const Colour kFace   { 0xffbfbfbf };   // chrome: an untinted strip, a toggle's face
+const Colour kPanel  = sys7::kPanel;   // the ground those sit on
 const Colour kInk    { 0xff000000 };
 const Colour kWhite  { 0xffffffff };
 const Colour kMeter  { 0xff4a4a4a };   // VU fill, dark enough to read under the cap
@@ -234,7 +235,7 @@ void MixerStrip::paint (Graphics& g)
     // The strip wears its Window's coat — washed out towards the panel face when the
     // channel is silenced, so a dead channel reads as dead from across the room
     // without the pairing being lost.
-    const Colour face = off ? tintColour().interpolatedWith (kFace, 0.6f) : tintColour();
+    const Colour face = off ? tintColour().interpolatedWith (kPanel, 0.6f) : tintColour();
     g.setColour (face);
     g.fillRect (getLocalBounds());
     g.setColour (kInk);
@@ -441,7 +442,7 @@ Rectangle<int> MixerComponent::listArea() const
 
 void MixerComponent::paint (Graphics& g)
 {
-    g.fillAll (kFace);
+    g.fillAll (kPanel);
 
     auto inner = getLocalBounds().reduced (1);
 

@@ -576,6 +576,7 @@ void CanvasComponent::resized()
 
 void CanvasComponent::paint (juce::Graphics& g)
 {
-    // System 7 desktop grey. (A stipple pattern can come with the chrome polish.)
-    g.fillAll (juce::Colour (0xffcccccc));
+    // The workspace: soft white, so the Windows' own grey chrome and their pastel
+    // tints read as objects laid ON a surface rather than as darker patches of it.
+    g.fillAll (juce::Colour (0xfffafafa));
 }

@@ -18,6 +18,12 @@ inline const juce::Colour kInk   { 0xff000000 };
 inline const juce::Colour kWhite { 0xffffffff };
 inline const juce::Colour kDim   { 0xff7a7a7a };   // disabled / secondary text
 
+// The two side panels' own ground. Distinct from kFace, which is the CHROME grey a
+// control is made of — a button, a scrollbar thumb, a strip with no tint. Keeping
+// the ground apart from the things standing on it is what lets those things read as
+// controls now that the panels are near-white.
+inline const juce::Colour kPanel { 0xfff4f4f4 };
+
 /** Frame weight carries state everywhere in this UI: plain, hovered, active. */
 inline constexpr int kBorderIdle = 1;
 inline constexpr int kBorderHover = 2;

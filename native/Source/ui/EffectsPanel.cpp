@@ -8,15 +8,18 @@
 using juce::Graphics;
 using juce::Rectangle;
 using sys7::kDim;
-using sys7::kFace;
 using sys7::kInk;
+using sys7::kPanel;
 using sys7::kWhite;
 
 namespace {
 
 /** The selection highlight — the same inverted-fill idea as a pressed button. */
 const juce::Colour kOpenFill { 0xff2a2a2a };
-const juce::Colour kHoverFill { 0xffd4d4d4 };
+// A shade off the panel ground, not a bar across it: hover says "the pointer is
+// here", and on a near-white list anything heavier reads as a second selection
+// competing with the open effect's black row.
+const juce::Colour kHoverFill { 0xffe6e6e6 };
 
 // ModSetups.h pairs almost every item type with a "NoSave" twin that behaves
 // identically and is simply left out of a saved setup. Asking "is this a radio
@@ -126,7 +129,15 @@ ParamRow::ParamRow (const se::SchemaItem& i, se::Settings& s, const se::SoundDoc
         editor->setColour (juce::TextEditor::shadowColourId, juce::Colours::transparentBlack);
         editor->setIndents (3, 2);
         editor->setJustification (juce::Justification::centredLeft);
-        editor->onReturnKey = [this] { commitText(); };
+        // Return in a field commits it and then runs the effect — the field is part
+        // of the form, not a thing of its own, so the key that ends the form ends it
+        // from wherever the caret happens to be. Commit first: Apply must use the
+        // number the person can see.
+        editor->onReturnKey = [this]
+        {
+            commitText();
+            if (onReturnPressed) onReturnPressed();
+        };
         editor->onFocusLost = [this] { commitText(); };
         addAndMakeVisible (*editor);
     }
@@ -236,8 +247,17 @@ void ParamRow::commitText()
 Rectangle<int> ParamRow::controlBounds() const
 {
     auto r = getLocalBounds().reduced (0, 2);
-    r.removeFromLeft (item.label.empty() ? 0 : kLabelW);
+    // A units popup carries no schema label — the caption is ours ("Units:") — but
+    // it still sits in the label column, because the field it drives is directly
+    // above it and a popup indented differently from that field reads as belonging
+    // to something else.
+    r.removeFromLeft (hasLabelColumn() ? kLabelW : 0);
     return r;
+}
+
+bool ParamRow::hasLabelColumn() const
+{
+    return ! item.label.empty() || item.type == se::ItemType::UnitsPopup;
 }
 
 Rectangle<int> ParamRow::optionBounds (int index) const
@@ -340,9 +360,12 @@ void ParamRow::paint (Graphics& g)
 
     if (item.type == se::ItemType::UnitsPopup)
     {
-        g.setColour (kDim);
-        g.drawText ("Units", getLocalBounds().removeFromLeft (kLabelW),
-                    juce::Justification::centredLeft, false);
+        // Captioned exactly like a field label — same column, same right edge, same
+        // ink — so "Delay:" and "Units:" line up and the popup lines up under the
+        // field it rescales.
+        g.setColour (kInk);
+        g.drawText ("Units:", getLocalBounds().removeFromLeft (kLabelW - 4),
+                    juce::Justification::centredRight, false);
 
         auto cell = controlBounds().removeFromLeft (78).withHeight (kFieldH);
         g.setColour (kWhite);
@@ -436,6 +459,11 @@ EffectsPanelComponent::EffectsPanelComponent (se::Engine& e)
     viewport.setViewedComponent (&rowList, false);
     viewport.setScrollBarsShown (true, false);
     addAndMakeVisible (viewport);
+
+    // The list takes focus so Return reaches this panel's keyPressed even when the
+    // open form has no field to type into (Normalize, Reverse). Unhandled keys bubble
+    // to the parents, so the canvas's own shortcuts are not swallowed by holding it.
+    rowList.setWantsKeyboardFocus (true);
 
     rebuildRows();
 }
@@ -705,6 +733,7 @@ void EffectsPanelComponent::buildParamControls()
                 for (auto& p : params) p->refreshFromSettings();
                 rowList.repaint();
             };
+            row->onReturnPressed = [this] { applyFromKeyboard(); };
             if (item.scopeDefault)
                 row->onUserEdit = [this] (const std::string& key) { touchedSpanKeys.insert (key); };
             rowList.addAndMakeVisible (*row);
@@ -817,6 +846,25 @@ void EffectsPanelComponent::applyEffect()
     repaint();
 }
 
+bool EffectsPanelComponent::applyFromKeyboard()
+{
+    if (openModule == nullptr || openApplicability != se::Applicability::Ok)
+        return false;
+
+    applyEffect();
+    return true;
+}
+
+bool EffectsPanelComponent::keyPressed (const juce::KeyPress& k)
+{
+    // Bare Return only: ⌘Return and friends belong to whatever else claims them.
+    if (k.getKeyCode() == juce::KeyPress::returnKey
+        && ! k.getModifiers().isAnyModifierKeyDown())
+        return applyFromKeyboard();
+
+    return false;
+}
+
 int EffectsPanelComponent::rowAt (int y) const
 {
     for (int i = 0; i < (int) rows.size(); ++i)
@@ -829,7 +877,28 @@ int EffectsPanelComponent::rowAt (int y) const
 
 void EffectsPanelComponent::RowList::paint (Graphics& g)
 {
-    g.fillAll (kFace);
+    g.fillAll (kPanel);
+
+    // The open effect's form, on hard white: the list is a shelf of 37 names,
+    // and the one form standing open on it is where all the reading and typing
+    // happens. White is what the fields are already drawn in, so the form is lit as
+    // one surface rather than as pale boxes scattered over the shelf.
+    if (owner.openModule != nullptr)
+    {
+        for (const auto& r : owner.rows)
+        {
+            if (r.kind != Row::Kind::Effect || r.module != owner.openModule) continue;
+
+            const Rectangle<int> form (0, r.y + r.height, getWidth(), owner.formHeight());
+            g.setColour (kWhite);
+            g.fillRect (form);
+            // Closed off at the bottom, the way every other band in this UI is —
+            // otherwise the white runs into the next effect's name.
+            g.setColour (kInk);
+            g.drawHorizontalLine (form.getBottom() - 1, 0.0f, (float) getWidth());
+            break;
+        }
+    }
 
     for (int i = 0; i < (int) owner.rows.size(); ++i)
     {
@@ -899,6 +968,10 @@ void EffectsPanelComponent::RowList::mouseDown (const juce::MouseEvent& e)
     const auto& r = owner.rows[(size_t) i];
     if (r.kind != Row::Kind::Effect) return;
 
+    // Clicking a row is already a click into the panel — taking focus with it is what
+    // makes Return land here rather than on whatever was focused before.
+    grabKeyboardFocus();
+
     // An effect that cannot run on the current scope still opens, so its reason is
     // readable — it just cannot be applied.
     owner.openEffect (r.module);
@@ -923,7 +996,7 @@ void EffectsPanelComponent::RowList::mouseExit (const juce::MouseEvent&)
 
 void EffectsPanelComponent::paint (Graphics& g)
 {
-    g.fillAll (kFace);
+    g.fillAll (kPanel);
 
     auto inner = getLocalBounds().reduced (1);
 

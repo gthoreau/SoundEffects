@@ -88,12 +88,19 @@ public:
         not, and would be silently clipped. */
     bool canFitSuffix (const std::string& text) const;
 
+    /** Return was pressed in this row's editor, after its value was committed.
+        The panel treats it as Apply. */
+    std::function<void()> onReturnPressed;
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
 
 private:
     juce::Rectangle<int> controlBounds() const;
+    /** Does this row reserve the label column? Every labelled item does, and so
+        does the units popup, whose caption the panel supplies itself. */
+    bool hasLabelColumn() const;
     juce::Rectangle<int> optionBounds (int index) const;
     void commitText();
 
@@ -135,6 +142,17 @@ public:
         already become Windows by the time this fires. */
     std::function<void (uint64_t windowId)> onDocumentChanged;
 
+    /** Run the open effect, as Apply does. Returns false when there is nothing to
+        run — no effect open, or one that cannot run on the current target — so a
+        Return pressed elsewhere in the editor keeps travelling.
+
+        This is the keyboard's way in: Apply is a 62px button in a 250px column, and
+        a form you have just finished typing into should end with the key that ends
+        every other form. It stays irreversible either way (§1), which is why an
+        inapplicable effect refuses here exactly as its greyed button does. */
+    bool applyFromKeyboard();
+
+    bool keyPressed (const juce::KeyPress&) override;
     void paint (juce::Graphics&) override;
     void resized() override;
 

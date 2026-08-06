@@ -65,6 +65,16 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
 
 bool SoundEffectAudioProcessorEditor::keyPressed (const juce::KeyPress& k)
 {
+    // Return applies the open effect from anywhere in the editor — the usual move is
+    // to drag a selection in a Window and then run the form that is already open, and
+    // that leaves focus on the Window, not on the panel. It only fires when there IS
+    // something runnable; otherwise the key falls through untouched. A Window being
+    // renamed keeps its own Return (WindowComponent's name editor consumes it).
+    if (k.getKeyCode() == juce::KeyPress::returnKey
+        && ! k.getModifiers().isAnyModifierKeyDown()
+        && effects.applyFromKeyboard())
+        return true;
+
     if (! k.getModifiers().isCommandDown()) return false;
 
     // A Command-combo produces no text character on macOS, so match the key code
