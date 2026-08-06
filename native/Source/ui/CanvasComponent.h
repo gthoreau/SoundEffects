@@ -87,6 +87,13 @@ public:
     void invalidateWaveform (uint64_t id);
     /** Selection changed, or the selected Window closed. */
     std::function<void()> onSelectionChanged;
+    /** A Window's greyed record button was clicked — show the host's audio device
+        settings. Null in a plugin build; the canvas just wires every Window to it. */
+    std::function<void()> onAudioSettingsRequested;
+
+    /** Is audio input live? Drives every Window's record button, and every Window
+        made from here on. Cheap to call repeatedly — it returns early unchanged. */
+    void setRecordEnabled (bool enabled);
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -158,6 +165,7 @@ private:
     uint64_t selectedId = 0;
 
     bool mosaicEnabled = true;
+    bool recordEnabled = false;  // audio input is muted until the user says otherwise
     int  lastTint = -1;          // so two windows running never get the same coat
     bool panMode = false;
     bool panDragging = false;

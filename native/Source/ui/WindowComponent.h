@@ -63,6 +63,10 @@ public:
     void setSelected (bool shouldBeSelected);
     bool isSelected() const noexcept { return selected; }
 
+    /** Is audio input live? The record button is red when it is and grey when it is
+        not, which is the only place the app says whether input is on. */
+    void setRecordEnabled (bool enabled);
+
     /** The audio was rewritten under us — drop the cached peaks.
         The cache is keyed on track SIZES, so it cannot notice a destructive effect
         that rewrote every sample without changing the length. Amplify is exactly
@@ -88,6 +92,10 @@ public:
     std::function<void (juce::Point<int>)> onDragged;
     /** Title-bar drag finished — settle into the layout. */
     std::function<void()> onDropped;
+    /** The record button was clicked while greyed — i.e. while audio input is muted.
+        The canvas routes this to the audio device settings, which is where the input
+        gets turned on. Left null in a plugin build, where the host owns the device. */
+    std::function<void()> onRecordRequested;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -269,6 +277,9 @@ private:
     // clickable controls steals focus, which would have blanked the very selection
     // the panel depends on.
     bool selected = false;
+    // Audio input starts muted (StandalonePluginHolder's own default), so the record
+    // button starts grey. The canvas pushes the real state in on the 30 Hz tick.
+    bool recordEnabled = false;
 
     // last drawn playhead state, so refresh() can skip idle repaints
     bool   lastPlaying = false;

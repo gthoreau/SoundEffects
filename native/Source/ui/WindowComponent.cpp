@@ -16,6 +16,10 @@ const Colour kWhite { 0xffffffff };
 const Colour kWave  { 0xff202020 };
 const Colour kSelFill { 0x553060c0 };
 const Colour kRecord { 0xffcc2222 };   // the record dot, red on any tint
+// Audio input muted. This grey IS the app's statement that input is off — it
+// replaces the banner JUCE used to run across the top of the whole window, saying
+// the same thing in the one place where it matters.
+const Colour kRecordOff { 0xff8a8a8a };
 const Colour kNavView { 0xff2020cc };  // navigator: the slice of sound on screen
 }
 
@@ -765,9 +769,13 @@ void WindowComponent::paint (Graphics& g)
     {
         auto b = transportButton (i);
         const bool lit = (i == 2 && playing) || (i == 3 && advanceEnabled) || (i == 4 && loopEnabled);
+        // Record greys out while audio input is muted — frame AND glyph, not just
+        // the glyph: a black box around a grey dot reads as a live button whose icon
+        // happens to be pale. It stays clickable either way; see mouseDown.
+        const bool greyed = (i == 0 && ! recordEnabled);
         g.setColour (lit ? kInk : face); g.fillRect (b);
-        g.setColour (lit ? kWhite : kInk); g.drawRect (b, 1);
-        g.setColour (i == 0 ? kRecord : (lit ? kWhite : kInk));
+        g.setColour (greyed ? kRecordOff : (lit ? kWhite : kInk)); g.drawRect (b, 1);
+        g.setColour (greyed ? kRecordOff : (i == 0 ? kRecord : (lit ? kWhite : kInk)));
         drawTransportSymbol (g, i, b, playing);
     }
 
@@ -822,6 +830,13 @@ void WindowComponent::setSelected (bool shouldBeSelected)
 {
     if (selected == shouldBeSelected) return;
     selected = shouldBeSelected;
+    repaint();
+}
+
+void WindowComponent::setRecordEnabled (bool enabled)
+{
+    if (recordEnabled == enabled) return;
+    recordEnabled = enabled;
     repaint();
 }
 
@@ -890,7 +905,13 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
             {
                 switch (i)
                 {
-                    case 0: break;                          // record — not wired up yet
+                    // Record while greyed — input muted — opens the audio device
+                    // settings, which is where input gets turned on. Once it IS on
+                    // the button is live and this is where recording will go; there
+                    // is nothing behind it yet, so for now the click does nothing.
+                    case 0:
+                        if (! recordEnabled && onRecordRequested) onRecordRequested();
+                        break;
                     case 1: engine.stop (id); advanceEnabled = false; break;
                     case 2: togglePlayPause(); break;       // same toggle as Space
                     case 3:

@@ -21,6 +21,18 @@ public:
     explicit SoundEffectAudioProcessorEditor (SoundEffectAudioProcessor&);
     ~SoundEffectAudioProcessorEditor() override;
 
+    /** Show the audio device settings. Only the STANDALONE app can answer this —
+        it owns the device — so StandaloneApp.cpp installs it after creating the
+        editor, and in a VST3/AU it stays null because the host owns the device.
+        Reached from a Window's greyed record button, via the canvas. */
+    std::function<void()> onShowAudioSettings;
+
+    /** Is audio input live, or muted? Polled on the 30 Hz tick and pushed down to
+        every sound Window, where it lights or greys the record button. Null in a
+        VST3/AU — the host owns the device — and a null hook reads as muted, which
+        greys the button and is the truthful answer there. */
+    std::function<bool()> isAudioInputActive;
+
     void paint (juce::Graphics&) override;
     void resized() override;
     /** ⌘N / ⌘O (Ctrl elsewhere). Reached by bubbling: the focused Window and the

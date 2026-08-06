@@ -49,6 +49,11 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
     mixer.onNew  = [this] { newWindow(); };
     mixer.onOpen = [this] { openFile(); };
 
+    // A Window's record button is greyed — recording is not implemented — and
+    // clicking it asks for the audio device settings instead. Only the standalone
+    // app can serve that, so it forwards to a hook the app installs.
+    canvas.onAudioSettingsRequested = [this] { if (onShowAudioSettings) onShowAudioSettings(); };
+
     mosaicButton.onClick    = [this] { canvas.setMosaicMode (! canvas.isMosaicMode()); };
     zoomResetButton.onClick = [this] { canvas.resetView(); };
 
@@ -101,6 +106,10 @@ SoundEffectAudioProcessorEditor::~SoundEffectAudioProcessorEditor()
 
 void SoundEffectAudioProcessorEditor::timerCallback()
 {
+    // Muted unless something says otherwise: in a plugin there is no hook to ask,
+    // and the record button should be grey there too.
+    canvas.setRecordEnabled (isAudioInputActive != nullptr && isAudioInputActive());
+
     canvas.refresh();
     mixer.refresh();
     effects.refresh();

@@ -145,6 +145,8 @@ void CanvasComponent::refresh()
         };
         wc->onDropped = [this] { if (mosaicEnabled) layoutGrid(); };
         wc->onSelected = [this] (uint64_t wid) { selectWindow (wid); };
+        wc->onRecordRequested = [this] { if (onAudioSettingsRequested) onAudioSettingsRequested(); };
+        wc->setRecordEnabled (recordEnabled);   // a Window born mid-session joins in the right state
         world.addAndMakeVisible (*wc);
         placeNew (*wc, newCount++);
         windows.push_back (std::move (wc));
@@ -173,6 +175,15 @@ void CanvasComponent::invalidateWaveform (uint64_t id)
     for (auto& w : windows)
         if (id == 0 || w->windowId() == id)
             w->invalidateWaveform();
+}
+
+void CanvasComponent::setRecordEnabled (bool enabled)
+{
+    if (recordEnabled == enabled) return;
+    recordEnabled = enabled;
+
+    for (auto& w : windows)
+        w->setRecordEnabled (enabled);
 }
 
 void CanvasComponent::selectWindow (uint64_t id)
