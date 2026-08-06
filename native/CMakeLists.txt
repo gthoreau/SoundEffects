@@ -86,6 +86,16 @@ target_compile_definitions(SoundEffect PUBLIC
 
 target_include_directories(SoundEffect PRIVATE Source)
 
+# --- the standalone app's own window ------------------------------------------
+# JUCE's stock standalone app draws its own title bar and hangs an "Options" button
+# in it. The app's outer window is a macOS window and should wear macOS chrome, so
+# we supply the JUCEApplication ourselves. This lives on the Standalone target only:
+# the VST3 and AU builds have a host window and no business defining an app.
+target_compile_definitions(SoundEffect_Standalone PRIVATE
+    JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
+
+target_sources(SoundEffect_Standalone PRIVATE Source/StandaloneApp.cpp)
+
 target_link_libraries(SoundEffect PRIVATE
     juce::juce_audio_utils
     juce::juce_dsp
