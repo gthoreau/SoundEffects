@@ -3,7 +3,10 @@
 #include "engine/Import.h"
 
 namespace {
-constexpr int kToolbarH = 30;
+/** How much canvas stays visible below the floating view palette. */
+constexpr int kPaletteBottomGap = 50;
+/** ...and beside it, before it starts giving width back to the viewport. */
+constexpr int kPaletteSideGap = 12;
 }
 
 SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAudioProcessor& p)
@@ -12,12 +15,10 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
 {
     formatManager.registerBasicFormats();   // WAV, AIFF, and more
 
-    addAndMakeVisible (mosaicButton);
-    addAndMakeVisible (zoomResetButton);
-    addAndMakeVisible (viewStatus);
     addAndMakeVisible (canvas);
     addAndMakeVisible (mixer);
     addAndMakeVisible (effects);
+    addAndMakeVisible (palette);   // last, so it floats over the canvas
 
     // The effects panel acts on the canvas's SELECTED Window — not the focused
     // one. Clicking into the panel takes keyboard focus away from the Window, and
@@ -45,7 +46,7 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
         canvas.refresh();
     };
 
-    // New / Open live at the top of the mixer panel, not in the toolbar.
+    // New / Open live at the top of the mixer panel, not in any toolbar.
     mixer.onNew  = [this] { newWindow(); };
     mixer.onOpen = [this] { openFile(); };
 
@@ -54,13 +55,21 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
     // app can serve that, so it forwards to a hook the app installs.
     canvas.onAudioSettingsRequested = [this] { if (onShowAudioSettings) onShowAudioSettings(); };
 
-    mosaicButton.onClick    = [this] { canvas.setMosaicMode (! canvas.isMosaicMode()); };
-    zoomResetButton.onClick = [this] { canvas.resetView(); };
+    // The palette and the canvas are two faces of one state: the palette asks, the
+    // canvas decides — it clamps the zoom to its own range — and what it settled on
+    // comes straight back to the palette's readouts, whether the palette asked for it
+    // or a pinch did. Nothing loops: setZoom / setMosaicMode on the palette are silent.
+    palette.onMosaicModeChanged = [this] (bool grid) { canvas.setMosaicMode (grid); };
+    palette.onZoomChanged       = [this] (float z)   { canvas.setZoom (z); };
+    palette.onZoomReset         = [this]             { canvas.setZoom (1.0f); };
 
-    viewStatus.setFont (juce::FontOptions (11.0f));
-    viewStatus.setColour (juce::Label::textColourId, juce::Colours::black);
-    canvas.onViewChanged = [this] { updateViewStatus(); };
-    updateViewStatus();
+    canvas.onViewChanged = [this]
+    {
+        palette.setMosaicMode (canvas.isMosaicMode());
+        palette.setZoom (canvas.zoomLevel());
+    };
+    palette.setMosaicMode (canvas.isMosaicMode());
+    palette.setZoom (canvas.zoomLevel());
 
     setSize (960, 600);
     setResizable (true, true);
@@ -88,15 +97,6 @@ bool SoundEffectAudioProcessorEditor::keyPressed (const juce::KeyPress& k)
     if (code == 'n' || code == 'N') { newWindow(); return true; }
     if (code == 'o' || code == 'O') { openFile();  return true; }
     return false;
-}
-
-void SoundEffectAudioProcessorEditor::updateViewStatus()
-{
-    juce::String s;
-    s << juce::roundToInt (canvas.zoomLevel() * 100.0f) << "%   "
-      << (canvas.isMosaicMode() ? "grid" : "free")
-      << (canvas.isPanMode() ? "   pan (V to exit)" : "   H to pan");
-    viewStatus.setText (s, juce::dontSendNotification);
 }
 
 SoundEffectAudioProcessorEditor::~SoundEffectAudioProcessorEditor()
@@ -165,17 +165,20 @@ void SoundEffectAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds();
 
-    auto bar = area.removeFromTop (kToolbarH).reduced (4, 3);
-    mosaicButton.setBounds (bar.removeFromLeft (70));
-    bar.removeFromLeft (4);
-    zoomResetButton.setBounds (bar.removeFromLeft (52));
-    bar.removeFromLeft (8);
-    viewStatus.setBounds (bar);
-
     // The two panels are fixed columns, kMaxWidth at most and never more than a
     // third of the editor each — so a small host window still leaves a canvas to
     // work on between them.
     mixer.setBounds   (area.removeFromLeft  (juce::jmin (MixerComponent::kMaxWidth, area.getWidth() / 3)));
     effects.setBounds (area.removeFromRight (juce::jmin (EffectsPanelComponent::kMaxWidth, area.getWidth() / 2)));
     canvas.setBounds  (area);
+
+    // The palette hangs over the canvas — centred on the VIEWPORT, not on the
+    // editor, so it stays over the board it drives rather than drifting under a
+    // panel as the panels take their share. It narrows with the viewport too, down
+    // to the width below which its slider stops being a slider.
+    const int paletteW = juce::jlimit (ViewPalette::kMinWidth, ViewPalette::kMaxWidth,
+                                       area.getWidth() - 2 * kPaletteSideGap);
+    palette.setBounds (area.getCentreX() - paletteW / 2,
+                       area.getBottom() - kPaletteBottomGap - ViewPalette::kHeight,
+                       paletteW, ViewPalette::kHeight);
 }

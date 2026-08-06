@@ -492,6 +492,11 @@ void CanvasComponent::zoomAround (float newZoom, juce::Point<float> anchor)
     if (onViewChanged) onViewChanged();
 }
 
+void CanvasComponent::setZoom (float newZoom)
+{
+    zoomAround (newZoom, getLocalBounds().getCentre().toFloat());
+}
+
 void CanvasComponent::resetView()
 {
     zoom = 1.0f;

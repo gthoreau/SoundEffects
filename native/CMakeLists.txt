@@ -76,7 +76,8 @@ target_sources(SoundEffect PRIVATE
     Source/ui/EffectsPanel.cpp
     Source/ui/CanvasComponent.cpp
     Source/ui/WindowComponent.cpp
-    Source/ui/MixerComponent.cpp)
+    Source/ui/MixerComponent.cpp
+    Source/ui/ViewPalette.cpp)
 
 target_compile_definitions(SoundEffect PUBLIC
     JUCE_WEB_BROWSER=0

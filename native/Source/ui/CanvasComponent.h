@@ -20,8 +20,8 @@
 // readily as right of and below it, and neither direction shunts the other along.
 // Resizing a Window therefore resizes its whole column (and shifts the columns
 // beside it). Dragging a Window re-targets its cell, with the rest reflowing live
-// around the gap it will land in. The Mosaic button toggles the grid off, leaving
-// Windows wherever they were dropped (free placement).
+// around the gap it will land in. The view palette's layout toggle turns the grid
+// off, leaving Windows wherever they were dropped (free placement).
 //
 // Keeps its WindowComponents in sync with engine.windowIds().
 
@@ -62,6 +62,11 @@ public:
 
     float zoomLevel() const noexcept { return zoom; }
     void  resetView();
+    /** Zoom about the CENTRE of the viewport, keeping the pan. What the palette's
+        slider and its 100% button drive: there is no pointer to zoom about when the
+        gesture happened somewhere else entirely, and the middle of the board you are
+        looking at is what you meant to keep. */
+    void  setZoom (float newZoom);
 
     static constexpr float kMinZoom = 0.2f;
     static constexpr float kMaxZoom = 4.0f;
