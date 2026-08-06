@@ -10,6 +10,8 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include <functional>
+
 namespace sys7 {
 
 // The palette, shared with the canvas Windows.
@@ -43,7 +45,79 @@ class Sys7Button : public juce::Button
 public:
     explicit Sys7Button (const juce::String& text) : juce::Button (text) { setButtonText (text); }
 
+    /** The heavy ring System 7 draws around the button Return presses. Purely the
+        look — the key itself is handled by whoever owns the dialog. The ring is
+        drawn INSIDE the button's bounds, so a default button needs the room:
+        `kDefaultRingInset` px on every side. */
+    void setDefaultButton (bool shouldBeDefault);
+
+    /** How much a default button's ring eats on each side. */
+    static constexpr int kDefaultRingInset = 4;
+
     void paintButton (juce::Graphics&, bool shouldDrawHighlighted, bool shouldDrawDown) override;
+
+private:
+    bool defaultButton = false;
+};
+
+/**
+ * A System 7 modal alert: a title, an optional checkbox, and two buttons.
+ *
+ * Exists because Apply is irreversible (§1) and the parameterless effects have no
+ * form to pause on — their button IS the whole interaction, so without a stop
+ * between the click and the edit there is nothing at all between a mis-aimed
+ * pointer and a rewritten sound.
+ *
+ * Return picks the default button, Escape picks Cancel — and a click outside the
+ * box picks neither. A modal alert whose backdrop dismisses it is a modal alert
+ * that can be dismissed by accident, which for this one means running the effect
+ * or losing the question depending on where the pointer happened to land.
+ */
+class Sys7AlertDialog : public juce::Component
+{
+public:
+    /**
+     * Cover `host`'s window with the alert and go modal.
+     *
+     * `checkboxText` empty means no checkbox. It starts unticked every time — it is
+     * a question about this dialog's future, not a setting the dialog remembers.
+     *
+     * `onChoice (confirmed, ticked)`: `confirmed` is true for the default button,
+     * false for Cancel. `ticked` is the checkbox as the dialog closed, and is only
+     * meaningful when confirmed — Cancel discards the whole dialog, checkbox
+     * included, because a box ticked inside a dialog you then cancelled is not an
+     * answer. The callback runs after the dialog has gone.
+     */
+    static void show (juce::Component& host,
+                      const juce::String& title,
+                      const juce::String& checkboxText,
+                      const juce::String& confirmText,
+                      const juce::String& cancelText,
+                      std::function<void (bool confirmed, bool ticked)> onChoice);
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void parentSizeChanged() override;
+    bool keyPressed (const juce::KeyPress&) override;
+    void mouseDown (const juce::MouseEvent&) override {}   // the backdrop is not a Cancel
+
+private:
+    Sys7AlertDialog (const juce::String& title, const juce::String& checkboxText,
+                     const juce::String& confirmText, const juce::String& cancelText);
+
+    /** Where the box sits inside the full-window backdrop. */
+    juce::Rectangle<int> boxBounds() const;
+
+    juce::String title;
+    Sys7Button confirm, cancel;
+    std::unique_ptr<juce::ToggleButton> checkbox;
+
+    static constexpr int kBoxW = 300;
+    static constexpr int kCheckH = 20;
+    static constexpr int kButtonH = 22;
+    static constexpr int kPad = 14;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Sys7AlertDialog)
 };
 
 /** Only what the panels actually borrow from JUCE: the list's scrollbar. */
