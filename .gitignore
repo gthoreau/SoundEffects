@@ -4,6 +4,10 @@ dist/
 
 # Native (JUCE) build output — CMake cache, fetched JUCE tree, plugin artefacts.
 native/build/
+# The universal Release tree and the .dmg that make-dmg.sh packages from it.
+# Releases are distributed as GitHub Release assets, not committed.
+native/build-release/
+native/dist/
 # The engine test build. The FIXTURES themselves are committed: they are the
 # contract between the TS reference and the C++ ports, and the native test must
 # not need a Node toolchain to run.
