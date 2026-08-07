@@ -838,7 +838,10 @@ describe("the Keyboard module", () => {
     d.firstSelCh = 1;
     d.lastSelCh = 2;
     expect(needsOneChannelAlert(d)).toBe(true);
-    expect(KEYBOARD_ONE_CHANNEL_ONLY).toContain("I'm sorry");
+    // STR# 1000 #3, verbatim from the shipping module — "Keboard" is the
+    // original's own typo, and shipping it is the point.
+    expect(KEYBOARD_ONE_CHANNEL_ONLY).toContain("I’m sorry");
+    expect(KEYBOARD_ONE_CHANNEL_ONLY).toContain("Keboard");
   });
 
   it("does not apologise when there was no choice to make", () => {

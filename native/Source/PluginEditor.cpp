@@ -7,11 +7,13 @@ namespace {
 constexpr int kPaletteBottomGap = 25;
 /** ...and beside it, before it starts giving width back to the viewport. */
 constexpr int kPaletteSideGap = 12;
+/** Between the two floating strips. Small: they are one stack, not two palettes. */
+constexpr int kPaletteStackGap = 6;
 }
 
 SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAudioProcessor& p)
     : juce::AudioProcessorEditor (&p), processorRef (p),
-      canvas (p.engine()), mixer (p.engine()), effects (p.engine())
+      canvas (p.engine()), mixer (p.engine()), effects (p.engine()), keyboard (p.engine())
 {
     formatManager.registerBasicFormats();   // WAV, AIFF, and more
 
@@ -19,17 +21,23 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
     addAndMakeVisible (mixer);
     addAndMakeVisible (effects);
     addAndMakeVisible (palette);   // last, so it floats over the canvas
+    addChildComponent (keyboard);  // ...and this one starts hidden
 
     // The effects panel acts on the canvas's SELECTED Window — not the focused
     // one. Clicking into the panel takes keyboard focus away from the Window, and
     // what the panel operates on has to survive that.
+    // The Keyboard follows the SAME selection. That is what makes it an always-on
+    // effect rather than a dialog: it is aimed at whatever Window is selected at the
+    // moment you press a key, so clicking between Windows re-aims it.
     canvas.onSelectionChanged = [this]
     {
         effects.setTargetWindow (canvas.selectedWindowId());
         mixer.setSelectedWindow (canvas.selectedWindowId());
+        keyboard.setTargetWindow (canvas.selectedWindowId());
     };
     effects.setTargetWindow (canvas.selectedWindowId());
     mixer.setSelectedWindow (canvas.selectedWindowId());
+    keyboard.setTargetWindow (canvas.selectedWindowId());
 
     // The mixer is a list OF the Windows: clicking a channel selects its Window and
     // brings it to the front — and, if it had been scrolled off the board, back into
@@ -45,6 +53,22 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
         canvas.invalidateWaveform (id);
         canvas.refresh();
     };
+
+    // The Keyboard's Apply is an effect run like any other, so it reports where
+    // every other effect reports — the panel's result line — rather than growing a
+    // status line of its own on a strip that has no room for one.
+    keyboard.onDocumentChanged = [this] (uint64_t id)
+    {
+        canvas.invalidateWaveform (id);
+        canvas.refresh();
+    };
+    keyboard.onResult = [this] (const juce::String& message) { effects.showResult (message); };
+
+    // Two ways in, one state: the palette's toggle and the Keyboard row in the
+    // effects list. The row SHOWS rather than toggles — clicking an effect's name
+    // has never meant "put that away".
+    palette.onKeyboardToggled = [this] (bool shown) { setKeyboardShown (shown); };
+    effects.onShowKeyboard = [this] { setKeyboardShown (true); };
 
     // New / Open live at the top of the mixer panel, not in any toolbar.
     mixer.onNew  = [this] { newWindow(); };
@@ -113,6 +137,16 @@ void SoundEffectAudioProcessorEditor::timerCallback()
     canvas.refresh();
     mixer.refresh();
     effects.refresh();
+    if (keyboard.isVisible()) keyboard.refresh();
+}
+
+void SoundEffectAudioProcessorEditor::setKeyboardShown (bool shown)
+{
+    if (keyboard.isVisible() == shown) return;
+
+    keyboard.setVisible (shown);   // hiding it silences whatever it was playing
+    palette.setKeyboardShown (shown);
+    resized();                     // the stack's height changed; the View palette moves
 }
 
 void SoundEffectAudioProcessorEditor::newWindow()
@@ -178,7 +212,25 @@ void SoundEffectAudioProcessorEditor::resized()
     // to the width below which its slider stops being a slider.
     const int paletteW = juce::jlimit (ViewPalette::kMinWidth, ViewPalette::kMaxWidth,
                                        area.getWidth() - 2 * kPaletteSideGap);
+
+    // The floating stack is laid out from the BOTTOM up: the Keyboard takes the
+    // bottom slot and the View palette rides above it, so showing the Keyboard
+    // lifts the palette rather than covering it. With the Keyboard hidden the
+    // palette lands exactly where it always did.
+    int floor = area.getBottom() - kPaletteBottomGap;
+
+    if (keyboard.isVisible())
+    {
+        // The Keyboard is a fixed width — it is a picture of a keyboard, and a
+        // keyboard that has been squeezed is a different instrument. On a canvas
+        // too narrow for it, it overhangs rather than distorts.
+        keyboard.setBounds (area.getCentreX() - KeyboardPalette::kWidth / 2,
+                            floor - KeyboardPalette::kHeight,
+                            KeyboardPalette::kWidth, KeyboardPalette::kHeight);
+        floor -= KeyboardPalette::kHeight + kPaletteStackGap;
+    }
+
     palette.setBounds (area.getCentreX() - paletteW / 2,
-                       area.getBottom() - kPaletteBottomGap - ViewPalette::kHeight,
+                       floor - ViewPalette::kHeight,
                        paletteW, ViewPalette::kHeight);
 }

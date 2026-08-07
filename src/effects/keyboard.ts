@@ -34,14 +34,26 @@ import { ItemType, type SettingsSchema } from "../runtime/schema.js";
 import type { EffectModule } from "../runtime/module.js";
 
 /**
- * "Only plays first selected channel (with an apologetic alert)." `[DOC]`
+ * STR# 1000, verbatim. `[RES]`
  *
- * `[RES]`-thin: the alert's existence and apologetic tone are documented, the
- * exact wording is not recovered. Phrased in the app's own first-person voice
- * (§11) — if the real string turns up, replace it.
+ * These were placeholders in the app's own voice until the shipping module's
+ * resource fork was read: `SoundEffects 0.9.2 ƒ/Effects Folder/Keyboard` still
+ * carries STR# 1000, and these are its strings, index for index — typo, curly
+ * apostrophes and all. "Keboard" is the original's own slip and stays.
+ *
+ * `KEYBOARD_ONE_CHANNEL_ONLY` is the apologetic alert §8 #18 records: string #3,
+ * raised when the keyboard window opens on more than one selected channel.
  */
+export const KEYBOARD_NO_SETTINGS = "The Keyboard module does not have any settings.";
 export const KEYBOARD_ONE_CHANNEL_ONLY =
-  "I'm sorry, but I can only play one channel at a time. I'll use the first selected one.";
+  "I’m sorry, but with this version of the Keboard module you will be able to play " +
+  "the first selected channel only.\n" +
+  "You might want to mix the sound to a single channel next time.";
+export const KEYBOARD_NO_CHANNEL =
+  "I couldn’t open a sound channel to work with. Either there is not enough memory, " +
+  "or there are too many sounds already playing.";
+export const KEYBOARD_EMPTY_SOUND =
+  "You are using the Keyboard module with an empty sound. You won’t hear anything.";
 
 /** The MIDI note the document's `baseFreq` names. Default 60 = middle C (§2.1). */
 export const DEFAULT_BASE_FREQ = 60;
@@ -147,9 +159,28 @@ export const Keyboard: EffectModule<KeyboardSettings> = {
   version: "1.1",
   author: "Alberto Ricci",
   progressText: "",
+  // TEXT 1000, verbatim. `[RES]` — recovered alongside STR# 1000, replacing a
+  // paraphrase written before the module's resource fork was read.
   about:
-    "Click the keys to hear the first selected channel at different pitches. Change Pitch changes the sound's playback rate — it does not resample the sound. Use Resample Rate if you want the change to be real.",
-  strings: [KEYBOARD_ONE_CHANNEL_ONLY],
+    "The Keyboard module lets you play the selected sound at various pitches, depending on " +
+    "where you click on a piano keyboard.\n" +
+    "If more than one channel is selected when you use this module, only the first selected " +
+    "channel will play.\n\n" +
+    "If you click the “Change Pitch” button, the pitch of the sound will be changed to the " +
+    "one that corresponds to the last clicked piano key. To change the pitch of the sound, " +
+    "however, the module does not change the sound data itself. Instead, it modifies the " +
+    "playback rate.\n" +
+    "So, if you don’t want the playback rate to be changed, you will have to do a “Resample " +
+    "Rate” effect on it, specifying the original rate.\n\n" +
+    "Thanks to Hoby Van Hoose.",
+  // Indexed by |result| (§7.7), so the empty slot at #2 is load-bearing.
+  strings: [
+    KEYBOARD_NO_SETTINGS,
+    "",
+    KEYBOARD_ONE_CHANNEL_ONLY,
+    KEYBOARD_NO_CHANNEL,
+    KEYBOARD_EMPTY_SOUND,
+  ],
 
   defaults: () => ({ semitones: 0, useSelectionForLooping: false }),
 

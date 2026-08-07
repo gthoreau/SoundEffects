@@ -107,6 +107,12 @@ private:
 
     /** Where the box sits inside the full-window backdrop. */
     juce::Rectangle<int> boxBounds() const;
+    /** The wrapped title. One layout serves both the measuring and the drawing. */
+    juce::TextLayout titleLayout() const;
+    /** How tall the title runs once wrapped — the box grows to hold it. */
+    int titleHeight() const;
+    /** The width the title wraps into, inside the box's padding. */
+    static constexpr int titleWidth() { return kBoxW - (kPad + 4) * 2; }
 
     juce::String title;
     Sys7Button confirm, cancel;

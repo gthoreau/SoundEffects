@@ -17,6 +17,7 @@ constexpr int kStepW   = 12;   // the - and + marks at the ends of the travel
 constexpr int kTroughH = 12;
 constexpr int kThumbW  = 9;
 constexpr int kResetW  = 48;
+constexpr int kKeysW   = 28;   // the Keyboard toggle, sized like a layout segment
 
 /** How far off the 100% tick the cap still snaps to it, in pixels of travel. */
 constexpr int kDetent = 3;
@@ -97,6 +98,13 @@ void ViewPalette::setMosaicMode (bool grid)
     repaint();
 }
 
+void ViewPalette::setKeyboardShown (bool shown)
+{
+    if (keyboardShown == shown) return;
+    keyboardShown = shown;
+    repaint();
+}
+
 void ViewPalette::setZoom (float newZoom)
 {
     if (std::abs (newZoom - zoom) < 1.0e-4f) return;
@@ -126,6 +134,12 @@ void ViewPalette::resized()
 
     // The trough takes what the fixed parts leave, so the slider is what grows if
     // these metrics are ever nudged.
+    //
+    // The Keyboard toggle sits outermost with a wide gap before it: it is the only
+    // control here that shows something rather than changing the view, and the gap
+    // is what says so.
+    keysSeg = row.removeFromRight (kKeysW);
+    row.removeFromRight (10);
     auto tail = row.removeFromRight (kResetW);
     resetButton.setBounds (tail);
     row.removeFromRight (10);
@@ -219,6 +233,23 @@ void ViewPalette::paint (Graphics& g)
     g.setColour (sys7::kInk);
     g.drawRect (cap, hovered == Part::trough ? sys7::kBorderHover : sys7::kBorderIdle);
     g.drawVerticalLine (cx, (float) cap.getY() + 3.0f, (float) cap.getBottom() - 3.0f);
+
+    // The Keyboard toggle. Inverted while its palette is up — the app's one and only
+    // way of saying "on" (Sys7.h), the same one the transport and the mixer use — so
+    // the button shows the state rather than naming it. The picture is the module's
+    // own ICN# 128, which is why no word is needed.
+    {
+        const auto seg = keysSeg.toFloat();
+        g.setColour (keyboardShown ? sys7::kInk : sys7::kFace);
+        g.fillRoundedRectangle (seg, 3.0f);
+        g.setColour (sys7::kInk);
+        g.drawRoundedRectangle (seg.reduced (0.5f), 3.0f,
+                                hovered == Part::keys ? (float) sys7::kBorderHover : 1.0f);
+
+        g.setColour (keyboardShown ? sys7::kWhite : sys7::kInk);
+        kbd::drawIcon (g, { keysSeg.getCentreX() - kbd::kIconW / 2,
+                            keysSeg.getCentreY() - kbd::kIconH / 2 });
+    }
 }
 
 // --- input -------------------------------------------------------------------
@@ -231,6 +262,7 @@ ViewPalette::Part ViewPalette::partAt (Point<int> p) const
     if (plusRect.expanded (2).contains (p))  return Part::plus;
     // The whole row height grabs the slider: a 12px trough is a mean target, and the
     // palette has nothing else along that stretch to hit by mistake.
+    if (keysSeg.contains (p)) return Part::keys;
     if (troughRect.expanded (2, kRowH).contains (p)) return Part::trough;
     return Part::none;
 }
@@ -267,6 +299,12 @@ void ViewPalette::mouseDown (const juce::MouseEvent& e)
             dragging = true;
             zoomFromDrag (e.getPosition().x);
             repaint();
+            break;
+        case Part::keys:
+            // The palette answers by pushing the new state back through
+            // setKeyboardShown, so this button never disagrees with what is on
+            // screen — the same one-way street the zoom readout is on.
+            if (onKeyboardToggled) onKeyboardToggled (! keyboardShown);
             break;
         case Part::none: break;
     }

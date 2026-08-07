@@ -1,7 +1,10 @@
 // PluginEditor — hosts the infinite canvas of sound Windows between two panels:
 // the main mixer down the LEFT (New and Open sit at its top) and the destructive
 // effects down the RIGHT. The view controls — layout, zoom — float over the canvas
-// in a palette rather than sitting in a toolbar above it.
+// in a palette rather than sitting in a toolbar above it, and the Keyboard hangs
+// under that palette as a second floating strip, shown and hidden from a button on
+// the first. The two float as one stack: hide the Keyboard and the View palette
+// drops back down into the space it was using.
 //
 // A 30 Hz timer refreshes the canvas, the mixer and the effects panel (transport
 // playhead, window set, selection scope).
@@ -13,6 +16,7 @@
 #include "PluginProcessor.h"
 #include "ui/CanvasComponent.h"
 #include "ui/EffectsPanel.h"
+#include "ui/KeyboardPalette.h"
 #include "ui/MixerComponent.h"
 #include "ui/ViewPalette.h"
 
@@ -43,6 +47,8 @@ public:
 
 private:
     void timerCallback() override;
+    /** Show or hide the Keyboard palette, and re-lay the floating stack. */
+    void setKeyboardShown (bool shown);
     void openFile();
     void newWindow();
 
@@ -51,7 +57,8 @@ private:
     CanvasComponent       canvas;
     MixerComponent        mixer;
     EffectsPanelComponent effects;
-    ViewPalette           palette;   // floats OVER the canvas, so it is added last
+    ViewPalette           palette;    // floats OVER the canvas, so it is added last
+    KeyboardPalette       keyboard;   // ...and hangs directly below the palette
 
     juce::AudioFormatManager formatManager;
     std::unique_ptr<juce::FileChooser> chooser;

@@ -27,14 +27,31 @@ namespace se::modules {
 namespace {
 
 /**
- * "Only plays first selected channel (with an apologetic alert)." [DOC]
+ * STR# 1000, verbatim. [RES]
  *
- * [RES]-thin: the alert's existence and apologetic tone are documented, the exact
- * wording is not recovered. Phrased in the app's own first-person voice (§11) — if
- * the real string turns up, replace it.
+ * These were placeholders in the app's own voice until the shipping module's
+ * resource fork was read: `SoundEffects 0.9.2 ƒ/Effects Folder/Keyboard` still
+ * carries STR# 1000, and these are its strings, index for index, typo and curly
+ * apostrophes and all — "Keboard" is the original's own slip and stays.
+ *
+ * NOTHING RAISES #3 OR #5 ANY MORE, and that is deliberate rather than an
+ * oversight. #3 is the apology for playing only the first selected channel — the
+ * Keyboard palette plays every selected track, so the limitation it apologises for
+ * no longer exists. #5 warns about an empty sound; the palette says "NO AUDIO" in
+ * its own readout instead of interrupting with a box. They stay here because
+ * `strings` is the module's recovered STR# 1000 indexed by result code (§7.7) —
+ * it is ABI data, not a to-do list, and a module returning 3 would still speak.
  */
+const char* kNoSettings = "The Keyboard module does not have any settings.";
 const char* kOneChannelOnly =
-    "I'm sorry, but I can only play one channel at a time. I'll use the first selected one.";
+    "I\xe2\x80\x99m sorry, but with this version of the Keboard module you will be able to "
+    "play the first selected channel only.\n"
+    "You might want to mix the sound to a single channel next time.";
+const char* kNoChannel =
+    "I couldn\xe2\x80\x99t open a sound channel to work with. Either there is not enough "
+    "memory, or there are too many sounds already playing.";
+const char* kEmptySound =
+    "You are using the Keyboard module with an empty sound. You won\xe2\x80\x99t hear anything.";
 
 /**
  * The rate multiplier for a chromatic offset: 2^(semitones/12).
@@ -57,10 +74,22 @@ EffectModule makeKeyboard()
     m.version = "1.1";
     m.author = "Alberto Ricci";
     m.progressText = "";
-    m.about = "Click the keys to hear the first selected channel at different pitches. "
-              "Change Pitch changes the sound's playback rate — it does not resample the "
-              "sound. Use Resample Rate if you want the change to be real.";
-    m.strings = { kOneChannelOnly };
+    // TEXT 1000, verbatim. [RES] — recovered from the shipping module alongside
+    // STR# 1000, replacing a paraphrase written before the resource fork was read.
+    m.about =
+        "The Keyboard module lets you play the selected sound at various pitches, depending "
+        "on where you click on a piano keyboard.\n"
+        "If more than one channel is selected when you use this module, only the first "
+        "selected channel will play.\n\n"
+        "If you click the \xe2\x80\x9c""Change Pitch\xe2\x80\x9d button, the pitch of the sound "
+        "will be changed to the one that corresponds to the last clicked piano key. To change "
+        "the pitch of the sound, however, the module does not change the sound data itself. "
+        "Instead, it modifies the playback rate.\n"
+        "So, if you don\xe2\x80\x99t want the playback rate to be changed, you will have to do a "
+        "\xe2\x80\x9c""Resample Rate\xe2\x80\x9d effect on it, specifying the original rate.\n\n"
+        "Thanks to Hoby Van Hoose.";
+    // Indexed by |result| (§7.7), so the empty slot at #2 is load-bearing.
+    m.strings = { kNoSettings, "", kOneChannelOnly, kNoChannel, kEmptySound };
 
     m.defaults = [] { return Settings { { "semitones", Value (int64_t (0)) },
                                         { "useSelectionForLooping", Value (false) } }; };

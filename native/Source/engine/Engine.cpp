@@ -112,6 +112,8 @@ bool Engine::advance (uint64_t id)
 { Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Advance; c.id=id; return post (c); }
 bool Engine::normalSpeed (uint64_t id)
 { Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::NormalSpeed; c.id=id; return post (c); }
+bool Engine::setRateScale (uint64_t id, double scale)
+{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::RateScale; c.id=id; c.play.rateScale=scale; return post (c); }
 bool Engine::seek (uint64_t id, size_t bytes)
 { Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Seek; c.id=id; c.seekBytes=bytes; return post (c); }
 
@@ -143,6 +145,7 @@ void Engine::applyTransport (Window& w, const Command& c) noexcept
         case Command::Tx::Advance:     w.transport->advance (d);        break;
         case Command::Tx::NormalSpeed: w.transport->normalSpeed();      break;
         case Command::Tx::Seek:        w.transport->seek (d, c.seekBytes); break;
+        case Command::Tx::RateScale:   w.transport->setRateScale (c.play.rateScale); break;
     }
 }
 

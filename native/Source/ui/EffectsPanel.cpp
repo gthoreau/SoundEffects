@@ -761,6 +761,14 @@ void EffectsPanelComponent::layoutRows()
 
 void EffectsPanelComponent::openEffect (const se::EffectModule* module)
 {
+    // Keyboard has a palette, not a form (§8 #18). It never expands, so it never
+    // closes anything either: whatever was open stays open.
+    if (module != nullptr && module->name == "Keyboard")
+    {
+        if (onShowKeyboard) onShowKeyboard();
+        return;
+    }
+
     // Clicking the open effect closes it — the column is narrow, and a form you
     // cannot dismiss is a form that has taken the panel hostage.
     if (openModule == module) module = nullptr;
@@ -944,6 +952,15 @@ void EffectsPanelComponent::setOneClickApply (bool shouldBeOneClick)
     oneClickApply = shouldBeOneClick;
     if (oneClickToggle != nullptr)
         oneClickToggle->setToggleState (shouldBeOneClick, juce::dontSendNotification);
+}
+
+void EffectsPanelComponent::showResult (const juce::String& message)
+{
+    resultLine = message;
+    // The scope readout is derived from the document the run just changed, so it
+    // has to be recomputed rather than left saying what was true before.
+    lastScopeWindow = 0;
+    repaint();
 }
 
 void EffectsPanelComponent::runModule (const se::EffectModule& module, const se::Settings& settings)

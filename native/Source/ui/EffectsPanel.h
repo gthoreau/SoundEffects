@@ -143,6 +143,18 @@ public:
         dragged, its audio edited). Driven by the editor's timer. */
     void refresh();
 
+    /**
+     * Keyboard is not a form and not a row that expands: it is a floating palette
+     * that stays up and plays whatever Window is selected. Clicking the row asks
+     * the editor to show it. Its Apply reports back through showResult(), so every
+     * effect outcome in the app still arrives in the same line.
+     */
+    std::function<void()> onShowKeyboard;
+
+    /** Say what an effect run did, in the panel's own result line. Public because
+        the Keyboard palette runs effects too and has nowhere to put an outcome. */
+    void showResult (const juce::String& message);
+
     /** An effect rewrote `windowId`'s audio — the canvas must drop that Window's
         cached waveform peaks, which are keyed on LENGTH and so cannot notice an
         effect that rewrote every sample in place. Any spawned documents have

@@ -75,6 +75,8 @@ target_sources(SoundEffect PRIVATE
     Source/effects/modules/Waveform.cpp
     Source/ui/Sys7.cpp
     Source/ui/EffectsPanel.cpp
+    Source/ui/KeyboardArt.cpp
+    Source/ui/KeyboardPalette.cpp
     Source/ui/CanvasComponent.cpp
     Source/ui/WindowComponent.cpp
     Source/ui/MixerComponent.cpp

@@ -9,7 +9,11 @@
 //   - the layout toggle: grid (Mosaic) or free placement, two icons that show the
 //     two arrangements rather than naming them,
 //   - the zoom slider, marked - and +, with a detent at 100%,
-//   - a 100% button, the way back when the slider has wandered.
+//   - a 100% button, the way back when the slider has wandered,
+//   - and, set apart at the right, the Keyboard toggle: the module's own ICN# 128,
+//     inverted while its palette is up. It is the odd one out — what it shows is an
+//     effect, not a view — but it is a PALETTE toggle, and the palette it shows
+//     hangs directly below this one, so this is where the hand looks for it.
 //
 // Drawn in the System 7 vocabulary of Sys7.h — flat face, 1px black frames, weight
 // for hover — plus the solid black drop shadow System 7 gave the things that float
@@ -19,6 +23,7 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "KeyboardArt.h"
 #include "Sys7.h"
 
 #include <functional>
@@ -32,8 +37,11 @@ public:
     // then it gives ground — everything but the slider is fixed, so what shrinks is
     // the travel. Past kMinWidth it stops: a slider with no throw left is not worth
     // the room it saves, and at that size it may overhang the panels a little.
-    static constexpr int kMaxWidth = 336;
-    static constexpr int kMinWidth = 260;
+    // The two numbers are the strip's own metrics; the 38 is the Keyboard toggle
+    // (28) plus the gap that sets it apart (10), kept as a sum so the widths the
+    // zoom cluster was designed around stay readable.
+    static constexpr int kMaxWidth = 336 + 38;
+    static constexpr int kMinWidth = 260 + 38;
     static constexpr int kHeight = 38;
     /** The drop shadow lives inside the bounds, so the frame stops short of them. */
     static constexpr int kShadow = 3;
@@ -45,11 +53,14 @@ public:
     /** The 100% button. Separate from onZoomChanged so the canvas can treat it as
         the gesture it is rather than as a slider that happened to land on 1.0. */
     std::function<void()> onZoomReset;
+    /** The Keyboard toggle was clicked; true asks for the palette to be shown. */
+    std::function<void (bool)> onKeyboardToggled;
 
     /** Push the canvas's state in. Neither fires a callback — these are the
         readouts, and the canvas is what they read. */
     void setMosaicMode (bool grid);
     void setZoom (float zoom);
+    void setKeyboardShown (bool shown);
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -62,7 +73,7 @@ public:
 private:
     /** The parts that answer the pointer. The two slider ends step; the trough
         drags; the segments toggle. The 100% button is a real Sys7Button. */
-    enum class Part { none, grid, free, minus, plus, trough };
+    enum class Part { none, grid, free, minus, plus, trough, keys };
 
     Part partAt (juce::Point<int> p) const;
     void setHovered (Part p);
@@ -81,10 +92,11 @@ private:
 
     juce::Rectangle<int> body() const noexcept;
 
-    juce::Rectangle<int> gridSeg, freeSeg, zoomLabel, minusRect, plusRect, troughRect;
+    juce::Rectangle<int> gridSeg, freeSeg, zoomLabel, minusRect, plusRect, troughRect, keysSeg;
     Sys7Button resetButton { "100%" };
 
     bool  mosaic = true;
+    bool  keyboardShown = false;
     float zoom = 1.0f;
     bool  dragging = false;      // while true the ZOOM label reads the percentage
     Part  hovered = Part::none;

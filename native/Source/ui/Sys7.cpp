@@ -1,5 +1,7 @@
 #include "Sys7.h"
 
+#include <cmath>
+
 using juce::Graphics;
 using juce::Rectangle;
 
@@ -122,9 +124,33 @@ void Sys7AlertDialog::show (juce::Component& host, const juce::String& title,
                              true);
 }
 
+juce::TextLayout Sys7AlertDialog::titleLayout() const
+{
+    juce::AttributedString s;
+    s.append (title, juce::FontOptions (13.0f, juce::Font::bold), sys7::kInk);
+
+    juce::TextLayout layout;
+    layout.createLayout (s, (float) titleWidth());
+    return layout;
+}
+
+int Sys7AlertDialog::titleHeight() const
+{
+    // Most titles are a module's name and take one line. But an alert that carries
+    // a module's own STR# 1000 voice is carrying whole sentences — Keyboard's
+    // apology is two — and a box sized for one line would show the first eight
+    // words and silently eat the rest. Measure, then give it the room.
+    //
+    // The measuring and the drawing go through the SAME layout, deliberately: two
+    // engines that wrap slightly differently would size the box off one and fill it
+    // from the other, and the disagreement would show up as a clipped last line on
+    // exactly the long strings this exists for.
+    return juce::jmax (18, (int) std::ceil (titleLayout().getHeight()));
+}
+
 juce::Rectangle<int> Sys7AlertDialog::boxBounds() const
 {
-    int h = kPad + 18 + kPad + kButtonH + kPad;
+    int h = kPad + titleHeight() + kPad + kButtonH + kPad;
     if (checkbox != nullptr) h += kCheckH;
     return juce::Rectangle<int> (kBoxW, h).withCentre (getLocalBounds().getCentre());
 }
@@ -147,11 +173,8 @@ void Sys7AlertDialog::paint (Graphics& g)
     g.setColour (sys7::kInk);
     g.drawRect (box.reduced (4), 1);
 
-    auto text = box.reduced (kPad + 4, kPad);
-
-    g.setColour (sys7::kInk);
-    g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
-    g.drawText (title, text.removeFromTop (18), juce::Justification::centredLeft, false);
+    const auto text = box.reduced (kPad + 4, kPad);
+    titleLayout().draw (g, text.withHeight (titleHeight()).toFloat());
 }
 
 void Sys7AlertDialog::resized()
@@ -162,7 +185,8 @@ void Sys7AlertDialog::resized()
     {
         // Under the title, aligned with it: the checkbox is the only body the box
         // has, so it sits where the text used to rather than beside the buttons.
-        checkbox->setBounds (inner.getX() + 4, inner.getY() + 18, inner.getWidth() - 4, kCheckH);
+        checkbox->setBounds (inner.getX() + 4, inner.getY() + titleHeight(),
+                             inner.getWidth() - 4, kCheckH);
     }
 
     auto row = inner.removeFromBottom (kButtonH);

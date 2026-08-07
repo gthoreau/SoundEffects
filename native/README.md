@@ -292,6 +292,25 @@ JUCE 8.0.4) 2026-07-18.
   canvas written into `SoundEffect.settings` came up on screen with its tints,
   sizes, byte counts, independent track lengths, mute and solo intact, and was
   written back out byte-identical apart from the grid's own re-pack of x/height.
+- **The Keyboard palette**: the one effect that is not a form, and the only one that
+  is always on. A floating strip hangs under the View palette, shown and hidden from
+  a button there (the module's own ICN# 128, inverted while it is up), and at any
+  moment it plays **the Window that is selected now** — click a key to hear that
+  Window at that pitch, click a different Window and the same keyboard is playing
+  that one. Apply commits by editing the document's playback rate and **touching not
+  one byte of audio**; Resample Rate is how you make the lie true.
+  The keyboard itself is recovered exactly — the shipping module's resource fork
+  (`SoundEffects 0.9.2 ƒ/Effects Folder/Keyboard`) still carries PICT 128, ICN# 128,
+  WIND/CNTL, STR# 1000 and TEXT 1000, and the picture is redrawn from measurements
+  of the decoded bitmap (56 white keys on an 8px pitch, eight octaves, black keys
+  5 × 20) rather than embedded, so it is pixel-exact and stays crisp. The dot under
+  the document's base note is the original's.
+  Everything around it is deliberately modern: no modal, no System 7 dialog chrome,
+  no "Use selection for looping" checkbox (looping is always on — it was the switch
+  that turned a one-shot into an instrument), no Cancel, and **no one-channel
+  limitation** — the original could only play the first selected channel and
+  apologised for it in STR# 1000 #3; this plays every selected track, and nothing
+  raises the apology any more.
 - **Next increments**: System 7 chrome polish; the effects port; recording;
   byte-accurate AIFF/WAV save.
 

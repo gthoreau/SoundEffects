@@ -44,6 +44,20 @@ public:
     void pause() noexcept;                       // space toggles play/pause
     void advance (const SoundDocument& doc);     // play at 2× (see .cpp)
     void normalSpeed() noexcept { advanceScale = 1.0; }
+
+    /**
+     * Change the rate multiplier of a transport that is ALREADY ROLLING.
+     *
+     * This is how the Keyboard pitches a Window that is already playing without
+     * interrupting it. The playhead keeps its position and only the step size
+     * changes from the next frame on — so there is no gap, no phase reset, and no
+     * re-aiming of the loop region, all three of which a fresh play() would cause
+     * (it re-snapshots the region from the document's CURRENT selection).
+     *
+     * A no-op on a stopped transport in every sense that matters: it is stored,
+     * and the next play() overwrites playOpts wholesale.
+     */
+    void setRateScale (double scale) noexcept { playOpts.rateScale = scale; }
     void seek (const SoundDocument& doc, size_t bytes) noexcept;
 
     TransportState state() const noexcept { return currentState; }

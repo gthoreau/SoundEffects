@@ -121,6 +121,8 @@ public:
     bool pause (uint64_t id);
     bool advance (uint64_t id);
     bool normalSpeed (uint64_t id);
+    /** Re-pitch a ROLLING transport without restarting it. See Transport. */
+    bool setRateScale (uint64_t id, double scale);
     bool seek (uint64_t id, size_t bytes);
 
     /** Free Windows/documents the audio thread has retired. Msg thread, periodic. */
@@ -140,7 +142,8 @@ private:
     struct Command
     {
         enum class Kind : uint8_t { AddWindow, RemoveWindow, Transport, SwapDoc } kind {};
-        enum class Tx   : uint8_t { Play, Stop, Pause, Advance, NormalSpeed, Seek } tx {};
+        enum class Tx   : uint8_t { Play, Stop, Pause, Advance, NormalSpeed, Seek,
+                                    RateScale } tx {};
         uint64_t        id = 0;
         Window*         window = nullptr;   // AddWindow: ownership transfers to audio
         SoundDocument*  doc = nullptr;      // SwapDoc: ownership transfers to audio
