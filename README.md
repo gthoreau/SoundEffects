@@ -20,7 +20,7 @@ unsynchronised loopers you arrange spatially.
 
 ## Download
 
-**SoundEffect 0.1.0** — universal (Apple Silicon + Intel), macOS 11 Big Sur or
+**SoundEffect 0.2.0** — universal (Apple Silicon + Intel), macOS 11 Big Sur or
 later, about 4.6 MB.
 
 This repository is private, so there's no public download page. **The app is
@@ -29,8 +29,8 @@ they install identically:
 
 | | |
 |---|---|
-| `SoundEffect-0.1.0-macOS.dmg` | A disk image. Open it and drag the app into Applications. |
-| `SoundEffect-0.1.0-macOS.zip` | The app in an archive, for when it came by email. Unzip and move the app into Applications. |
+| `SoundEffect-0.2.0-macOS.dmg` | A disk image. Open it and drag the app into Applications. |
+| `SoundEffect-0.2.0-macOS.zip` | The app in an archive, for when it came by email. Unzip and move the app into Applications. |
 
 <details>
 <summary>Why two formats?</summary>
@@ -114,10 +114,11 @@ Worth knowing before you spend an evening on a patch:
 ## Requirements
 
 macOS 11 Big Sur or later, Apple Silicon or Intel. No installer beyond the drag.
-The only thing it leaves on your disk is `~/Library/Application Support/
-SoundEffect.settings` — your audio device choice, and the canvas you had open when
-you last quit, so that file grows with the audio in it. Delete the app and that
-file and nothing remains.
+The only thing it leaves on your disk is
+`~/Library/Application Support/SoundEffect.settings` — your audio device choice,
+and the canvas you had open when you last quit. That file therefore carries your
+audio, and can run to tens of megabytes once you have real samples loaded; it is
+rewritten on every quit. Delete the app and that file and nothing remains.
 
 Audio input/output is picked in the **Options → Audio/MIDI Settings** menu.
 
