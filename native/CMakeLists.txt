@@ -38,6 +38,7 @@ target_sources(SoundEffect PRIVATE
     Source/engine/Mixer.cpp
     Source/engine/Transport.cpp
     Source/engine/Engine.cpp
+    Source/engine/EngineState.cpp
     Source/engine/Import.cpp
     Source/engine/Edit.cpp
     Source/engine/Resample.cpp

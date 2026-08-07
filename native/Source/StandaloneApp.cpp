@@ -133,7 +133,11 @@ public:
     }
 
     /** Run an Options item. Reset throws the processor and its editor away and
-        builds new ones, so the editor is re-attached — and re-hooked — around it. */
+        builds new ones, so the editor is re-attached — and re-hooked — around it.
+
+        Save and Load are the processor's state, which for this program is the
+        user's WORK — the whole canvas of Windows, tracks and audio (see
+        engine/EngineState.h). They read as "save my work" and they mean it. */
     void runOptionsItem (int itemId)
     {
         switch (itemId)

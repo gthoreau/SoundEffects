@@ -21,6 +21,59 @@ SoundEffectAudioProcessor::SoundEffectAudioProcessor()
 SoundEffectAudioProcessor::~SoundEffectAudioProcessor()
 {
     stopTimer();
+    cancelPendingUpdate();   // no restore may land on a half-destroyed engine
+}
+
+// ================================ state =====================================
+
+void SoundEffectAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    // Reads each Window's UI document, which the message thread owns — so this
+    // expects to be called there, as both the standalone (save / quit) and every
+    // host we target do. There is no marshalling escape on this side: the host
+    // wants the bytes before the call returns.
+    const auto blob = se::serializeEngine (engineImpl);
+    destData.setSize (0);
+    destData.append (blob.data(), blob.size());
+}
+
+void SoundEffectAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    if (data == nullptr || sizeInBytes <= 0) return;
+
+    se::EngineState state;
+    if (! se::parseEngineState (data, static_cast<size_t> (sizeInBytes), state))
+        return;   // not ours, or damaged: keep the canvas the user already has
+
+    {
+        const std::lock_guard<std::mutex> lock (pendingStateLock);
+        pendingState = std::move (state);
+    }
+
+    if (juce::MessageManager::existsAndIsCurrentThread())
+    {
+        // Already where the engine wants us. Apply now rather than next message,
+        // so a host that loads state and immediately asks what we contain — or the
+        // standalone, whose editor is built right after — sees the restored canvas.
+        cancelPendingUpdate();
+        handleAsyncUpdate();
+    }
+    else
+    {
+        triggerAsyncUpdate();
+    }
+}
+
+void SoundEffectAudioProcessor::handleAsyncUpdate()
+{
+    se::EngineState state;
+    {
+        const std::lock_guard<std::mutex> lock (pendingStateLock);
+        state = std::move (pendingState);
+        pendingState = {};
+    }
+
+    se::applyEngineState (engineImpl, state);
 }
 
 void SoundEffectAudioProcessor::timerCallback()

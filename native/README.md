@@ -40,6 +40,7 @@ native/
       SpscQueue.h           lock-free single-producer/consumer ring buffer
       Engine.{h,cpp}        multi-window ADDITIVE sum + per-window mixer channel
                             + the lock-free UI↔audio window hand-off
+      EngineState.{h,cpp}   the whole canvas as bytes: save / load / host state
 ```
 
 ## Threading (UI ↔ audio)
@@ -202,6 +203,34 @@ by bubbling, because neither the focused Window nor the canvas claims them.
 | `0` | reset zoom, and put the origin back at the viewport's top-left |
 | `+` / `-` | zoom about the viewport centre |
 
+## Saving: state IS the work
+
+There is one notion of "saved" here, and the host's word for it is *plugin state*.
+A state blob holds the whole canvas: every open Window, its name, its cell / place
+/ size / tint, its mixer channel (gain, mute, solo), and each track's audio bytes,
+output channel and volume. Selection, loop region and chunks travel with it. What
+does NOT travel is the transport — a restored canvas comes up stopped — and the
+Window ids, which are per-session handles.
+
+That one blob is behind all three of these:
+
+| Where | What happens |
+| --- | --- |
+| Options ▸ Save Current State… / Load a Saved State… | writes / reads it as a file |
+| quitting and relaunching the standalone | it goes into `SoundEffect.settings`, so the canvas comes back |
+| a DAW session with the plugin in it | the host saves it with the session |
+
+Format and threading live in `engine/EngineState.h`. Three steps on purpose:
+`serializeEngine` (message thread — reads the UI-side documents), `parseEngineState`
+(any thread; pure, and where untrusted bytes are handled) and `applyEngineState`
+(message thread only; goes through Engine's command queue, never at the live Window
+set). The processor decodes wherever the host called it and marshals only the apply,
+via `AsyncUpdater`. Round trip, refusal of damaged blobs, and a 4000-case mutation
+sweep are asserted in `tests/run_state.cpp` — `state-tests`, JUCE-free like the rest.
+
+NB this is our own blob, not an interchange format; byte-accurate AIFF/WAV save
+(extended-80 rate, offset-binary payload) is still to come — see `Import.h`.
+
 ## Build
 
 Requires CMake ≥ 3.22, a C++17 compiler, and (first configure) network access to
@@ -255,9 +284,16 @@ JUCE 8.0.4) 2026-07-18.
   swaps the name cell for a live dB readout (−∞ … +6.0 dB) and the meter follows
   the new gain, mute inverts the button and empties the meter, double-click
   returns the fader to unity, and the list scrolls once the strips outgrow it.
+- **Save / load**: `getStateInformation` / `setStateInformation` implemented, so the
+  Options menu's Save/Load items, the standalone's quit-and-relaunch, and a DAW
+  session all carry the real canvas (see *Saving* above). Engine side verified by
+  `state-tests` (field-by-field round trip, damaged blobs refused, ASan/UBSan clean
+  over a 4000-case mutation sweep); verified in the built app too — a three-Window
+  canvas written into `SoundEffect.settings` came up on screen with its tints,
+  sizes, byte counts, independent track lengths, mute and solo intact, and was
+  written back out byte-identical apart from the grid's own re-pack of x/height.
 - **Next increments**: System 7 chrome polish; the effects port; recording;
-  byte-accurate AIFF/WAV save; persisting canvas layout across launches (cell,
-  size and tint live on the engine's `Window` but are not yet saved to disk).
+  byte-accurate AIFF/WAV save.
 
 ## Known TODO / not-yet-safe
 
@@ -269,6 +305,15 @@ JUCE 8.0.4) 2026-07-18.
   selection changes, and add/move/trash *track* while a Window is playing still
   need their own hand-off (same command-queue idea, or a per-Window immutable
   document swap). Editing a stopped Window is fine.
+- **`getStateInformation` has no thread escape.** It reads the UI-side documents,
+  so it expects the message thread — which is where the standalone and every host
+  we target call it. `setStateInformation` is defended (parse anywhere, apply
+  marshalled); the save side cannot be, because the host wants the bytes before the
+  call returns.
+- **The standalone keeps its state in the settings file.** Quitting base64s the
+  whole canvas — audio and all — into `~/Library/Application Support/
+  SoundEffect.settings`. Fine at SoundEffect sizes (8-bit, 22 kHz), but a canvas
+  full of long imported audio makes for a fat settings file and a slower quit.
 - **`TrackMonitor` uses `std::set`.** Soloing/muting a *track* (not a window)
   mutates a set — allocation. Fine today because it goes through the command
   queue applied on the audio thread only via `play` payloads, but a live

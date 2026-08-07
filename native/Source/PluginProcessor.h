@@ -8,9 +8,13 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "engine/Engine.h"
+#include "engine/EngineState.h"
+
+#include <mutex>
 
 class SoundEffectAudioProcessor : public juce::AudioProcessor,
-                                  private juce::Timer
+                                  private juce::Timer,
+                                  private juce::AsyncUpdater
 {
 public:
     SoundEffectAudioProcessor();
@@ -36,14 +40,28 @@ public:
     const juce::String getProgramName (int) override { return {}; }
     void changeProgramName (int, const juce::String&) override {}
 
-    void getStateInformation (juce::MemoryBlock&) override {}
-    void setStateInformation (const void*, int) override {}
+    // State here is the user's WORK — every open Window, its place and colour on
+    // the canvas, and the sound inside it. See engine/EngineState.h for the format
+    // and for which of the three steps runs on which thread.
+    void getStateInformation (juce::MemoryBlock&) override;
+    void setStateInformation (const void*, int) override;
 
     /** The engine the editor draws and edits. */
     se::Engine& engine() noexcept { return engineImpl; }
 
 private:
     void timerCallback() override;   // message thread: reclaim retired Windows
+
+    // A host may call setStateInformation from any thread, but the engine's window
+    // set may only be rebuilt from the message thread. So the blob is DECODED
+    // wherever the call lands (parsing touches nothing shared) and only the apply
+    // is marshalled here. AsyncUpdater is what makes that safe against teardown:
+    // its destructor cancels a pending callback, so a processor deleted between
+    // the trigger and the callback cannot be applied into.
+    void handleAsyncUpdate() override;
+
+    std::mutex        pendingStateLock;
+    se::EngineState   pendingState;
 
     se::Engine engineImpl;
 

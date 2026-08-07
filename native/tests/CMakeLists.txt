@@ -76,12 +76,27 @@ add_executable(engine-tests
 
 target_include_directories(engine-tests PRIVATE ${ENGINE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
 
+# Save / load: the canvas round-trips through the state blob, and a blob we did not
+# write is refused rather than believed. JUCE-free for the usual reason — the
+# format belongs to the engine, not to the standalone or to any one host.
+add_executable(state-tests
+    run_state.cpp
+    ${ENGINE_DIR}/engine/Engine.cpp
+    ${ENGINE_DIR}/engine/EngineState.cpp
+    ${ENGINE_DIR}/engine/Transport.cpp
+    ${ENGINE_DIR}/engine/Mixer.cpp
+    ${ENGINE_SOURCES})
+
+target_include_directories(state-tests PRIVATE ${ENGINE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+
 if(MSVC)
     target_compile_options(effect-fixtures PRIVATE /W4)
     target_compile_options(engine-tests    PRIVATE /W4)
+    target_compile_options(state-tests     PRIVATE /W4)
 else()
     target_compile_options(effect-fixtures PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(engine-tests    PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(state-tests     PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
 # Run from the tests directory so the default fixture path resolves.
