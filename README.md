@@ -92,11 +92,6 @@ xattr -dr com.apple.quarantine /Applications/SoundEffect.app
   generated from the TypeScript reference — Amplify, Echo/Delay, Flanger, FIR and
   IIR filters, Robotize, Granular Synthesis, Sample Hose, Weird Tempo, Zero
   Crosser and the rest.
-- **Saving your work.** **Options → "Save Current State…"** writes the whole
-  canvas to a file — every window where you left it, its colour, its tracks and
-  their audio, and the mixer settings — and **"Load a Saved State…"** brings it
-  back. You don't have to remember to: quit and the canvas is waiting on the next
-  launch. (It comes back stopped, not playing.)
 
 ## What doesn't work yet
 
@@ -110,6 +105,11 @@ Worth knowing before you spend an evening on a patch:
   audio settings and otherwise does nothing.
 - **There is no undo** — and there never will be. That one is deliberate; see the
   original's own alert text in the spec.
+- **Saving your work.** **Options → "Save Current State…"** writes the whole
+  canvas to a file — every window where you left it, its colour, its tracks and
+  their audio, and the mixer settings — and **"Load a Saved State…"** brings it
+  back. You don't have to remember to: quit and the canvas is waiting on the next
+  launch. (It comes back stopped, not playing.)
 
 ## Requirements
 
