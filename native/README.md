@@ -311,6 +311,20 @@ JUCE 8.0.4) 2026-07-18.
   limitation** — the original could only play the first selected channel and
   apologised for it in STR# 1000 #3; this plays every selected track, and nothing
   raises the apology any more.
+  **A key does one of two things**, and the difference is the whole feel of it. On a
+  STOPPED Window it starts it looping at that pitch and letting go stops it. On a
+  Window ALREADY ROLLING it re-pitches the transport *where it stands* — letting go
+  puts the rate back and leaves it running, so you can ride a live loop up and down
+  the keyboard and hand it back exactly as you found it. Nothing restarts: no gap,
+  no playhead jump, no phase lost against the other Windows, and no re-snapshotting
+  of the loop region from a selection that may have moved since. That is what
+  `Transport::setRateScale` exists for; save-and-restore would have gapped the loop
+  for the length of every note and had to reconstruct state the transport does not
+  publish. It also only ever touches the Window it is driving — playback is global
+  and additive here, and almost nothing on the canvas is the keyboard's to stop.
+  The readout badge wears the **target Window's tint**, the way the mixer's strips
+  do: on a one-row strip with no space for a title, the tint is what says which
+  Window the keys are about to move.
 - **Next increments**: System 7 chrome polish; the effects port; recording;
   byte-accurate AIFF/WAV save.
 
