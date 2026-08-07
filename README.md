@@ -92,16 +92,20 @@ xattr -dr com.apple.quarantine /Applications/SoundEffect.app
   generated from the TypeScript reference — Amplify, Echo/Delay, Flanger, FIR and
   IIR filters, Robotize, Granular Synthesis, Sample Hose, Weird Tempo, Zero
   Crosser and the rest.
+- **Saving your work.** **Options → "Save Current State…"** writes the whole
+  canvas to a file — every window where you left it, its colour, its tracks and
+  their audio, and the mixer settings — and **"Load a Saved State…"** brings it
+  back. You don't have to remember to: quit and the canvas is waiting on the next
+  launch. (It comes back stopped, not playing.)
 
 ## What doesn't work yet
 
 Worth knowing before you spend an evening on a patch:
 
-- **There is no Save or Export.** Nothing you make leaves the app. Recording the
-  output with Loopback/BlackHole is the only way out right now. In particular
-  **Options → "Save Current State…" does not save your work** — it's a stock JUCE
-  menu item wired to a state serializer that hasn't been written yet, so it will
-  cheerfully write you an empty file. Ignore it.
+- **There is no Export.** Your work is safe — see Save Current State above — but
+  it can only be reopened by SoundEffect. Nothing leaves as a WAV or AIFF yet, so
+  recording the output with Loopback/BlackHole is still the only way into another
+  program.
 - **Recording is not wired up.** The red button is there; pressing it opens the
   audio settings and otherwise does nothing.
 - **There is no undo** — and there never will be. That one is deliberate; see the
@@ -110,8 +114,9 @@ Worth knowing before you spend an evening on a patch:
 ## Requirements
 
 macOS 11 Big Sur or later, Apple Silicon or Intel. No installer beyond the drag.
-The only thing it leaves on your disk is your audio device choice, in
-`~/Library/Application Support/SoundEffect.settings` — delete the app and that
+The only thing it leaves on your disk is `~/Library/Application Support/
+SoundEffect.settings` — your audio device choice, and the canvas you had open when
+you last quit, so that file grows with the audio in it. Delete the app and that
 file and nothing remains.
 
 Audio input/output is picked in the **Options → Audio/MIDI Settings** menu.
