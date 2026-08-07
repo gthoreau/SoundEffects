@@ -4,7 +4,7 @@
 
 namespace {
 /** How much canvas stays visible below the floating view palette. */
-constexpr int kPaletteBottomGap = 50;
+constexpr int kPaletteBottomGap = 25;
 /** ...and beside it, before it starts giving width back to the viewport. */
 constexpr int kPaletteSideGap = 12;
 }

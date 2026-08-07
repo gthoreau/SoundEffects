@@ -152,11 +152,12 @@ void ViewPalette::paint (Graphics& g)
     g.setColour (sys7::kInk);
     g.drawRoundedRectangle (face.reduced (0.5f), 5.0f, 1.0f);
 
-    // The layout toggle: two icons in one frame, the live one on the chrome grey and
-    // the other on white. Which arrangement you are in is the one lit, and the
-    // pictures say what "grid" and "free" mean without spending a word each.
+    // The layout toggle: two icons in one frame, the arrangement you are in on white
+    // and the one you are not on the chrome grey — the white half reads as the open
+    // one, the grey as the half still shut. The pictures say what "grid" and "free"
+    // mean without spending a word each.
     const auto group = gridSeg.getUnion (freeSeg).toFloat();
-    g.setColour (sys7::kWhite);
+    g.setColour (sys7::kFace);
     g.fillRoundedRectangle (group, 3.0f);
 
     // The lit half is a plain rectangle clipped to the group's rounded outline —
@@ -166,7 +167,7 @@ void ViewPalette::paint (Graphics& g)
         rounded.addRoundedRectangle (group, 3.0f);
         juce::Graphics::ScopedSaveState clip (g);
         g.reduceClipRegion (rounded);
-        g.setColour (sys7::kFace);
+        g.setColour (sys7::kWhite);
         g.fillRect (mosaic ? gridSeg : freeSeg);
     }
 
