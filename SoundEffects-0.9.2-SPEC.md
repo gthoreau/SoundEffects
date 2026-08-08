@@ -116,6 +116,22 @@ Three horizontal zones (Intro):
 
 **File**: New ⌘N · Open… ⌘O (option = "open any kind of document") · Close ⌘W · Save ⌘S · Save As… · Revert (option = no confirmation) · Preferences · Quit ⌘Q
 
+> `[NATIVE]` The rebuild keeps this menu and the meanings of its top half — New,
+> Open… and Close still make, import into and throw away a sound Window — and adds
+> a second group for the **canvas**, which the original had no equivalent of
+> because it had one document at a time: New Canvas · Open Canvas… · Save Canvas ⌘S
+> · Save Canvas As… ⇧⌘S · Revert Canvas. So the original's Save ⌘S, which saved
+> *the sound*, is now the canvas's — the canvas is what this program's document
+> actually is, and it is what the title bar names ("Untitled Canvas" until saved).
+> Three further departures: **Quit is not there**, because System 7 had no
+> application menu and macOS has had one since 2001, with ⌘Q already in it;
+> **Save is never greyed**, so ⌘S on a canvas with no file means Save As rather
+> than nothing; and **New Canvas and Revert Canvas ask first**, which the original
+> did not, because this program inherited "there is no undo" (§1.2) and one menu
+> click should not be able to take an afternoon with it. Preferences holds the
+> audio device settings; the five recovered Preferences pages (§9) are still the
+> second pass.
+
 **Edit**: Undo ⌘Z *(always disabled — see §1.2)* · Cut ⌘X · Copy ⌘C · Paste ⌘V · Clear · Leave Silence… · Shift Sound… · Zoom ▸ (Zoom In ⌘=, Zoom Out ⌘-, Fit in Window, Fit Selection) · Play Clipboard
 — Cut/Copy/Paste/Clear dynamically relabel to **Cut Channel / Copy Channel / Paste Channel / Clear Channel** (when whole channels are selected) `[RES: STR# 136]`.
 

@@ -105,7 +105,7 @@ Worth knowing before you spend an evening on a patch:
   audio settings and otherwise does nothing.
 - **There is no undo** — and there never will be. That one is deliberate; see the
   original's own alert text in the spec.
-- **Saving your work.** **Options → "Save Canvas…"** writes the whole canvas to a
+- **Saving your work.** **File → "Save Canvas"** (⌘S) writes the whole canvas to a
   `.sefx` file — every window where you left it, its colour, its tracks and their
   audio, and the mixer settings — and **"Open Canvas…"** brings it back, as does
   double-clicking a `.sefx` in the Finder. You don't have to remember to save: quit
@@ -121,7 +121,7 @@ and the canvas you had open when you last quit. That file therefore carries your
 audio, and can run to tens of megabytes once you have real samples loaded; it is
 rewritten on every quit. Delete the app and that file and nothing remains.
 
-Audio input/output is picked in the **Options → Audio/MIDI Settings** menu.
+Audio input/output is picked in **File → Preferences → Audio/MIDI Settings** (⌘,).
 
 ---
 

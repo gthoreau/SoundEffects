@@ -203,6 +203,38 @@ by bubbling, because neither the focused Window nor the canvas claims them.
 | `0` | reset zoom, and put the origin back at the viewport's top-left |
 | `+` / `-` | zoom about the viewport centre |
 
+## The File menu, and the canvas as a document
+
+`StandaloneApp.cpp` puts one menu in the bar, and it is the original's File menu
+(SPEC §4) with a second group added. The top group is Window-level and means what
+it always meant — New ⌘N, Open… ⌘O, Close ⌘W make, import into and throw away a
+sound Window, and all three call straight into the editor. The bottom group is the
+canvas: New Canvas, Open Canvas…, Save Canvas ⌘S, Save Canvas As… ⇧⌘S, Revert
+Canvas. Preferences ▸ holds Audio/MIDI Settings ⌘,. The departures from the
+recovered menu are marked `[NATIVE]` in the SPEC beside it.
+
+They are **commands**, not plain menu items (`CommandIDs`, `MainWindow` as an
+`ApplicationCommandTarget`). That is what gets real ⌘-equivalents onto the macOS
+menu — JUCE only sets an `NSMenuItem` key equivalent for an item that carries a
+command manager — and it puts the name, the key and the greying of each item in
+one `getCommandInfo` switch. Two traps live here: a command item is dispatched by
+the manager AND then reported to `menuItemSelected`, so that override must stay
+empty or every item runs twice; and because the menu owns ⌘N/⌘O in the standalone,
+`PluginEditor::keyPressed` no longer sees them there — it is still the path in a
+VST3/AU, which has no menu of ours.
+
+What makes the canvas a *document* is one field, `MainWindow::canvasFile`. The
+canvas's NAME is that file's, and "Untitled Canvas" when there is not one yet —
+deliberately not stored in the blob, so renaming the file in the Finder renames
+the canvas and there is no second copy of the name to disagree with the first.
+It is what the title bar shows, what ⌘S writes to without a dialog, what Revert
+goes back to, and it is remembered in the settings file (`canvasFile`) so the
+title still says what you were working on after a relaunch.
+
+New Canvas and Revert Canvas confirm first. Nothing else here does, and the
+Window close box still does not: one Window is cheap to remake, a canvas is not,
+and this program has no undo by design.
+
 ## Saving: state IS the work
 
 There is one notion of "saved" here, and the host's word for it is *plugin state*.
@@ -216,7 +248,7 @@ That one blob is behind all four of these:
 
 | Where | What happens |
 | --- | --- |
-| Options ▸ Save Canvas… / Open Canvas… | writes / reads it as a `.sefx` file |
+| File ▸ Save Canvas / Save Canvas As… / Open Canvas… | writes / reads it as a `.sefx` file |
 | double-clicking a `.sefx`, or a path on the command line | same read, routed through `MainWindow::loadCanvasFile` |
 | quitting and relaunching the standalone | it goes into `SoundEffect.settings`, so the canvas comes back |
 | a DAW session with the plugin in it | the host saves it with the session |
@@ -301,7 +333,7 @@ JUCE 8.0.4) 2026-07-18.
   the new gain, mute inverts the button and empties the meter, double-click
   returns the fader to unity, and the list scrolls once the strips outgrow it.
 - **Save / load**: `getStateInformation` / `setStateInformation` implemented, so the
-  Options menu's Save/Load items, the standalone's quit-and-relaunch, and a DAW
+  File menu's canvas items, the standalone's quit-and-relaunch, and a DAW
   session all carry the real canvas (see *Saving* above). Engine side verified by
   `state-tests` (field-by-field round trip, damaged blobs refused, ASan/UBSan clean
   over a 4000-case mutation sweep); verified in the built app too — a three-Window

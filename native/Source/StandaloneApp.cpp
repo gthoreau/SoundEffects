@@ -43,48 +43,91 @@ namespace {
 
 class MainWindow;
 
+/** Everything the File menu can do. Commands rather than plain menu items, so that
+    one declaration in MainWindow::getCommandInfo carries the name, the key and
+    whether the item is greyed — and macOS gets a real key equivalent out of it
+    instead of decorative shortcut text. */
+namespace CommandIDs
+{
+    enum
+    {
+        newSound = 0x5e01,   // Window-level: one more sound on the canvas
+        openSound,
+        closeSound,
+
+        newCanvas,           // canvas-level: the document the Windows live on
+        openCanvas,
+        saveCanvas,
+        saveCanvasAs,
+        revertCanvas,
+
+        audioSettings
+    };
+}
+
 /**
- * What the stock Options button offered, in the menu bar where it belongs.
+ * The File menu, in the menu bar where it belongs.
  *
- * Audio/MIDI Settings and Clear are still the wrapper's, so those are a relocation
- * rather than a reimplementation. Save and Open are ours: the wrapper's versions
- * put up dialogs titled "Save current state" / "Load a saved state", which are
- * hard-coded TRANS() literals inside StandalonePluginHolder with no way in from
- * outside, and they cannot tell a damaged file from an empty canvas. See
- * MainWindow::saveCanvas / openCanvas.
+ * The original's File menu is the model (New / Open / Close / Save / Save As /
+ * Revert / Preferences / Quit) and the two halves here are the two things this
+ * program has that can be opened and saved. The TOP half is the original's, verb
+ * for verb, aimed at a sound Window. The BOTTOM half is the canvas those Windows
+ * live on, which the original had no equivalent of because it had no canvas.
+ *
+ * Quit is deliberately absent: System 7 had no application menu, so File was the
+ * only place to put it, and macOS has put Quit in the app menu since 2001. It is
+ * already there, with ⌘Q already working. [NATIVE]
  */
-class OptionsMenuBar final : public juce::MenuBarModel
+class FileMenuBar final : public juce::MenuBarModel
 {
 public:
-    explicit OptionsMenuBar (MainWindow& w) : window (w) {}
+    explicit FileMenuBar (juce::ApplicationCommandManager& cm) : commands (cm)
+    {
+        setApplicationCommandManagerToWatch (&commands);   // so greying stays live
+    }
 
-    juce::StringArray getMenuBarNames() override { return { "Options" }; }
+    juce::StringArray getMenuBarNames() override { return { "File" }; }
 
     juce::PopupMenu getMenuForIndex (int, const juce::String&) override
     {
         juce::PopupMenu m;
-        m.addItem (1, juce::String::fromUTF8 ("Audio/MIDI Settings\xE2\x80\xA6"));
+        m.addCommandItem (&commands, CommandIDs::newSound);
+        m.addCommandItem (&commands, CommandIDs::openSound);
+        m.addCommandItem (&commands, CommandIDs::closeSound);
         m.addSeparator();
-        m.addItem (2, juce::String::fromUTF8 ("Save Canvas\xE2\x80\xA6"));
-        m.addItem (3, juce::String::fromUTF8 ("Open Canvas\xE2\x80\xA6"));
+        m.addCommandItem (&commands, CommandIDs::newCanvas);
+        m.addCommandItem (&commands, CommandIDs::openCanvas);
+        m.addCommandItem (&commands, CommandIDs::saveCanvas);
+        m.addCommandItem (&commands, CommandIDs::saveCanvasAs);
+        m.addCommandItem (&commands, CommandIDs::revertCanvas);
         m.addSeparator();
-        m.addItem (4, "Clear Canvas");
+
+        juce::PopupMenu preferences;
+        preferences.addCommandItem (&commands, CommandIDs::audioSettings);
+        m.addSubMenu ("Preferences", preferences);
+
         return m;
     }
 
-    // No shortcuts on any of these, deliberately: the editor already owns ⌘N and
-    // ⌘O for New and Open, and a menu item would swallow the key before the
-    // editor's keyPressed ever saw it.
-    void menuItemSelected (int itemId, int) override;
+    /** Nothing, and it must stay nothing. A command item is dispatched by the
+        command manager when it is picked — and JUCE then calls this as well, so
+        doing the work here too would run every item twice. */
+    void menuItemSelected (int, int) override {}
 
 private:
-    MainWindow& window;
+    juce::ApplicationCommandManager& commands;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OptionsMenuBar)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FileMenuBar)
 };
 
-/** The app window: a plain Mac window with the plugin editor as its content. */
-class MainWindow final : public juce::DocumentWindow
+/** The app window: a plain Mac window with the plugin editor as its content, and
+    the target every File command is routed to.
+
+    It also holds the one piece of state that makes the canvas a DOCUMENT rather
+    than just a running program: which file it came from. That is what the title
+    bar shows, what Save writes to without asking, and what Revert goes back to. */
+class MainWindow final : public juce::DocumentWindow,
+                         public juce::ApplicationCommandTarget
 {
 public:
     MainWindow (const juce::String& title, juce::Colour background,
@@ -114,14 +157,28 @@ public:
         // A floor, so the two side panels cannot be squeezed to nothing.
         setResizeLimits (640, 420, 32768, 32768);
 
-        optionsMenu = std::make_unique<OptionsMenuBar> (*this);
-        juce::MenuBarModel::setMacMainMenu (optionsMenu.get());
+        // The canvas came back from the settings file (StandalonePluginHolder's
+        // constructor did that); this is the file it came FROM, so the title says
+        // what you were working on rather than just what program this is.
+        if (auto* props = pluginHolder->settings.get())
+            canvasFile = juce::File (props->getValue (kCanvasFileKey));
+
+        updateTitle();
+
+        commands.registerAllCommandsForTarget (this);
+        commands.setFirstCommandTarget (this);
+        addKeyListener (commands.getKeyMappings());
+
+        fileMenu = std::make_unique<FileMenuBar> (commands);
+        juce::MenuBarModel::setMacMainMenu (fileMenu.get());
     }
 
     ~MainWindow() override
     {
-        // Before optionsMenu dies: the menu bar holds a raw pointer to it.
+        // Before fileMenu dies: the menu bar holds a raw pointer to it.
         juce::MenuBarModel::setMacMainMenu (nullptr);
+        removeKeyListener (commands.getKeyMappings());
+        commands.setFirstCommandTarget (nullptr);
 
         pluginHolder->stopPlaying();
         detachEditor();
@@ -135,32 +192,120 @@ public:
         juce::JUCEApplicationBase::quit();
     }
 
-    /** Run an Options item. Clear throws the processor and its editor away and
-        builds new ones, so the editor is re-attached — and re-hooked — around it.
+    // ============================ commands ==================================
 
-        Save and Open are the processor's state, which for this program is the
-        user's WORK — the whole canvas of Windows, tracks and audio (see
-        engine/EngineState.h). They read as "save my work" and they mean it, so
-        they are named for the work and not for the plumbing's word, "state". */
-    void runOptionsItem (int itemId)
+    juce::ApplicationCommandTarget* getNextCommandTarget() override { return nullptr; }
+
+    void getAllCommands (juce::Array<juce::CommandID>& c) override
     {
-        switch (itemId)
+        c.addArray ({ CommandIDs::newSound,   CommandIDs::openSound,    CommandIDs::closeSound,
+                      CommandIDs::newCanvas,  CommandIDs::openCanvas,   CommandIDs::saveCanvas,
+                      CommandIDs::saveCanvasAs, CommandIDs::revertCanvas,
+                      CommandIDs::audioSettings });
+    }
+
+    void getCommandInfo (juce::CommandID id, juce::ApplicationCommandInfo& r) override
+    {
+        using Mods = juce::ModifierKeys;
+        const auto cmd = Mods::commandModifier;
+
+        switch (id)
         {
-            case 1: pluginHolder->showAudioSettingsDialog(); break;
-            case 2: saveCanvas();                           break;
-            case 3: openCanvas();                           break;
-            case 4: resetToDefaultState();                  break;
+            case CommandIDs::newSound:
+                r.setInfo ("New", "Add an empty sound Window to the canvas", "File", 0);
+                r.addDefaultKeypress ('N', cmd);
+                break;
+
+            case CommandIDs::openSound:
+                r.setInfo (ellipsis ("Open"), "Import an audio file into a new Window", "File", 0);
+                r.addDefaultKeypress ('O', cmd);
+                break;
+
+            case CommandIDs::closeSound:
+                r.setInfo ("Close", "Close the focused Window", "File", 0);
+                r.addDefaultKeypress ('W', cmd);
+                r.setActive (ourEditor() != nullptr && ourEditor()->hasFocusedWindow());
+                break;
+
+            case CommandIDs::newCanvas:
+                r.setInfo ("New Canvas", "Start again with an empty canvas", "File", 0);
+                break;
+
+            case CommandIDs::openCanvas:
+                r.setInfo (ellipsis ("Open Canvas"), "Open a saved canvas", "File", 0);
+                break;
+
+            case CommandIDs::saveCanvas:
+                // Never greyed, unlike the original's Save. There is nothing to be
+                // gained by refusing ⌘S: with no file yet it means Save As, which
+                // is what every program written since has done. [NATIVE]
+                r.setInfo ("Save Canvas", "Save the canvas", "File", 0);
+                r.addDefaultKeypress ('S', cmd);
+                break;
+
+            case CommandIDs::saveCanvasAs:
+                r.setInfo (ellipsis ("Save Canvas As"), "Save the canvas to a new file", "File", 0);
+                r.addDefaultKeypress ('S', cmd | Mods::shiftModifier);
+                break;
+
+            case CommandIDs::revertCanvas:
+                r.setInfo ("Revert Canvas", "Go back to the last saved version", "File", 0);
+                r.setActive (canvasFile.existsAsFile());
+                break;
+
+            case CommandIDs::audioSettings:
+                r.setInfo (ellipsis ("Audio/MIDI Settings"), "Choose the audio device", "File", 0);
+                r.addDefaultKeypress (',', cmd);
+                break;
+
             default: break;
         }
+    }
+
+    bool perform (const InvocationInfo& info) override
+    {
+        switch (info.commandID)
+        {
+            case CommandIDs::newSound:      if (auto* e = ourEditor()) e->newWindow();          return true;
+            case CommandIDs::openSound:     if (auto* e = ourEditor()) e->openFile();           return true;
+            case CommandIDs::closeSound:    if (auto* e = ourEditor()) e->closeFocusedWindow(); return true;
+
+            case CommandIDs::newCanvas:     newCanvas();                            return true;
+            case CommandIDs::openCanvas:    openCanvas();                           return true;
+            case CommandIDs::saveCanvas:    saveCanvas();                           return true;
+            case CommandIDs::saveCanvasAs:  saveCanvasAs();                         return true;
+            case CommandIDs::revertCanvas:  revertCanvas();                         return true;
+
+            case CommandIDs::audioSettings: pluginHolder->showAudioSettingsDialog(); return true;
+            default: break;
+        }
+
+        return false;
+    }
+
+    // ========================= the canvas document ===========================
+
+    /** ⌘S. Straight to the file it came from, with no dialog — that is the whole
+        point of a document having a file. Falls through to Save As the first time,
+        when there is not one yet. */
+    void saveCanvas()
+    {
+        if (! canvasFile.existsAsFile())
+        {
+            saveCanvasAs();
+            return;
+        }
+
+        writeCanvasTo (canvasFile);
     }
 
     /** Write the canvas to a file the user picks. The suffix makes this a document
         dialog rather than a bare save: macOS appends .sefx to a name typed without
         one, because the chooser's filter becomes the panel's allowed file types. */
-    void saveCanvas()
+    void saveCanvasAs()
     {
         fileChooser = std::make_unique<juce::FileChooser> ("Save Canvas",
-                                                           lastCanvasFile(),
+                                                           canvasFileOrDefault(),
                                                            canvasWildcard());
 
         const auto flags = juce::FileBrowserComponent::saveMode
@@ -171,18 +316,8 @@ public:
         {
             const auto file = fc.getResult();
 
-            if (file == juce::File())
-                return;   // cancelled
-
-            rememberCanvasFile (file);
-
-            juce::MemoryBlock data;
-            pluginHolder->processor->getStateInformation (data);
-
-            if (! file.replaceWithData (data.getData(), data.getSize()))
-                showFailure ("Couldn't save the canvas",
-                             "Nothing could be written to " + file.getFileName()
-                                 + ". Check that the disk is not full and that the file is not locked.");
+            if (file != juce::File())
+                writeCanvasTo (file);
         });
     }
 
@@ -190,7 +325,7 @@ public:
     void openCanvas()
     {
         fileChooser = std::make_unique<juce::FileChooser> ("Open Canvas",
-                                                           lastCanvasFile(),
+                                                           canvasFileOrDefault(),
                                                            canvasWildcard());
 
         const auto flags = juce::FileBrowserComponent::openMode
@@ -203,6 +338,40 @@ public:
             if (file != juce::File())
                 loadCanvasFile (file);
         });
+    }
+
+    /** Empty canvas, no file, back to "Untitled Canvas".
+
+        Asks first, and so does Revert. This program has no undo — that is a
+        deliberate inheritance, alert text and all — so a menu item that throws away
+        an afternoon's work has no business being one click from the top of the
+        File menu without a word. The close box on a single Window still asks
+        nothing, because one Window is cheap to remake. */
+    void newCanvas()
+    {
+        askThenDo ("Start a new canvas?",
+                   "The Windows on the canvas will be thrown away. This cannot be undone.",
+                   "New Canvas",
+                   [this]
+                   {
+                       resetToDefaultState();
+                       setCanvasFile (juce::File());
+                   });
+    }
+
+    /** Back to the last saved version, throwing away everything since. */
+    void revertCanvas()
+    {
+        if (! canvasFile.existsAsFile())
+            return;
+
+        const auto file = canvasFile;
+
+        askThenDo ("Revert to the last saved canvas?",
+                   "Everything changed since " + file.getFileName()
+                       + " was last saved will be thrown away. This cannot be undone.",
+                   "Revert",
+                   [this, file] { loadCanvasFile (file); });
     }
 
     /** Put a .sefx on screen, from wherever it came from — the Open item, a file
@@ -237,13 +406,55 @@ public:
         }
 
         pluginHolder->processor->setStateInformation (data.getData(), (int) data.getSize());
-        rememberCanvasFile (file);
+        setCanvasFile (file);
         return true;
     }
 
     std::unique_ptr<juce::StandalonePluginHolder> pluginHolder;
 
 private:
+    /** The canvas's name, which is its file's — or the name a canvas that has never
+        been saved goes by. Not stored in the blob: a document is called what its
+        file is called, so renaming it in the Finder renames it here, and there is
+        no second copy of the name to disagree with the first. */
+    static constexpr const char* kUntitledCanvas = "Untitled Canvas";
+
+    /** Where the current file is remembered between launches, so the title bar
+        still says what you were working on. */
+    static constexpr const char* kCanvasFileKey = "canvasFile";
+
+    juce::String canvasName() const
+    {
+        return canvasFile == juce::File() ? juce::String (kUntitledCanvas)
+                                          : canvasFile.getFileNameWithoutExtension();
+    }
+
+    void updateTitle() { setName (canvasName()); }
+
+    void setCanvasFile (const juce::File& file)
+    {
+        canvasFile = file;
+        updateTitle();
+
+        if (auto* props = pluginHolder->settings.get())
+            props->setValue (kCanvasFileKey, file.getFullPathName());
+
+        commands.commandStatusChanged();   // Revert may have just become available
+    }
+
+    void writeCanvasTo (const juce::File& file)
+    {
+        juce::MemoryBlock data;
+        pluginHolder->processor->getStateInformation (data);
+
+        if (file.replaceWithData (data.getData(), data.getSize()))
+            setCanvasFile (file);
+        else
+            showFailure ("Couldn't save the canvas",
+                         "Nothing could be written to " + file.getFileName()
+                             + ". Check that the disk is not full and that the file is not locked.");
+    }
+
     /** "*.sefx" — the chooser's filter, and on macOS the save panel's allowed file
         types, which is what makes a bare typed name grow the extension. */
     static juce::String canvasWildcard()
@@ -251,26 +462,37 @@ private:
         return "*" + juce::String (se::kEngineStateFileSuffix);
     }
 
-    /** Where the chooser opens, and what it pre-fills. Same settings key the stock
-        holder used, so a path remembered before this existed still comes back. */
-    juce::File lastCanvasFile() const
+    /** Where a chooser opens, and what Save As pre-fills: the current file, or a
+        name in Documents matching what the title bar has been saying. */
+    juce::File canvasFileOrDefault() const
     {
-        if (auto* props = pluginHolder->settings.get())
-        {
-            const juce::File remembered (props->getValue ("lastStateFile"));
-
-            if (remembered != juce::File())
-                return remembered;
-        }
+        if (canvasFile != juce::File())
+            return canvasFile;
 
         return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-                   .getChildFile ("Untitled Canvas" + juce::String (se::kEngineStateFileSuffix));
+                   .getChildFile (juce::String (kUntitledCanvas) + se::kEngineStateFileSuffix);
     }
 
-    void rememberCanvasFile (const juce::File& file)
+    /** Menu text with a real ellipsis, which is what macOS menus use. */
+    static juce::String ellipsis (const juce::String& s)
     {
-        if (auto* props = pluginHolder->settings.get())
-            props->setValue ("lastStateFile", file.getFullPathName());
+        return s + juce::String::fromUTF8 ("\xE2\x80\xA6");
+    }
+
+    /** Confirm, then act — on OK only. Async, like every other dialog here. */
+    template <typename Fn>
+    void askThenDo (const juce::String& title, const juce::String& message,
+                    const juce::String& okText, Fn&& action)
+    {
+        messageBox = juce::AlertWindow::showScopedAsync (
+            juce::MessageBoxOptions::makeOptionsOkCancel (juce::MessageBoxIconType::WarningIcon,
+                                                          title, message, okText, "Cancel"),
+            [onOk = std::forward<Fn> (action)] (int result) { if (result == 1) onOk(); });
+    }
+
+    SoundEffectAudioProcessorEditor* ourEditor() const
+    {
+        return dynamic_cast<SoundEffectAudioProcessorEditor*> (editor.get());
     }
 
     void showFailure (const juce::String& title, const juce::String& message)
@@ -340,7 +562,14 @@ private:
     }
 
     std::unique_ptr<juce::AudioProcessorEditor> editor;
-    std::unique_ptr<OptionsMenuBar> optionsMenu;
+
+    // Declared BEFORE the menu bar, which holds a reference to it, and destroyed
+    // after — the menu is watching it for enable/disable changes.
+    juce::ApplicationCommandManager commands;
+    std::unique_ptr<FileMenuBar> fileMenu;
+
+    /** The file this canvas came from, empty until it has been saved once. */
+    juce::File canvasFile;
 
     // Both outlive the call that raises them: launchAsync returns immediately and
     // the panel calls back later, and an async alert is dismissed by the user, not
@@ -351,13 +580,6 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)
 };
-
-// Out of line: the menu bar is declared before the window it drives, so MainWindow
-// is only an incomplete type up there.
-void OptionsMenuBar::menuItemSelected (int itemId, int)
-{
-    window.runOptionsItem (itemId);
-}
 
 /**
  * The application. Modelled on juce::StandaloneFilterApp — the properties file, the

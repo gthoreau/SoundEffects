@@ -157,6 +157,18 @@ void SoundEffectAudioProcessorEditor::newWindow()
     processorRef.engine().addWindow (std::make_unique<se::SoundDocument> (init));
 }
 
+void SoundEffectAudioProcessorEditor::closeFocusedWindow()
+{
+    // Exactly what the Window's own close box does, aimed at whatever is focused.
+    if (const auto id = canvas.selectedWindowId(); id != 0)
+        processorRef.engine().removeWindow (id);
+}
+
+bool SoundEffectAudioProcessorEditor::hasFocusedWindow() const
+{
+    return canvas.selectedWindowId() != 0;
+}
+
 void SoundEffectAudioProcessorEditor::openFile()
 {
     chooser = std::make_unique<juce::FileChooser> ("Open a sound", juce::File(),
