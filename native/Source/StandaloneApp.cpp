@@ -399,9 +399,9 @@ public:
 
         if (! se::parseEngineState (data.getData(), data.getSize(), probe))
         {
-            showFailure ("Not a SoundEffect canvas",
+            showFailure ("Not a SoundEffects canvas",
                          file.getFileName() + " is damaged, or was written by "
-                         "a newer version of SoundEffect than this one.");
+                         "a newer version of SoundEffects than this one.");
             return false;
         }
 
@@ -490,9 +490,9 @@ private:
             [onOk = std::forward<Fn> (action)] (int result) { if (result == 1) onOk(); });
     }
 
-    SoundEffectAudioProcessorEditor* ourEditor() const
+    SoundEffectsAudioProcessorEditor* ourEditor() const
     {
-        return dynamic_cast<SoundEffectAudioProcessorEditor*> (editor.get());
+        return dynamic_cast<SoundEffectsAudioProcessorEditor*> (editor.get());
     }
 
     void showFailure (const juce::String& title, const juce::String& message)
@@ -529,7 +529,7 @@ private:
         // Hand the editor the things only the standalone app can answer, because
         // only the standalone owns an audio device. In a VST3/AU both stay null and
         // the record button is simply grey and inert — which is correct there.
-        if (auto* ours = dynamic_cast<SoundEffectAudioProcessorEditor*> (editor.get()))
+        if (auto* ours = dynamic_cast<SoundEffectsAudioProcessorEditor*> (editor.get()))
         {
             ours->onShowAudioSettings = [this] { pluginHolder->showAudioSettingsDialog(); };
 
@@ -588,16 +588,18 @@ private:
  * was never anything to subclass. If JUCE's wrapper changes, this is the file to
  * diff it against.
  */
-class SoundEffectStandaloneApp final : public juce::JUCEApplication
+class SoundEffectsStandaloneApp final : public juce::JUCEApplication
 {
 public:
-    SoundEffectStandaloneApp()
+    SoundEffectsStandaloneApp()
     {
         juce::PropertiesFile::Options options;
         options.applicationName     = juce::CharPointer_UTF8 (JucePlugin_Name);
         options.filenameSuffix      = ".settings";
         options.osxLibrarySubFolder = "Application Support";
         options.folderName          = "";
+
+        migrateLegacySettings (options);
 
         appProperties.setStorageParameters (options);
     }
@@ -667,6 +669,28 @@ public:
     }
 
 private:
+    /** The app was called "SoundEffect", singular, until the name was corrected, and
+        the properties file is named after the app — so the rename on its own would
+        have left the autosaved canvas, the audio device choice and the window size
+        behind in a file nothing reads any more. Copy the old one across the first
+        time we start under the new name. The original is left where it is: it is a
+        kilobyte, and it is the way back if this build is ever downgraded. */
+    static void migrateLegacySettings (const juce::PropertiesFile::Options& options)
+    {
+        const juce::File current = options.getDefaultFile();
+
+        if (current.existsAsFile())
+            return;
+
+        juce::PropertiesFile::Options legacy = options;
+        legacy.applicationName = "SoundEffect";
+
+        const juce::File previous = legacy.getDefaultFile();
+
+        if (previous.existsAsFile() && previous != current)
+            previous.copyFileTo (current);
+    }
+
     /** Open the first canvas named in a command line, and bring the app forward so
         the result is visible. One only: there is a single window and a single
         canvas in it, so opening several would just be the last one winning. */
@@ -695,4 +719,4 @@ private:
 
 } // namespace
 
-JUCE_CREATE_APPLICATION_DEFINE (SoundEffectStandaloneApp)
+JUCE_CREATE_APPLICATION_DEFINE (SoundEffectsStandaloneApp)

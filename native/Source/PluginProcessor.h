@@ -12,13 +12,13 @@
 
 #include <mutex>
 
-class SoundEffectAudioProcessor : public juce::AudioProcessor,
+class SoundEffectsAudioProcessor : public juce::AudioProcessor,
                                   private juce::Timer,
                                   private juce::AsyncUpdater
 {
 public:
-    SoundEffectAudioProcessor();
-    ~SoundEffectAudioProcessor() override;
+    SoundEffectsAudioProcessor();
+    ~SoundEffectsAudioProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -65,5 +65,5 @@ private:
 
     se::Engine engineImpl;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoundEffectAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoundEffectsAudioProcessor)
 };

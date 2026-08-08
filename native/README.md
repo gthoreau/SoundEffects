@@ -1,4 +1,4 @@
-# SoundEffect — native (JUCE)
+# SoundEffects — native (JUCE)
 
 The native rebuild of SoundEffects 0.9.2: a **standalone app** and a **DAW plugin**
 (VST3 / AU / AAX) from one codebase — the VCV Rack Pro delivery model. Loadable in
@@ -63,7 +63,7 @@ area** and an **Output channel** L/R/L+R) · plus a **Transport** and an
 lane a "channel"; the rebuild renames that to **Track** and reserves "channel"
 for output routing and the mixer.
 
-## The model (what makes it SoundEffect)
+## The model (what makes it SoundEffects)
 
 - **Independent tracks = rudimentary per-track samplers.** Each track is its own
   buffer, and in a playing window each track loops over ITS OWN length
@@ -250,8 +250,14 @@ That one blob is behind all four of these:
 | --- | --- |
 | File ▸ Save Canvas / Save Canvas As… / Open Canvas… | writes / reads it as a `.sefx` file |
 | double-clicking a `.sefx`, or a path on the command line | same read, routed through `MainWindow::loadCanvasFile` |
-| quitting and relaunching the standalone | it goes into `SoundEffect.settings`, so the canvas comes back |
+| quitting and relaunching the standalone | it goes into `SoundEffects.settings`, so the canvas comes back |
 | a DAW session with the plugin in it | the host saves it with the session |
+
+The settings file is named after the app, so correcting the name to the plural
+would have orphaned every existing canvas — the autosave lives *inside* that file.
+`SoundEffectsStandaloneApp::migrateLegacySettings` copies the old
+`SoundEffect.settings` to the new name on the first launch that finds no new one,
+and leaves the original alone as the way back from a downgrade.
 
 Format and threading live in `engine/EngineState.h`. Three steps on purpose:
 `serializeEngine` (message thread — reads the UI-side documents), `parseEngineState`
@@ -265,8 +271,8 @@ NB this is our own blob, not an interchange format; byte-accurate AIFF/WAV save
 (extended-80 rate, offset-binary payload) is still to come — see `Import.h`.
 
 On disk it is `.sefx`, declared to the Finder as the exported UTI
-`com.SoundEffect.canvas` (conforming to `public.data`) with the app claiming it at
-rank Owner — so a canvas has a name in Get Info and opens SoundEffect when it is
+`com.SoundEffects.canvas` (conforming to `public.data`) with the app claiming it at
+rank Owner — so a canvas has a name in Get Info and opens SoundEffects when it is
 double-clicked. Those keys are in `packaging/DocumentTypes.plist`, spliced into the
 Standalone bundle's Info.plist by `CMakeLists.txt`; the reason it is not
 `juce_add_plugin`'s `DOCUMENT_EXTENSIONS` is written down in both files. The reader
@@ -289,11 +295,11 @@ use the Ninja generator, not `-G Xcode`.
 # one-time tools (macOS/Homebrew): brew install cmake ninja
 cd native
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --target SoundEffect_Standalone   # or omit --target for all formats
-open build/SoundEffect_artefacts/Debug/Standalone/SoundEffect.app
+cmake --build build --target SoundEffects_Standalone   # or omit --target for all formats
+open build/SoundEffects_artefacts/Debug/Standalone/SoundEffects.app
 ```
 
-Artifacts land under `build/SoundEffect_artefacts/` (Standalone `.app`, `.vst3`,
+Artifacts land under `build/SoundEffects_artefacts/` (Standalone `.app`, `.vst3`,
 `.component`). Verified building & running on macOS arm64 (AppleClang, CLT-only,
 JUCE 8.0.4) 2026-07-18.
 
@@ -337,7 +343,7 @@ JUCE 8.0.4) 2026-07-18.
   session all carry the real canvas (see *Saving* above). Engine side verified by
   `state-tests` (field-by-field round trip, damaged blobs refused, ASan/UBSan clean
   over a 4000-case mutation sweep); verified in the built app too — a three-Window
-  canvas written into `SoundEffect.settings` came up on screen with its tints,
+  canvas written into `SoundEffects.settings` came up on screen with its tints,
   sizes, byte counts, independent track lengths, mute and solo intact, and was
   written back out byte-identical apart from the grid's own re-pack of x/height.
 - **The Keyboard palette**: the one effect that is not a form, and the only one that
@@ -393,7 +399,7 @@ JUCE 8.0.4) 2026-07-18.
   call returns.
 - **The standalone keeps its state in the settings file.** Quitting base64s the
   whole canvas — audio and all — into `~/Library/Application Support/
-  SoundEffect.settings`. Fine at SoundEffect sizes (8-bit, 22 kHz), but a canvas
+  SoundEffects.settings`. Fine at SoundEffects sizes (8-bit, 22 kHz), but a canvas
   full of long imported audio makes for a fat settings file and a slower quit.
 - **`TrackMonitor` uses `std::set`.** Soloing/muting a *track* (not a window)
   mutates a set — allocation. Fine today because it goes through the command

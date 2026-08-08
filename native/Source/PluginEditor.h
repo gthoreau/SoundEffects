@@ -20,12 +20,12 @@
 #include "ui/MixerComponent.h"
 #include "ui/ViewPalette.h"
 
-class SoundEffectAudioProcessorEditor : public juce::AudioProcessorEditor,
+class SoundEffectsAudioProcessorEditor : public juce::AudioProcessorEditor,
                                         private juce::Timer
 {
 public:
-    explicit SoundEffectAudioProcessorEditor (SoundEffectAudioProcessor&);
-    ~SoundEffectAudioProcessorEditor() override;
+    explicit SoundEffectsAudioProcessorEditor (SoundEffectsAudioProcessor&);
+    ~SoundEffectsAudioProcessorEditor() override;
 
     /** Show the audio device settings. Only the STANDALONE app can answer this —
         it owns the device — so StandaloneApp.cpp installs it after creating the
@@ -74,7 +74,7 @@ private:
     /** Show or hide the Keyboard palette, and re-lay the floating stack. */
     void setKeyboardShown (bool shown);
 
-    SoundEffectAudioProcessor& processorRef;
+    SoundEffectsAudioProcessor& processorRef;
 
     CanvasComponent       canvas;
     MixerComponent        mixer;
@@ -85,5 +85,5 @@ private:
     juce::AudioFormatManager formatManager;
     std::unique_ptr<juce::FileChooser> chooser;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoundEffectAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoundEffectsAudioProcessorEditor)
 };

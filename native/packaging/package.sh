@@ -8,12 +8,12 @@
 #   ./native/packaging/package.sh --zip        zip archive only
 #
 # Output lands in native/dist/:
-#   SoundEffect-<version>-macOS.dmg   drag-to-Applications image — the nice one,
-#                                     for a download link or a file-sharing service
-#   SoundEffect-<version>-macOS.zip   the .app in an archive — for email, because
-#                                     Gmail blocks .dmg outright (and blocks it
-#                                     inside .zip too, which is why this archives
-#                                     the .app directly rather than the image)
+#   SoundEffects-<version>-macOS.dmg   drag-to-Applications image — the nice one,
+#                                      for a download link or a file-sharing service
+#   SoundEffects-<version>-macOS.zip   the .app in an archive — for email, because
+#                                      Gmail blocks .dmg outright (and blocks it
+#                                      inside .zip too, which is why this archives
+#                                      the .app directly rather than the image)
 #
 # The bundle is signed ad-hoc ("-"), NOT with a Developer ID: there is no
 # certificate on this machine, and an arm64 binary will not launch at all
@@ -41,12 +41,12 @@ BUILD_DIR="$NATIVE_DIR/build-release"
 DIST_DIR="$NATIVE_DIR/dist"
 
 # The single source of truth for the version is CMakeLists.txt's project().
-VERSION="$(sed -n 's/^project(SoundEffect VERSION \([0-9.]*\).*/\1/p' "$NATIVE_DIR/CMakeLists.txt")"
+VERSION="$(sed -n 's/^project(SoundEffects VERSION \([0-9.]*\).*/\1/p' "$NATIVE_DIR/CMakeLists.txt")"
 [ -n "$VERSION" ] || { echo "could not read version from CMakeLists.txt" >&2; exit 1; }
 
-APP_NAME="SoundEffect.app"
-STEM="SoundEffect-$VERSION-macOS"
-VOL_NAME="SoundEffect $VERSION"
+APP_NAME="SoundEffects.app"
+STEM="SoundEffects-$VERSION-macOS"
+VOL_NAME="SoundEffects $VERSION"
 
 echo "==> configuring universal Release build"
 cmake -B "$BUILD_DIR" -S "$NATIVE_DIR" -G Ninja \
@@ -55,13 +55,13 @@ cmake -B "$BUILD_DIR" -S "$NATIVE_DIR" -G Ninja \
     -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
 
 echo "==> building $APP_NAME"
-cmake --build "$BUILD_DIR" --target SoundEffect_Standalone
+cmake --build "$BUILD_DIR" --target SoundEffects_Standalone
 
-APP_SRC="$BUILD_DIR/SoundEffect_artefacts/Release/Standalone/$APP_NAME"
+APP_SRC="$BUILD_DIR/SoundEffects_artefacts/Release/Standalone/$APP_NAME"
 [ -d "$APP_SRC" ] || { echo "build produced no $APP_SRC" >&2; exit 1; }
 
 echo "==> verifying it is universal"
-lipo -archs "$APP_SRC/Contents/MacOS/SoundEffect"
+lipo -archs "$APP_SRC/Contents/MacOS/SoundEffects"
 
 # Stage once and package from the staged copy, so both artefacts carry the same
 # signed, attribute-free bundle.

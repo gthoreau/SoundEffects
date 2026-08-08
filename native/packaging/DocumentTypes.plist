@@ -17,14 +17,14 @@
 <array>
   <dict>
     <key>CFBundleTypeName</key>
-    <string>SoundEffect Canvas</string>
+    <string>SoundEffects Canvas</string>
     <key>CFBundleTypeRole</key>
     <string>Editor</string>
     <key>LSHandlerRank</key>
     <string>Owner</string>
     <key>LSItemContentTypes</key>
     <array>
-      <string>com.SoundEffect.canvas</string>
+      <string>com.SoundEffects.canvas</string>
     </array>
   </dict>
 </array>
@@ -32,9 +32,9 @@
 <array>
   <dict>
     <key>UTTypeIdentifier</key>
-    <string>com.SoundEffect.canvas</string>
+    <string>com.SoundEffects.canvas</string>
     <key>UTTypeDescription</key>
-    <string>SoundEffect Canvas</string>
+    <string>SoundEffects Canvas</string>
     <key>UTTypeConformsTo</key>
     <array>
       <string>public.data</string>

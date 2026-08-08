@@ -11,7 +11,7 @@ constexpr int kPaletteSideGap = 12;
 constexpr int kPaletteStackGap = 6;
 }
 
-SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAudioProcessor& p)
+SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffectsAudioProcessor& p)
     : juce::AudioProcessorEditor (&p), processorRef (p),
       canvas (p.engine()), mixer (p.engine()), effects (p.engine()), keyboard (p.engine())
 {
@@ -101,7 +101,7 @@ SoundEffectAudioProcessorEditor::SoundEffectAudioProcessorEditor (SoundEffectAud
     startTimerHz (30);
 }
 
-bool SoundEffectAudioProcessorEditor::keyPressed (const juce::KeyPress& k)
+bool SoundEffectsAudioProcessorEditor::keyPressed (const juce::KeyPress& k)
 {
     // Return applies the open effect from anywhere in the editor — the usual move is
     // to drag a selection in a Window and then run the form that is already open, and
@@ -123,12 +123,12 @@ bool SoundEffectAudioProcessorEditor::keyPressed (const juce::KeyPress& k)
     return false;
 }
 
-SoundEffectAudioProcessorEditor::~SoundEffectAudioProcessorEditor()
+SoundEffectsAudioProcessorEditor::~SoundEffectsAudioProcessorEditor()
 {
     stopTimer();
 }
 
-void SoundEffectAudioProcessorEditor::timerCallback()
+void SoundEffectsAudioProcessorEditor::timerCallback()
 {
     // Muted unless something says otherwise: in a plugin there is no hook to ask,
     // and the record button should be grey there too.
@@ -140,7 +140,7 @@ void SoundEffectAudioProcessorEditor::timerCallback()
     if (keyboard.isVisible()) keyboard.refresh();
 }
 
-void SoundEffectAudioProcessorEditor::setKeyboardShown (bool shown)
+void SoundEffectsAudioProcessorEditor::setKeyboardShown (bool shown)
 {
     if (keyboard.isVisible() == shown) return;
 
@@ -149,7 +149,7 @@ void SoundEffectAudioProcessorEditor::setKeyboardShown (bool shown)
     resized();                     // the stack's height changed; the View palette moves
 }
 
-void SoundEffectAudioProcessorEditor::newWindow()
+void SoundEffectsAudioProcessorEditor::newWindow()
 {
     se::DocumentInit init;
     init.name = "untitled sound";
@@ -157,19 +157,19 @@ void SoundEffectAudioProcessorEditor::newWindow()
     processorRef.engine().addWindow (std::make_unique<se::SoundDocument> (init));
 }
 
-void SoundEffectAudioProcessorEditor::closeFocusedWindow()
+void SoundEffectsAudioProcessorEditor::closeFocusedWindow()
 {
     // Exactly what the Window's own close box does, aimed at whatever is focused.
     if (const auto id = canvas.selectedWindowId(); id != 0)
         processorRef.engine().removeWindow (id);
 }
 
-bool SoundEffectAudioProcessorEditor::hasFocusedWindow() const
+bool SoundEffectsAudioProcessorEditor::hasFocusedWindow() const
 {
     return canvas.selectedWindowId() != 0;
 }
 
-void SoundEffectAudioProcessorEditor::openFile()
+void SoundEffectsAudioProcessorEditor::openFile()
 {
     chooser = std::make_unique<juce::FileChooser> ("Open a sound", juce::File(),
                                                    formatManager.getWildcardForAllFormats());
@@ -202,12 +202,12 @@ void SoundEffectAudioProcessorEditor::openFile()
     });
 }
 
-void SoundEffectAudioProcessorEditor::paint (juce::Graphics& g)
+void SoundEffectsAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xffbfbfbf));
 }
 
-void SoundEffectAudioProcessorEditor::resized()
+void SoundEffectsAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds();
 

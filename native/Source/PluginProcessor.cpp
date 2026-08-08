@@ -2,7 +2,7 @@
 
 #include "PluginEditor.h"
 
-SoundEffectAudioProcessor::SoundEffectAudioProcessor()
+SoundEffectsAudioProcessor::SoundEffectsAudioProcessor()
     : juce::AudioProcessor (BusesProperties()
           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true))
@@ -18,7 +18,7 @@ SoundEffectAudioProcessor::SoundEffectAudioProcessor()
     startTimerHz (5);
 }
 
-SoundEffectAudioProcessor::~SoundEffectAudioProcessor()
+SoundEffectsAudioProcessor::~SoundEffectsAudioProcessor()
 {
     stopTimer();
     cancelPendingUpdate();   // no restore may land on a half-destroyed engine
@@ -26,7 +26,7 @@ SoundEffectAudioProcessor::~SoundEffectAudioProcessor()
 
 // ================================ state =====================================
 
-void SoundEffectAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+void SoundEffectsAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     // Reads each Window's UI document, which the message thread owns — so this
     // expects to be called there, as both the standalone (save / quit) and every
@@ -37,7 +37,7 @@ void SoundEffectAudioProcessor::getStateInformation (juce::MemoryBlock& destData
     destData.append (blob.data(), blob.size());
 }
 
-void SoundEffectAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+void SoundEffectsAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (data == nullptr || sizeInBytes <= 0) return;
 
@@ -64,7 +64,7 @@ void SoundEffectAudioProcessor::setStateInformation (const void* data, int sizeI
     }
 }
 
-void SoundEffectAudioProcessor::handleAsyncUpdate()
+void SoundEffectsAudioProcessor::handleAsyncUpdate()
 {
     se::EngineState state;
     {
@@ -76,17 +76,17 @@ void SoundEffectAudioProcessor::handleAsyncUpdate()
     se::applyEngineState (engineImpl, state);
 }
 
-void SoundEffectAudioProcessor::timerCallback()
+void SoundEffectsAudioProcessor::timerCallback()
 {
     engineImpl.collectRetired();
 }
 
-void SoundEffectAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void SoundEffectsAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engineImpl.prepare (sampleRate, samplesPerBlock);
 }
 
-bool SoundEffectAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool SoundEffectsAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto& out = layouts.getMainOutputChannelSet();
     if (out != juce::AudioChannelSet::mono() && out != juce::AudioChannelSet::stereo())
@@ -98,7 +98,7 @@ bool SoundEffectAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
     return in == out || in.isDisabled();
 }
 
-void SoundEffectAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
+void SoundEffectsAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                               juce::MidiBuffer& /*midi*/)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -116,13 +116,13 @@ void SoundEffectAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         buffer.clear (ch, 0, numFrames);
 }
 
-juce::AudioProcessorEditor* SoundEffectAudioProcessor::createEditor()
+juce::AudioProcessorEditor* SoundEffectsAudioProcessor::createEditor()
 {
-    return new SoundEffectAudioProcessorEditor (*this);
+    return new SoundEffectsAudioProcessorEditor (*this);
 }
 
 // The plugin/standalone entry point.
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new SoundEffectAudioProcessor();
+    return new SoundEffectsAudioProcessor();
 }

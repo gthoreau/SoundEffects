@@ -1,4 +1,4 @@
-# SoundEffect
+# SoundEffects
 
 A rebuild of Alberto Ricci's **SoundEffects 0.9.2** (Macintosh, 1993–95) — the
 shareware destructive sound editor — as a native macOS app, reverse-engineered
@@ -14,13 +14,13 @@ What's new is the canvas: instead of one document at a time, every sound is a
 window on an unbounded board, all of them summing at once — a bank of
 unsynchronised loopers you arrange spatially.
 
-![The SoundEffect canvas, mixer and effects panel](docs/screenshot.png)
+![The SoundEffects canvas, mixer and effects panel](docs/screenshot.png)
 
 ---
 
 ## Download
 
-**SoundEffect 0.2.0** — universal (Apple Silicon + Intel), macOS 11 Big Sur or
+**SoundEffects 0.2.1** — universal (Apple Silicon + Intel), macOS 11 Big Sur or
 later, about 4.6 MB.
 
 This repository is private, so there's no public download page. **The app is
@@ -29,8 +29,8 @@ they install identically:
 
 | | |
 |---|---|
-| `SoundEffect-0.2.0-macOS.dmg` | A disk image. Open it and drag the app into Applications. |
-| `SoundEffect-0.2.0-macOS.zip` | The app in an archive, for when it came by email. Unzip and move the app into Applications. |
+| `SoundEffects-0.2.1-macOS.dmg` | A disk image. Open it and drag the app into Applications. |
+| `SoundEffects-0.2.1-macOS.zip` | The app in an archive, for when it came by email. Unzip and move the app into Applications. |
 
 <details>
 <summary>Why two formats?</summary>
@@ -48,12 +48,12 @@ If you have access to this repository, releases are also attached to
 
 ### Installing
 
-1. Put **SoundEffect** in your **Applications** folder — drag it out of the
+1. Put **SoundEffects** in your **Applications** folder — drag it out of the
    `.dmg`, or unzip the `.zip` and move it there.
-2. Launch it. macOS will refuse, with *"Apple could not verify SoundEffect is
+2. Launch it. macOS will refuse, with *"Apple could not verify SoundEffects is
    free of malware."* **This is expected** — see below.
 3. Open **System Settings → Privacy & Security**, scroll down to the Security
-   section, and click **Open Anyway** next to SoundEffect. Confirm.
+   section, and click **Open Anyway** next to SoundEffects. Confirm.
 
 That's once, not every launch. It happens because the app is **not signed with an
 Apple Developer ID and not notarized** — that costs $99/yr and this is a hobby
@@ -70,7 +70,7 @@ System Settings instead.
 Prefer the command line? This clears the quarantine flag and skips the whole dance:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/SoundEffect.app
+xattr -dr com.apple.quarantine /Applications/SoundEffects.app
 ```
 
 ---
@@ -98,7 +98,7 @@ xattr -dr com.apple.quarantine /Applications/SoundEffect.app
 Worth knowing before you spend an evening on a patch:
 
 - **There is no Export.** Your work is safe — see Save Canvas above — but
-  it can only be reopened by SoundEffect. Nothing leaves as a WAV or AIFF yet, so
+  it can only be reopened by SoundEffects. Nothing leaves as a WAV or AIFF yet, so
   recording the output with Loopback/BlackHole is still the only way into another
   program.
 - **Recording is not wired up.** The red button is there; pressing it opens the
@@ -116,10 +116,15 @@ Worth knowing before you spend an evening on a patch:
 
 macOS 11 Big Sur or later, Apple Silicon or Intel. No installer beyond the drag.
 The only thing it leaves on your disk is
-`~/Library/Application Support/SoundEffect.settings` — your audio device choice,
+`~/Library/Application Support/SoundEffects.settings` — your audio device choice,
 and the canvas you had open when you last quit. That file therefore carries your
 audio, and can run to tens of megabytes once you have real samples loaded; it is
 rewritten on every quit. Delete the app and that file and nothing remains.
+
+If you ran an earlier build, back when the app was called SoundEffect without the
+s, there is also a `SoundEffect.settings` next to it. The first launch under the
+new name copies it across, so your canvas and audio device come with you; the old
+file is then dead weight and safe to delete.
 
 Audio input/output is picked in **File → Preferences → Audio/MIDI Settings** (⌘,).
 
@@ -135,9 +140,9 @@ automatically at configure time.
 ```
 
 That configures a universal Release build, builds the standalone app, signs it
-ad-hoc, and writes both `SoundEffect-<version>-macOS.dmg` and `.zip` into
+ad-hoc, and writes both `SoundEffects-<version>-macOS.dmg` and `.zip` into
 `native/dist/`. Pass `--dmg` or `--zip` for just one. The version comes from
-`project(SoundEffect VERSION …)` in [native/CMakeLists.txt](native/CMakeLists.txt) — bump it there and the
+`project(SoundEffects VERSION …)` in [native/CMakeLists.txt](native/CMakeLists.txt) — bump it there and the
 script and both filenames follow.
 
 The archive is made with `ditto -c -k --keepParent`, not `zip`: an `.app` is a
@@ -150,8 +155,8 @@ For a plain development build (Debug, host architecture only):
 cmake -B native/build -S native -G Ninja && cmake --build native/build
 ```
 
-The same sources also build a **VST3** and an **AU** plugin (`SoundEffect_VST3`,
-`SoundEffect_AU`); only the standalone app is packaged for release today.
+The same sources also build a **VST3** and an **AU** plugin (`SoundEffects_VST3`,
+`SoundEffects_AU`); only the standalone app is packaged for release today.
 
 ## Repository layout
 
