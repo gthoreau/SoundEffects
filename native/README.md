@@ -212,11 +212,12 @@ output channel and volume. Selection, loop region and chunks travel with it. Wha
 does NOT travel is the transport — a restored canvas comes up stopped — and the
 Window ids, which are per-session handles.
 
-That one blob is behind all three of these:
+That one blob is behind all four of these:
 
 | Where | What happens |
 | --- | --- |
-| Options ▸ Save Current State… / Load a Saved State… | writes / reads it as a file |
+| Options ▸ Save Canvas… / Open Canvas… | writes / reads it as a `.sefx` file |
+| double-clicking a `.sefx`, or a path on the command line | same read, routed through `MainWindow::loadCanvasFile` |
 | quitting and relaunching the standalone | it goes into `SoundEffect.settings`, so the canvas comes back |
 | a DAW session with the plugin in it | the host saves it with the session |
 
@@ -230,6 +231,21 @@ sweep are asserted in `tests/run_state.cpp` — `state-tests`, JUCE-free like th
 
 NB this is our own blob, not an interchange format; byte-accurate AIFF/WAV save
 (extended-80 rate, offset-binary payload) is still to come — see `Import.h`.
+
+On disk it is `.sefx`, declared to the Finder as the exported UTI
+`com.SoundEffect.canvas` (conforming to `public.data`) with the app claiming it at
+rank Owner — so a canvas has a name in Get Info and opens SoundEffect when it is
+double-clicked. Those keys are in `packaging/DocumentTypes.plist`, spliced into the
+Standalone bundle's Info.plist by `CMakeLists.txt`; the reason it is not
+`juce_add_plugin`'s `DOCUMENT_EXTENSIONS` is written down in both files. The reader
+keys off the `SEFX` magic and not the name, so a canvas saved before the extension
+existed still opens.
+
+Opening a file always goes through `MainWindow::loadCanvasFile`, which parses the
+blob BEFORE handing it to the processor. That is only so a bad file can be reported:
+`setStateInformation` keeps the canvas you already have when a blob does not parse,
+which is right for a host but silent, and on a fresh launch "what you already have"
+is an empty canvas — indistinguishable from a file that opened fine and was empty.
 
 ## Build
 

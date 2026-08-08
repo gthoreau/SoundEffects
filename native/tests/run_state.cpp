@@ -1,8 +1,8 @@
 // EngineState tests — the canvas survives a save/load round trip, and a blob we
 // did not write cannot make us do anything.
 //
-// This is the test that stands behind the Options menu's "Save Current State…" /
-// "Load a Saved State…": before the state format existed those items wrote an
+// This is the test that stands behind the Options menu's "Save Canvas…" /
+// "Open Canvas…": before the state format existed those items wrote an
 // empty file and restored nothing, which is the worst thing a Save item can do.
 // So the round trip is asserted field by field rather than by eyeball.
 //

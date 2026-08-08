@@ -100,6 +100,38 @@ target_compile_definitions(SoundEffect_Standalone PRIVATE
 
 target_sources(SoundEffect_Standalone PRIVATE Source/StandaloneApp.cpp)
 
+# --- .sefx documents ----------------------------------------------------------
+# Teach the Finder what a canvas is: an exported UTI plus the app's claim on it,
+# so a .sefx has a name in the Get Info panel and opens SoundEffect on a
+# double-click. See packaging/DocumentTypes.plist for what goes in and why it is
+# not juce_add_plugin's DOCUMENT_EXTENSIONS.
+#
+# The splice is deliberate. JUCE writes each bundle's Info.plist at CONFIGURE
+# time, from properties held on the shared target, and there is no per-format
+# hook — so the only way to reach the standalone's plist and no other is to take
+# the file JUCE just generated, add our keys, and point the target at the result.
+# MACOSX_BUNDLE_INFO_PLIST is a plain CMake property, so the last write wins.
+# Re-running CMake regenerates JUCE's file first, then this, so the two cannot
+# drift; nothing here costs anything at build time.
+if(APPLE)
+    get_target_property(_se_juce_plist SoundEffect_Standalone MACOSX_BUNDLE_INFO_PLIST)
+    file(READ "${_se_juce_plist}" _se_plist_text)
+    file(READ "${CMAKE_CURRENT_LIST_DIR}/packaging/DocumentTypes.plist" _se_doc_types)
+
+    # Before the LAST </dict>, which is the top-level one whatever is nested above it.
+    string(FIND "${_se_plist_text}" "</dict>" _se_close REVERSE)
+    if(_se_close EQUAL -1)
+        message(FATAL_ERROR "JUCE's generated Info.plist has no closing </dict>: ${_se_juce_plist}")
+    endif()
+    string(SUBSTRING "${_se_plist_text}" 0 ${_se_close} _se_head)
+    string(SUBSTRING "${_se_plist_text}" ${_se_close} -1 _se_tail)
+
+    set(_se_plist_out "${CMAKE_CURRENT_BINARY_DIR}/SoundEffect_Standalone_Info.plist")
+    file(WRITE "${_se_plist_out}" "${_se_head}${_se_doc_types}${_se_tail}")
+    set_target_properties(SoundEffect_Standalone PROPERTIES
+        MACOSX_BUNDLE_INFO_PLIST "${_se_plist_out}")
+endif()
+
 target_link_libraries(SoundEffect PRIVATE
     juce::juce_audio_utils
     juce::juce_dsp

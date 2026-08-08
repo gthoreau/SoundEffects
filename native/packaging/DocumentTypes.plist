@@ -1,0 +1,50 @@
+<!-- .sefx, declared to the Finder.
+
+     This is a fragment, not a plist: CMakeLists.txt splices these keys into the
+     dict of the Info.plist that JUCE generates for the Standalone target. It is
+     kept out of juce_add_plugin's own DOCUMENT_EXTENSIONS for two reasons. One,
+     that option feeds the SHARED target, so the VST3 and AU bundles would claim
+     the extension too — a plugin has no business owning a document type. Two, it
+     emits CFBundleTypeExtensions and no UTI, which gets a double-click working but
+     leaves the Finder calling the file "sefx document" forever.
+
+     A canvas is a container of 8-bit audio, so public.data is the honest parent:
+     public.audio would invite QuickLook and the audio apps to try to play it, and
+     they cannot. There is no icon key because the app has no icon file yet; the
+     Finder falls back to the generic document icon, which is the truth. -->
+
+<key>CFBundleDocumentTypes</key>
+<array>
+  <dict>
+    <key>CFBundleTypeName</key>
+    <string>SoundEffect Canvas</string>
+    <key>CFBundleTypeRole</key>
+    <string>Editor</string>
+    <key>LSHandlerRank</key>
+    <string>Owner</string>
+    <key>LSItemContentTypes</key>
+    <array>
+      <string>com.SoundEffect.canvas</string>
+    </array>
+  </dict>
+</array>
+<key>UTExportedTypeDeclarations</key>
+<array>
+  <dict>
+    <key>UTTypeIdentifier</key>
+    <string>com.SoundEffect.canvas</string>
+    <key>UTTypeDescription</key>
+    <string>SoundEffect Canvas</string>
+    <key>UTTypeConformsTo</key>
+    <array>
+      <string>public.data</string>
+    </array>
+    <key>UTTypeTagSpecification</key>
+    <dict>
+      <key>public.filename-extension</key>
+      <array>
+        <string>sefx</string>
+      </array>
+    </dict>
+  </dict>
+</array>

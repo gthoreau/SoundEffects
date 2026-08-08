@@ -46,9 +46,12 @@ class MainWindow;
 /**
  * What the stock Options button offered, in the menu bar where it belongs.
  *
- * The four items are the wrapper's own, so this is a relocation rather than a
- * reimplementation — the difference being that each now calls straight into
- * StandalonePluginHolder instead of going through a window that no longer exists.
+ * Audio/MIDI Settings and Clear are still the wrapper's, so those are a relocation
+ * rather than a reimplementation. Save and Open are ours: the wrapper's versions
+ * put up dialogs titled "Save current state" / "Load a saved state", which are
+ * hard-coded TRANS() literals inside StandalonePluginHolder with no way in from
+ * outside, and they cannot tell a damaged file from an empty canvas. See
+ * MainWindow::saveCanvas / openCanvas.
  */
 class OptionsMenuBar final : public juce::MenuBarModel
 {
@@ -62,10 +65,10 @@ public:
         juce::PopupMenu m;
         m.addItem (1, juce::String::fromUTF8 ("Audio/MIDI Settings\xE2\x80\xA6"));
         m.addSeparator();
-        m.addItem (2, juce::String::fromUTF8 ("Save Current State\xE2\x80\xA6"));
-        m.addItem (3, juce::String::fromUTF8 ("Load a Saved State\xE2\x80\xA6"));
+        m.addItem (2, juce::String::fromUTF8 ("Save Canvas\xE2\x80\xA6"));
+        m.addItem (3, juce::String::fromUTF8 ("Open Canvas\xE2\x80\xA6"));
         m.addSeparator();
-        m.addItem (4, "Reset to Default State");
+        m.addItem (4, "Clear Canvas");
         return m;
     }
 
@@ -132,27 +135,152 @@ public:
         juce::JUCEApplicationBase::quit();
     }
 
-    /** Run an Options item. Reset throws the processor and its editor away and
+    /** Run an Options item. Clear throws the processor and its editor away and
         builds new ones, so the editor is re-attached — and re-hooked — around it.
 
-        Save and Load are the processor's state, which for this program is the
+        Save and Open are the processor's state, which for this program is the
         user's WORK — the whole canvas of Windows, tracks and audio (see
-        engine/EngineState.h). They read as "save my work" and they mean it. */
+        engine/EngineState.h). They read as "save my work" and they mean it, so
+        they are named for the work and not for the plumbing's word, "state". */
     void runOptionsItem (int itemId)
     {
         switch (itemId)
         {
             case 1: pluginHolder->showAudioSettingsDialog(); break;
-            case 2: pluginHolder->askUserToSaveState();      break;
-            case 3: pluginHolder->askUserToLoadState();      break;
-            case 4: resetToDefaultState();                   break;
+            case 2: saveCanvas();                           break;
+            case 3: openCanvas();                           break;
+            case 4: resetToDefaultState();                  break;
             default: break;
         }
+    }
+
+    /** Write the canvas to a file the user picks. The suffix makes this a document
+        dialog rather than a bare save: macOS appends .sefx to a name typed without
+        one, because the chooser's filter becomes the panel's allowed file types. */
+    void saveCanvas()
+    {
+        fileChooser = std::make_unique<juce::FileChooser> ("Save Canvas",
+                                                           lastCanvasFile(),
+                                                           canvasWildcard());
+
+        const auto flags = juce::FileBrowserComponent::saveMode
+                         | juce::FileBrowserComponent::canSelectFiles
+                         | juce::FileBrowserComponent::warnAboutOverwriting;
+
+        fileChooser->launchAsync (flags, [this] (const juce::FileChooser& fc)
+        {
+            const auto file = fc.getResult();
+
+            if (file == juce::File())
+                return;   // cancelled
+
+            rememberCanvasFile (file);
+
+            juce::MemoryBlock data;
+            pluginHolder->processor->getStateInformation (data);
+
+            if (! file.replaceWithData (data.getData(), data.getSize()))
+                showFailure ("Couldn't save the canvas",
+                             "Nothing could be written to " + file.getFileName()
+                                 + ". Check that the disk is not full and that the file is not locked.");
+        });
+    }
+
+    /** Read a canvas the user picks. */
+    void openCanvas()
+    {
+        fileChooser = std::make_unique<juce::FileChooser> ("Open Canvas",
+                                                           lastCanvasFile(),
+                                                           canvasWildcard());
+
+        const auto flags = juce::FileBrowserComponent::openMode
+                         | juce::FileBrowserComponent::canSelectFiles;
+
+        fileChooser->launchAsync (flags, [this] (const juce::FileChooser& fc)
+        {
+            const auto file = fc.getResult();
+
+            if (file != juce::File())
+                loadCanvasFile (file);
+        });
+    }
+
+    /** Put a .sefx on screen, from wherever it came from — the Open item, a file
+        double-clicked in the Finder, or a path on the command line.
+
+        The parse is done HERE, before the processor sees the bytes, purely so that
+        a bad file can be reported. setStateInformation keeps the canvas the user
+        already has when a blob does not parse, which is right for a host loading a
+        session but silent — and on a fresh launch "keep what you have" means an
+        empty canvas, which is indistinguishable from a file that opened fine and
+        happened to be empty. Someone who just double-clicked a file deserves to be
+        told it is damaged. */
+    bool loadCanvasFile (const juce::File& file)
+    {
+        juce::MemoryBlock data;
+
+        if (! file.loadFileAsData (data))
+        {
+            showFailure ("Couldn't open the canvas",
+                         file.getFileName() + " could not be read.");
+            return false;
+        }
+
+        se::EngineState probe;
+
+        if (! se::parseEngineState (data.getData(), data.getSize(), probe))
+        {
+            showFailure ("Not a SoundEffect canvas",
+                         file.getFileName() + " is damaged, or was written by "
+                         "a newer version of SoundEffect than this one.");
+            return false;
+        }
+
+        pluginHolder->processor->setStateInformation (data.getData(), (int) data.getSize());
+        rememberCanvasFile (file);
+        return true;
     }
 
     std::unique_ptr<juce::StandalonePluginHolder> pluginHolder;
 
 private:
+    /** "*.sefx" — the chooser's filter, and on macOS the save panel's allowed file
+        types, which is what makes a bare typed name grow the extension. */
+    static juce::String canvasWildcard()
+    {
+        return "*" + juce::String (se::kEngineStateFileSuffix);
+    }
+
+    /** Where the chooser opens, and what it pre-fills. Same settings key the stock
+        holder used, so a path remembered before this existed still comes back. */
+    juce::File lastCanvasFile() const
+    {
+        if (auto* props = pluginHolder->settings.get())
+        {
+            const juce::File remembered (props->getValue ("lastStateFile"));
+
+            if (remembered != juce::File())
+                return remembered;
+        }
+
+        return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                   .getChildFile ("Untitled Canvas" + juce::String (se::kEngineStateFileSuffix));
+    }
+
+    void rememberCanvasFile (const juce::File& file)
+    {
+        if (auto* props = pluginHolder->settings.get())
+            props->setValue ("lastStateFile", file.getFullPathName());
+    }
+
+    void showFailure (const juce::String& title, const juce::String& message)
+    {
+        messageBox = juce::AlertWindow::showScopedAsync (
+            juce::MessageBoxOptions::makeOptionsOk (juce::MessageBoxIconType::WarningIcon,
+                                                    title, message),
+            nullptr);
+    }
+
     void resetToDefaultState()
     {
         pluginHolder->stopPlaying();
@@ -214,6 +342,13 @@ private:
     std::unique_ptr<juce::AudioProcessorEditor> editor;
     std::unique_ptr<OptionsMenuBar> optionsMenu;
 
+    // Both outlive the call that raises them: launchAsync returns immediately and
+    // the panel calls back later, and an async alert is dismissed by the user, not
+    // by us. Holding one of each means a second Save while a Save panel is up
+    // replaces it rather than stacking, which is the behaviour the stock holder had.
+    std::unique_ptr<juce::FileChooser> fileChooser;
+    juce::ScopedMessageBox messageBox;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)
 };
 
@@ -248,9 +383,18 @@ public:
     const juce::String getApplicationName() override    { return juce::CharPointer_UTF8 (JucePlugin_Name); }
     const juce::String getApplicationVersion() override { return JucePlugin_VersionString; }
     bool moreThanOneInstanceAllowed() override          { return true; }
-    void anotherInstanceStarted (const juce::String&) override {}
 
-    void initialise (const juce::String&) override
+    /** A .sefx was opened while we are already running — double-clicked in the
+        Finder, dropped on the Dock icon, or passed to `open`. macOS routes all of
+        those to the running app rather than starting a second one, and JUCE's
+        AppDelegate turns them into this call with the paths space-joined and
+        quoted if they contain spaces. */
+    void anotherInstanceStarted (const juce::String& commandLine) override
+    {
+        openFirstCanvasIn (commandLine);
+    }
+
+    void initialise (const juce::String& commandLine) override
     {
         if (juce::Desktop::getInstance().getDisplays().displays.isEmpty())
         {
@@ -264,6 +408,13 @@ public:
             appProperties.getUserSettings());
 
         mainWindow->setVisible (true);
+
+        // A path in argv — launching the binary from a shell. A Finder double-click
+        // does NOT arrive this way even when it starts the app: LaunchServices sends
+        // an open-document event, which the run loop delivers to
+        // anotherInstanceStarted after initialise has returned. Both roads are
+        // covered; neither can arrive before the window exists.
+        openFirstCanvasIn (commandLine);
     }
 
     void shutdown() override
@@ -294,6 +445,28 @@ public:
     }
 
 private:
+    /** Open the first canvas named in a command line, and bring the app forward so
+        the result is visible. One only: there is a single window and a single
+        canvas in it, so opening several would just be the last one winning. */
+    void openFirstCanvasIn (const juce::String& commandLine)
+    {
+        if (mainWindow == nullptr || commandLine.isEmpty())
+            return;
+
+        // fromTokens with quoting, to match how the paths were joined.
+        for (const auto& token : juce::StringArray::fromTokens (commandLine, true))
+        {
+            const juce::File file (token.unquoted());
+
+            if (file.existsAsFile() && mainWindow->loadCanvasFile (file))
+            {
+                juce::Process::makeForegroundProcess();
+                mainWindow->toFront (true);
+                return;
+            }
+        }
+    }
+
     juce::ApplicationProperties appProperties;
     std::unique_ptr<MainWindow> mainWindow;
 };

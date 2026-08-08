@@ -97,7 +97,7 @@ xattr -dr com.apple.quarantine /Applications/SoundEffect.app
 
 Worth knowing before you spend an evening on a patch:
 
-- **There is no Export.** Your work is safe — see Save Current State above — but
+- **There is no Export.** Your work is safe — see Save Canvas above — but
   it can only be reopened by SoundEffect. Nothing leaves as a WAV or AIFF yet, so
   recording the output with Loopback/BlackHole is still the only way into another
   program.
@@ -105,11 +105,12 @@ Worth knowing before you spend an evening on a patch:
   audio settings and otherwise does nothing.
 - **There is no undo** — and there never will be. That one is deliberate; see the
   original's own alert text in the spec.
-- **Saving your work.** **Options → "Save Current State…"** writes the whole
-  canvas to a file — every window where you left it, its colour, its tracks and
-  their audio, and the mixer settings — and **"Load a Saved State…"** brings it
-  back. You don't have to remember to: quit and the canvas is waiting on the next
-  launch. (It comes back stopped, not playing.)
+- **Saving your work.** **Options → "Save Canvas…"** writes the whole canvas to a
+  `.sefx` file — every window where you left it, its colour, its tracks and their
+  audio, and the mixer settings — and **"Open Canvas…"** brings it back, as does
+  double-clicking a `.sefx` in the Finder. You don't have to remember to save: quit
+  and the canvas is waiting on the next launch. (It comes back stopped, not
+  playing.)
 
 ## Requirements
 

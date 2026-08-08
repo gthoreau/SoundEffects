@@ -77,6 +77,11 @@ struct EngineState
 /** Current format version written by serializeState(). Readers accept <= this. */
 constexpr uint32_t kEngineStateVersion = 1;
 
+/** The extension a saved canvas wears on disk. Lives here, beside the magic and
+    the version, because it is part of the same identity: a file called .sefx is
+    promising 'SEFX' + a version this reader accepts. */
+constexpr const char* kEngineStateFileSuffix = ".sefx";
+
 // --- blob <-> state (pure; no Engine involved) ------------------------------
 
 std::vector<uint8_t> serializeState (const EngineState& state);
