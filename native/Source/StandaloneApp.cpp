@@ -160,8 +160,22 @@ public:
         // The canvas came back from the settings file (StandalonePluginHolder's
         // constructor did that); this is the file it came FROM, so the title says
         // what you were working on rather than just what program this is.
+        //
+        // Only if it is still a document. See isStillADocument() — a remembered
+        // path can outlive the file it named, or name a file the system is going
+        // to delete, and neither is something to hand back as "what you were
+        // working on". Dropping it makes this an unsaved canvas, which is exactly
+        // what it is: the Windows on screen came from the autosaved state, not
+        // from a file. ⌘S then means Save As, and asks where it should go.
         if (auto* props = pluginHolder->settings.get())
-            canvasFile = juce::File (props->getValue (kCanvasFileKey));
+        {
+            const juce::File remembered (props->getValue (kCanvasFileKey));
+
+            if (isStillADocument (remembered))
+                canvasFile = remembered;
+            else
+                props->removeValue (kCanvasFileKey);
+        }
 
         updateTitle();
 
@@ -463,14 +477,74 @@ private:
     }
 
     /** Where a chooser opens, and what Save As pre-fills: the current file, or a
-        name in Documents matching what the title bar has been saying. */
+        name in Documents matching what the title bar has been saying.
+
+        existsAsFile, not "is set" — the file may have gone away while we were
+        running, and a save panel opened on a directory that is no longer there
+        lands somewhere the user did not choose. Falling back to Documents keeps
+        the panel somewhere real, and canvasName() keeps the NAME the title bar has
+        been showing, so Save As offers to write the document you think you are
+        editing rather than renaming it to Untitled behind your back. */
     juce::File canvasFileOrDefault() const
     {
-        if (canvasFile != juce::File())
+        if (canvasFile.existsAsFile())
             return canvasFile;
 
         return juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-                   .getChildFile (juce::String (kUntitledCanvas) + se::kEngineStateFileSuffix);
+                   .getChildFile (canvasName() + se::kEngineStateFileSuffix);
+    }
+
+    /** Directories the system empties behind your back. Not a guess at which files
+        matter — just the places macOS itself documents as disposable: /tmp and
+        /var/tmp, which are cleared on boot, and /var/folders, which holds the
+        per-user and per-process temp directories and is reaped a few days after
+        each stops being used.
+
+        The whole of /var/folders, not merely our own $TMPDIR. The path being judged
+        was written by whatever process put it there — most often an earlier run of
+        something else entirely — and its temp directory is exactly as disposable as
+        ours while never being the one $TMPDIR names. $TMPDIR is still added on top,
+        for the case where it has been pointed somewhere unusual.
+
+        Deliberately NOT juce::File::tempDirectory: on macOS JUCE means
+        ~/Library/Caches/SoundEffects by that, which is a different idea. */
+    static bool isSomewhereTheSystemWillEmpty (const juce::File& file)
+    {
+        juce::Array<juce::File> volatiles { juce::File ("/tmp"),          juce::File ("/private/tmp"),
+                                            juce::File ("/var/tmp"),      juce::File ("/private/var/tmp"),
+                                            juce::File ("/var/folders"),  juce::File ("/private/var/folders") };
+
+        const auto tmpdir = juce::SystemStats::getEnvironmentVariable ("TMPDIR", {});
+
+        if (tmpdir.isNotEmpty() && juce::File::isAbsolutePath (tmpdir))
+            volatiles.add (juce::File (tmpdir));
+
+        for (const auto& dir : volatiles)
+            if (file.isAChildOf (dir))
+                return true;
+
+        return false;
+    }
+
+    /** Is a remembered path still worth calling this canvas's document?
+
+        Two ways it is not, and they are different failures. The file may simply be
+        GONE — deleted, or on a volume that is not mounted — in which case the title
+        bar would be naming something that does not exist and Revert would have
+        nothing to go back to. Or the file may be right where it was, but in a
+        temp directory: ⌘S would then quietly write the whole canvas, tens of
+        megabytes of audio, to a path the system is going to throw away, and the
+        title bar would say it was saved.
+
+        The temp rule is restore-time ONLY. Saving to /tmp during a session is the
+        user's business and is honoured without comment — Save As asked, and they
+        answered. What has no defensible reading is a temp path surviving a quit
+        and being presented on the next launch as the document you were working on:
+        a temp directory is per-boot by definition, so a file kept there across
+        launches was scratch, never a document. */
+    static bool isStillADocument (const juce::File& file)
+    {
+        return file.existsAsFile() && ! isSomewhereTheSystemWillEmpty (file);
     }
 
     /** Menu text with a real ellipsis, which is what macOS menus use. */
