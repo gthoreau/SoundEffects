@@ -132,6 +132,23 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST "${_se_plist_out}")
 endif()
 
+# --- re-seal the VST3 ---------------------------------------------------------
+# JUCE ad-hoc signs the VST3 bundle, and only THEN runs juce_vst3_helper to write
+# Contents/Resources/moduleinfo.json inside it. The seal was made before that file
+# existed, so it does not cover it, and the bundle verifies as "a sealed resource
+# is missing or invalid" — which is a rejection, not a warning: Live's plugin
+# scanner logs exactly that string and files the bundle under "not a plugin".
+#
+# So sign again, last. POST_BUILD commands run in the order they are added, and
+# JUCE has added all of its own by the time this file reaches here, so ours runs
+# after the helper. Signing an already-signed bundle needs --force.
+if(APPLE)
+    add_custom_command(TARGET SoundEffects_VST3 POST_BUILD
+        COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:SoundEffects_VST3>"
+        COMMENT "Re-signing the VST3 bundle after moduleinfo.json"
+        VERBATIM)
+endif()
+
 target_link_libraries(SoundEffects PRIVATE
     juce::juce_audio_utils
     juce::juce_dsp
