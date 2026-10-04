@@ -471,6 +471,37 @@ describe("Sample Hose", () => {
       }
     });
 
+    // [DITL] the "%" after a field is the dialog's own static text.
+    describe("percent suffixes", () => {
+      const keyed = (key: string) => schema.findIndex((i) => "key" in i && i.key === key);
+      const followedByPercent = (key: string) => {
+        const next = schema[keyed(key) + 1];
+        return next?.type === ItemType.ignore && next.label === "%";
+      };
+
+      it("follows all four value and variance fields of Rate, Gain and Pan", () => {
+        for (const group of ["rate", "gain", "pan"]) {
+          for (const sub of subs) {
+            expect(followedByPercent(`${group}.${sub}`), `${group}.${sub}`).toBe(true);
+          }
+        }
+      });
+
+      it("does not follow Bite or Period's values or variances (their unit is the popup's)", () => {
+        for (const group of ["bite", "period"]) {
+          for (const sub of subs) {
+            expect(followedByPercent(`${group}.${sub}`), `${group}.${sub}`).toBe(false);
+          }
+        }
+      });
+
+      it("follows every Curvature", () => {
+        for (const group of ["rate", "gain", "pan", "bite", "period"]) {
+          expect(followedByPercent(`${group}.curvature`), `${group}.curvature`).toBe(true);
+        }
+      });
+    });
+
     it("passes schema validation (unit fields come with a units popup)", () => {
       expect(validateSchema(schema)).toEqual([]);
     });
