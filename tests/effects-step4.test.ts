@@ -3,6 +3,7 @@ import { SoundDocument } from "../src/document.js";
 import { setSelection } from "../src/selection.js";
 import { doubleToFixed, Unit } from "../src/units.js";
 import { Host, DoExtend, runEffect, kModCancel } from "../src/runtime/index.js";
+import { ItemType, validateSchema } from "../src/runtime/schema.js";
 import {
   Flanger,
   FlangerLFO,
@@ -441,6 +442,80 @@ describe("Sample Hose", () => {
     const d = doc8([[0, 20, 40, 60, 80, 100, 80, 60]]);
     runEffect(SampleHose, d, host(), { ...settings, stereo: true });
     expect(d.numChans).toBe(3);
+  });
+
+  // [BINARY] the dialog descriptor table: Bite and Period (and their Variances) follow
+  // the units popup; Rate, Gain, Pan and the Curvatures are plain integers.
+  describe("field types", () => {
+    const schema = SampleHose.schema!();
+    const typeOf = (key: string) => (schema.find((i) => "key" in i && i.key === key) as { type: number }).type;
+    const subs = ["initialValue", "initialVariance", "finalValue", "finalVariance"];
+
+    it("makes Bite and Period fields, variances included, unit-dependent", () => {
+      for (const group of ["bite", "period"]) {
+        for (const sub of subs) {
+          expect(typeOf(`${group}.${sub}`), `${group}.${sub}`).toBe(ItemType.editFieldUnitDependent);
+        }
+      }
+      expect(typeOf("newLength")).toBe(ItemType.editFieldUnitDependent);
+    });
+
+    it("makes Rate, Gain, Pan and every Curvature plain integer fields", () => {
+      for (const group of ["rate", "gain", "pan"]) {
+        for (const sub of subs) {
+          expect(typeOf(`${group}.${sub}`), `${group}.${sub}`).toBe(ItemType.editFieldNumerical);
+        }
+      }
+      for (const group of ["rate", "gain", "pan", "bite", "period"]) {
+        expect(typeOf(`${group}.curvature`), `${group}.curvature`).toBe(ItemType.editFieldNumerical);
+      }
+    });
+
+    it("passes schema validation (unit fields come with a units popup)", () => {
+      expect(validateSchema(schema)).toEqual([]);
+    });
+  });
+
+  // The effect receives bytes; the units popup converts what the user typed, using the
+  // document's bit depth. At 16 bits a sample is two bytes, so a Period of 10000
+  // *samples* is 20000 bytes — treating it as bytes would halve the spray density.
+  describe("unit conversion of Bite and Period", () => {
+    const doc16 = () => new SoundDocument({ bps: 16, numChans: 1, rate: doubleToFixed(1000) });
+
+    it("converts samples to bytes at 16 bits", () => {
+      const h = host();
+      expect(h.convertToBytes(doc16(), 10000, Unit.samples)).toBe(20000);
+      expect(h.convertToUnits(doc16(), 20000, Unit.samples)).toBe(10000);
+    });
+
+    it("converts milliseconds to bytes at 16 bits", () => {
+      // 1 kHz, 16-bit: 100 ms = 100 samples = 200 bytes
+      expect(host().convertToBytes(doc16(), 100, Unit.milliseconds)).toBe(200);
+    });
+
+    it("lays copies a Period of samples apart, not bytes", () => {
+      // Same Period typed in samples (8) vs in bytes (16) must spray identically at
+      // 16 bits once the popup has converted it.
+      const mk = () => {
+        const d = new SoundDocument({ bps: 16, numChans: 1, rate: doubleToFixed(1000) });
+        d.channels[0]!.data = new Uint8Array(32).map((_, i) => (i % 2 === 0 ? 0x10 : 0x00));
+        d.firstSelCh = d.lastSelCh = 1;
+        return d;
+      };
+      const run = (periodBytes: number) => {
+        const d = mk();
+        runEffect(SampleHose, d, host(), {
+          ...settings,
+          newLength: 64,
+          period: p(periodBytes, periodBytes),
+          bite: p(8, 8),
+        });
+        return Array.from(d.channels[1]!.data);
+      };
+      const viaSamples = run(host().convertToBytes(mk(), 8, Unit.samples));
+      expect(viaSamples).toEqual(run(16));
+      expect(viaSamples).not.toEqual(run(8));
+    });
   });
 
   // THE headline: the only interpolating DSP in the app.
