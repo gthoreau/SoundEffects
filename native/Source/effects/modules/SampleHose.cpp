@@ -93,17 +93,30 @@ void addParamDefaults (Settings& s, const std::string& key, double initial, doub
     s[key + ".curvature"]       = Value (100.0);
 }
 
-void addParamSchema (SettingsSchema& schema, const std::string& key, const std::string& label)
+/**
+ * The original's field types, read from the descriptor table in effect():
+ * Bite and Period (and their Variances) are unit-dependent -- they follow the units
+ * popup and are stored in bytes -- while Rate, Gain, Pan and every Curvature are
+ * plain integers. Variance is in its value's unit, never a percentage.
+ */
+void addParamSchema (SettingsSchema& schema, const std::string& key, const std::string& label,
+                     bool inUnits = false)
 {
+    const auto field = [inUnits] (std::string k, std::string l)
+    {
+        return inUnits ? durationField (std::move (k), std::move (l))
+                       : numberField (std::move (k), std::move (l));
+    };
+
     // A HEADING, not a unit: it names the five fields below it. Left as plain
     // static text, the panel pulls it onto the previous group's last field and the
     // group loses its name.
     schema.push_back (staticHeading (label));
-    schema.push_back (decimalField (key + ".initialValue", "Initial Value"));
-    schema.push_back (decimalField (key + ".initialVariance", "Initial Variance"));
-    schema.push_back (decimalField (key + ".finalValue", "Final Value"));
-    schema.push_back (decimalField (key + ".finalVariance", "Final Variance"));
-    schema.push_back (decimalField (key + ".curvature", "Curvature %"));
+    schema.push_back (field (key + ".initialValue", "Initial Value"));
+    schema.push_back (field (key + ".initialVariance", "Initial Variance"));
+    schema.push_back (field (key + ".finalValue", "Final Value"));
+    schema.push_back (field (key + ".finalVariance", "Final Variance"));
+    schema.push_back (numberField (key + ".curvature", "Curvature %"));
 }
 
 } // namespace
@@ -144,8 +157,8 @@ EffectModule makeSampleHose()
         addParamSchema (schema, "rate", "Rate");
         addParamSchema (schema, "gain", "Gain");
         addParamSchema (schema, "pan", "Pan");
-        addParamSchema (schema, "bite", "Bite");
-        addParamSchema (schema, "period", "Period");
+        addParamSchema (schema, "bite", "Bite", true);
+        addParamSchema (schema, "period", "Period", true);
         schema.push_back (checkBox ("stereo", "Stereo"));
         return schema;
     };

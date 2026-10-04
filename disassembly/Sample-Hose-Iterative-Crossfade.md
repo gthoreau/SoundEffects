@@ -62,7 +62,29 @@ Settings handle = **106 bytes (0x6a)**, `NewHandle`d and filled with defaults wh
 | `$68` | 1 (short) | Stereo flag |
 | all others (`$0`,`$4`,`$8`,`$c`,`$18`,`$1c`,`$2c`,`$30`,`$3c`,`$40`,`$4c`,`$50`) | 0 | the Variances and Bite (0 = whole sample) |
 
-The five-curvatures-at-100 and Pan-at-50 groupings corroborate the documented "5 parameter types × 5 sub-params" layout (Rate, Gain, Pan, Bite, Period). *Caveat:* the exact offset→parameter-name mapping beyond Pan (50 = centre) and the curvatures (5 × linear) is inferred from the defaults and the DITL, not proven by tracing each field to its dialog item.
+The five-curvatures-at-100 and Pan-at-50 groupings corroborate the documented "5 parameter types × 5 sub-params" layout (Rate, Gain, Pan, Bite, Period).
+
+### Settings-struct mapping and field types — proven from the dialog descriptor table
+
+`effect()` copies the 106-byte struct into locals (0x2330–0x2436), then builds the dialog's item-descriptor array (0x2446–0x27b8). Each descriptor is a type word followed by a pointer to the local it edits, in dialog order **Initial Value, Initial Variance, Final Value, Final Variance, Curvature**. That order pins every struct offset to its field, replacing the earlier inference:
+
+| parameter | Initial Value | Initial Variance | Final Value | Final Variance | Curvature | field type of the four value/variance fields |
+|---|---|---|---|---|---|---|
+| Rate | `$24` | `$2c` | `$28` | `$30` | `$54` | 9 (integer) |
+| Gain | `$34` | `$3c` | `$38` | `$40` | `$58` | 9 (integer) |
+| Pan | `$44` | `$4c` | `$48` | `$50` | `$5c` | 9 (integer) |
+| Bite | `$00` | `$08` | `$04` | `$0c` | `$64` | **7 (unit-dependent)** |
+| Period | `$10` | `$18` | `$14` | `$1c` | `$60` | **7 (unit-dependent)** |
+
+Also: New Length `$20` is type 7; the units popup is type 6 (local `-$6c`); Stereo `$68` is type 2 (checkbox); every Curvature is type 9. (Item types follow `ModSetups.h`: 2 checkBox, 6 unitsPopup, 7 editFieldUnitDependent, 9 editFieldNumerical.) The DITL itself cannot show this: all its edit fields are plain `0x10` text items.
+
+Consequences:
+
+- **Bite and Period, and their Variances, follow the units popup**, as the Read Me says ("expressed in the units displayed on the unit popup"). They are stored in bytes like New Length, which is why the defaults (Period 10000, New Length 222000) read as the same numbers in *Samples* at 8-bit mono.
+- **Variance is in its value's own unit**, not a percentage: Rate/Gain/Pan variances are percentage points (the DITL puts a `%` after them), Bite/Period variances are in the popup's units (the DITL puts no `%` there). The Read Me's example (Rate 100, variance 20 → between 80 and 120) gives the absolute ± form. The exact random draw (`base + (2·rand/RAND_MAX − 1)·variance`) is still the port's reading rather than traced instruction by instruction.
+- The three `%` columns and the curvature `%` in the dialog are the DITL's static-text labels, not part of the stored value.
+
+*Caveat:* the offset→parameter mapping is now proven from descriptor order. What remains unrecovered is the **spray scheduling** in `effect()`'s main loop (see SPEC §14 item 21).
 
 ---
 
@@ -117,5 +139,6 @@ out = clamp((long)(A*(1.0-r) + B*r), min, max);   // truncate, then clamp
 ## Provenance / confidence
 
 - **CONFIRMED:** Sample Hose's linear interpolation (two reads one `frameSize` apart + the `b−a`/`·frac`/`+a` triplet), its `FXPWRY`-based `pow()`, and its `rand()` LCG (byte-identical to Granular's); Iterative Crossfade's `A·(1−r) + B·r`, its truncate-then-clamp, and its zero-padding of exhausted channels. All read directly from the instructions, with the SANE operand order (`src` pushed before `dst`) applied consistently and cross-checked against Granular Synthesis, where the same conventions produced a formula that matches an independently-recovered published equation.
-- **INFERRED, not proven:** the offset→parameter-name mapping of Sample Hose's 106-byte settings struct beyond Pan and the curvature group; and the `r = pos/len` orientation in Iterative Crossfade rests on the operand order plus the semantic (fade A→B) rather than on tracing the loop counters to the dialog fields.
+- **PROVEN (added later):** Sample Hose's full settings-struct mapping and field types, from the dialog descriptor table (above).
+- **INFERRED, not proven:** the `r = pos/len` orientation in Iterative Crossfade rests on the operand order plus the semantic (fade A→B) rather than on tracing the loop counters to the dialog fields.
 - Neither module was oracle-verified in an emulator.

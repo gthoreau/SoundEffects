@@ -81,14 +81,23 @@ function paramAt(p: HoseParam, n: number, length: number, rng: AnsiCRandom): num
   return base + jitter * variance;
 }
 
-const hoseParamSchema = (key: string, label: string): SettingsSchema => [
-  { type: ItemType.ignore, label },
-  { type: ItemType.editFieldNumDecimal, key: `${key}.initialValue`, label: "Initial Value" },
-  { type: ItemType.editFieldNumDecimal, key: `${key}.initialVariance`, label: "Initial Variance" },
-  { type: ItemType.editFieldNumDecimal, key: `${key}.finalValue`, label: "Final Value" },
-  { type: ItemType.editFieldNumDecimal, key: `${key}.finalVariance`, label: "Final Variance" },
-  { type: ItemType.editFieldNumDecimal, key: `${key}.curvature`, label: "Curvature %" },
-];
+/**
+ * `[BINARY]` The original's field types, read from the descriptor table in `effect()`:
+ * Bite and Period (and their Variances) are unit-dependent (type 7) — they follow the
+ * units popup, stored in bytes — while Rate, Gain, Pan and every Curvature are plain
+ * integers (type 9). Variance is in the same unit as its value, never a percentage.
+ */
+const hoseParamSchema = (key: string, label: string, inUnits = false): SettingsSchema => {
+  const field = inUnits ? ItemType.editFieldUnitDependent : ItemType.editFieldNumerical;
+  return [
+    { type: ItemType.ignore, label },
+    { type: field, key: `${key}.initialValue`, label: "Initial Value" },
+    { type: field, key: `${key}.initialVariance`, label: "Initial Variance" },
+    { type: field, key: `${key}.finalValue`, label: "Final Value" },
+    { type: field, key: `${key}.finalVariance`, label: "Final Variance" },
+    { type: ItemType.editFieldNumerical, key: `${key}.curvature`, label: "Curvature %" },
+  ];
+};
 
 export const SampleHose: EffectModule<SampleHoseSettings> = {
   name: "Sample Hose",
@@ -116,8 +125,8 @@ export const SampleHose: EffectModule<SampleHoseSettings> = {
     ...hoseParamSchema("rate", "Rate"),
     ...hoseParamSchema("gain", "Gain"),
     ...hoseParamSchema("pan", "Pan"),
-    ...hoseParamSchema("bite", "Bite"),
-    ...hoseParamSchema("period", "Period"),
+    ...hoseParamSchema("bite", "Bite", true),
+    ...hoseParamSchema("period", "Period", true),
     { type: ItemType.checkBox, key: "stereo", label: "Stereo" },
   ],
 
