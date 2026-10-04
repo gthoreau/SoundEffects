@@ -86,16 +86,26 @@ function paramAt(p: HoseParam, n: number, length: number, rng: AnsiCRandom): num
  * Bite and Period (and their Variances) are unit-dependent (type 7) — they follow the
  * units popup, stored in bytes — while Rate, Gain, Pan and every Curvature are plain
  * integers (type 9). Variance is in the same unit as its value, never a percentage.
+ *
+ * `[DITL]` The "%" after a field is the dialog's own static text: Rate, Gain and Pan
+ * carry it on all four value/variance fields, Bite and Period on none (their unit is
+ * the popup's), and every Curvature carries it.
  */
 const hoseParamSchema = (key: string, label: string, inUnits = false): SettingsSchema => {
   const field = inUnits ? ItemType.editFieldUnitDependent : ItemType.editFieldNumerical;
+  const percent: SettingsSchema = inUnits ? [] : [{ type: ItemType.ignore, label: "%" }];
   return [
     { type: ItemType.ignore, label },
     { type: field, key: `${key}.initialValue`, label: "Initial Value" },
+    ...percent,
     { type: field, key: `${key}.initialVariance`, label: "Initial Variance" },
+    ...percent,
     { type: field, key: `${key}.finalValue`, label: "Final Value" },
+    ...percent,
     { type: field, key: `${key}.finalVariance`, label: "Final Variance" },
-    { type: ItemType.editFieldNumerical, key: `${key}.curvature`, label: "Curvature %" },
+    ...percent,
+    { type: ItemType.editFieldNumerical, key: `${key}.curvature`, label: "Curvature" },
+    { type: ItemType.ignore, label: "%" },
   ];
 };
 

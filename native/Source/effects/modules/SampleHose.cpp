@@ -108,15 +108,29 @@ void addParamSchema (SettingsSchema& schema, const std::string& key, const std::
                        : numberField (std::move (k), std::move (l));
     };
 
+    // The "%" after a field is the dialog's own static text (DITL): Rate, Gain and
+    // Pan carry it on all four value/variance fields, Bite and Period on none (their
+    // unit is the popup's), and every Curvature carries it. The panel glues a short
+    // trailing static text onto the field's line.
+    const auto percent = [inUnits] (SettingsSchema& sc)
+    {
+        if (! inUnits) sc.push_back (staticText ("%"));
+    };
+
     // A HEADING, not a unit: it names the five fields below it. Left as plain
     // static text, the panel pulls it onto the previous group's last field and the
     // group loses its name.
     schema.push_back (staticHeading (label));
     schema.push_back (field (key + ".initialValue", "Initial Value"));
+    percent (schema);
     schema.push_back (field (key + ".initialVariance", "Initial Variance"));
+    percent (schema);
     schema.push_back (field (key + ".finalValue", "Final Value"));
+    percent (schema);
     schema.push_back (field (key + ".finalVariance", "Final Variance"));
-    schema.push_back (numberField (key + ".curvature", "Curvature %"));
+    percent (schema);
+    schema.push_back (numberField (key + ".curvature", "Curvature"));
+    schema.push_back (staticText ("%"));
 }
 
 } // namespace
