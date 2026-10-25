@@ -207,4 +207,45 @@ void paintDropdown (juce::Graphics&, juce::Rectangle<int>, DropdownState, const 
 inline constexpr int kMiniDropdownWidth = 19, kMiniDropdownHeight = 12;
 void paintMiniDropdown (juce::Graphics&, juce::Point<int> origin, DropdownState);
 
+/** Figma's MULTIPLY blend of `layer` onto a flat `under` colour. JUCE has no blend
+    modes, but every multiplied layer in the design system sits on a known flat
+    colour (a strip's theme, a panel's grey), so the product can be worked out. */
+juce::Colour multiply (juce::Colour layer, juce::Colour under) noexcept;
+
+// --- sliders ("Sliders" 354:12896, "slider-button" 354:12903, "VU-segment") ---
+
+enum class SliderKind { volume, pan, amplify };
+
+inline constexpr int kSliderHeight = 18;
+inline constexpr int kThumbWidth = 11;
+
+struct SliderLook
+{
+    float thumbX = 0.0f;       // the thumb's left edge, relative to the slider
+    float markerX = -1.0f;     // the tick (0 dB / centre / 100 %), < 0 for none
+    float centreX = -1.0f;     // pan only: where the deviation bar starts
+    float levelLeft = 0.0f;    // volume only: VU bars, 0..1 of the trough width
+    float levelRight = 0.0f;
+    bool muted = false;        // volume only: the VU greys out
+    juce::Colour under = colour::white;   // what the multiplied trough sits on
+};
+
+/** The trough, its contents and the thumb, in a `kSliderHeight`-tall rectangle. */
+void paintSlider (juce::Graphics&, juce::Rectangle<int>, SliderKind, const SliderLook&);
+
+/** The 11 x 18 thumb with its three grip lines. */
+void paintSliderThumb (juce::Graphics&, juce::Point<float> origin);
+
+// --- Icon-button 527:5725 and Canvas-toggle 527:5564 -------------------------
+
+enum class IconButtonState { normal, active, disabled };
+
+/** A secondary-style bevelled face with a one-colour icon centred in it. */
+void paintIconButton (juce::Graphics&, juce::Rectangle<int>, IconButtonState, const juce::Path& icon,
+                      juce::Point<int> iconSize);
+
+/** The two-segment grid | free switch; `gridActive` picks the pressed half. */
+void paintCanvasToggle (juce::Graphics&, juce::Point<int> origin, bool gridActive);
+inline constexpr int kCanvasToggleWidth = 44, kCanvasToggleHeight = 20;
+
 } // namespace os8

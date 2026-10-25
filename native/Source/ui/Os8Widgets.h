@@ -5,6 +5,9 @@
 #pragma once
 
 #include "Os8.h"
+#include "Os8Icons.h"
+
+#include <limits>
 
 /** Buttons 87:8, as a JUCE button.
 
@@ -79,7 +82,8 @@ class Os8LookAndFeel : public juce::LookAndFeel_V4
 public:
     Os8LookAndFeel();
 
-    /** One shared instance; menus outlive the components that opened them. */
+    /** One shared instance, freed at shutdown; menus outlive the components that
+        opened them. */
     static Os8LookAndFeel& instance();
 
     void drawPopupMenuBackgroundWithOptions (juce::Graphics&, int width, int height,
@@ -91,6 +95,10 @@ public:
                                                int standardMenuItemHeight, int& idealWidth,
                                                int& idealHeight, const juce::PopupMenu::Options&) override;
     int getPopupMenuBorderSizeWithOptions (const juce::PopupMenu::Options&) override { return kBorder; }
+
+    /** The slider thumb is 11 px wide: JUCE indents the track by this much at
+        each end, so the thumb's centre tracks the value. */
+    int getSliderThumbRadius (juce::Slider&) override { return os8::kThumbWidth / 2; }
     juce::Font getPopupMenuFont() override { return os8::font (os8::TextStyle::smallLabel); }
 
     static constexpr int kBorder = 2;
@@ -206,4 +214,64 @@ private:
     bool menuOpen = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8Dropdown)
+};
+
+/** "Sliders" 354:12896 as a JUCE slider: horizontal, no text box, the thumb's centre
+    tracking the value from 5.5 px in at either end.
+
+    Volume carries a stereo VU inside its trough (setLevels) and a 0 dB tick
+    (setMarkerValue); pan draws its deviation from centre; amplify marks 100 %.
+    setUnder() says what the trough is multiplied onto — a strip's theme colour. */
+class Os8Slider : public juce::Slider
+{
+public:
+    explicit Os8Slider (os8::SliderKind = os8::SliderKind::amplify);
+
+    void setLevels (float left, float right);
+    void setMuted (bool);
+    void setUnder (juce::Colour);
+    /** Where the tick goes, as a slider value; pan defaults to the range's middle. */
+    void setMarkerValue (double);
+
+    void paint (juce::Graphics&) override;
+
+private:
+    float positionOf (double value);
+
+    os8::SliderKind kind;
+    os8::SliderLook look;
+    double markerValue = std::numeric_limits<double>::quiet_NaN();
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8Slider)
+};
+
+/** Icon-button 527:5725: a bevelled button showing a one-colour icon. With
+    setClickingTogglesState(true) it is a latching switch (the Keyboard toggle). */
+class Os8IconButton : public juce::Button
+{
+public:
+    explicit Os8IconButton (os8::icon::Id);
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    os8::icon::Id icon;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8IconButton)
+};
+
+/** Canvas-toggle 527:5564: the grid | free switch of the canvas palette. */
+class Os8CanvasToggle : public juce::Component
+{
+public:
+    Os8CanvasToggle();
+
+    void setGrid (bool, juce::NotificationType = juce::dontSendNotification);
+    bool isGrid() const noexcept { return grid; }
+    std::function<void (bool grid)> onChange;
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+
+private:
+    bool grid = true;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8CanvasToggle)
 };

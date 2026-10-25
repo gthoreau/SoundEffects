@@ -87,10 +87,18 @@ Os8LookAndFeel::Os8LookAndFeel()
     setColour (juce::PopupMenu::backgroundColourId, juce::Colours::transparentBlack);
 }
 
+namespace {
+struct LookAndFeelHolder : juce::DeletedAtShutdown
+{
+    Os8LookAndFeel lf;
+    ~LookAndFeelHolder() override { clearSingletonInstance(); }
+    JUCE_DECLARE_SINGLETON_INLINE (LookAndFeelHolder, true)
+};
+} // namespace
+
 Os8LookAndFeel& Os8LookAndFeel::instance()
 {
-    static Os8LookAndFeel lf;
-    return lf;
+    return LookAndFeelHolder::getInstance()->lf;
 }
 
 void Os8LookAndFeel::drawPopupMenuBackgroundWithOptions (juce::Graphics& g, int width, int height,
@@ -161,7 +169,7 @@ void Os8LookAndFeel::drawPopupMenuItemWithOptions (juce::Graphics& g, const juce
     g.setColour (ink);
 
     if (item.isTicked)
-        g.fillPath (os8::icon::menuCheckmark(),
+        g.fillPath (os8::icon::outline (os8::icon::Id::menuCheckmark),
                     juce::AffineTransform::translation ((float) (area.getX() + kItemLeft + 4), (float) area.getY() + 4.0f));
 
     os8::drawText (g, item.text, os8::TextStyle::smallLabel,
@@ -169,7 +177,7 @@ void Os8LookAndFeel::drawPopupMenuItemWithOptions (juce::Graphics& g, const juce
                      (float) (contentWidth - kItemTextX - kItemRightColumn), 10.0f });
 
     if (item.subMenu != nullptr)
-        g.fillPath (os8::icon::menuArrow(),
+        g.fillPath (os8::icon::outline (os8::icon::Id::menuArrow),
                     juce::AffineTransform::translation ((float) (area.getX() + kItemLeft + contentWidth - 10),
                                                         (float) area.getY() + 3.0f));
 }
@@ -452,4 +460,83 @@ void Os8Dropdown::showMenu()
         safe->repaint();
         if (result > 0) safe->setSelectedIndex (result - 1, juce::sendNotification);
     });
+}
+
+// --- Os8Slider ----------------------------------------------------------------
+
+Os8Slider::Os8Slider (os8::SliderKind k)
+    : juce::Slider (juce::Slider::LinearHorizontal, juce::Slider::NoTextBox), kind (k)
+{
+    setLookAndFeel (&Os8LookAndFeel::instance());
+}
+
+void Os8Slider::setLevels (float l, float r)
+{
+    if (juce::approximatelyEqual (l, look.levelLeft) && juce::approximatelyEqual (r, look.levelRight)) return;
+    look.levelLeft = l;
+    look.levelRight = r;
+    repaint();
+}
+
+void Os8Slider::setMuted (bool m)            { look.muted = m; repaint(); }
+void Os8Slider::setUnder (juce::Colour c)    { look.under = c; repaint(); }
+void Os8Slider::setMarkerValue (double v)    { markerValue = v; repaint(); }
+
+float Os8Slider::positionOf (double value)
+{
+    // The thumb's centre runs from 5.5 px to width - 5.5 px.
+    const auto travel = (float) (getWidth() - os8::kThumbWidth);
+    return (float) valueToProportionOfLength (value) * travel;
+}
+
+void Os8Slider::paint (juce::Graphics& g)
+{
+    auto l = look;
+    l.thumbX = std::round (positionOf (getValue()));
+
+    const double mid = (getMinimum() + getMaximum()) * 0.5;
+    const double tick = std::isnan (markerValue) ? (kind == os8::SliderKind::volume ? -1.0 : mid) : markerValue;
+    l.markerX = tick < getMinimum() ? -1.0f
+                                    : std::round (positionOf (tick) + (float) os8::kThumbWidth * 0.5f) - 0.5f;
+    if (kind == os8::SliderKind::pan)
+        l.centreX = positionOf (mid) + (float) os8::kThumbWidth * 0.5f;
+
+    os8::paintSlider (g, getLocalBounds().withHeight (os8::kSliderHeight), kind, l);
+}
+
+// --- Os8IconButton ------------------------------------------------------------
+
+Os8IconButton::Os8IconButton (os8::icon::Id id) : juce::Button ({}), icon (id) {}
+
+void Os8IconButton::paintButton (juce::Graphics& g, bool, bool down)
+{
+    const auto state = ! isEnabled()                  ? os8::IconButtonState::disabled
+                     : (down || getToggleState())     ? os8::IconButtonState::active
+                                                      : os8::IconButtonState::normal;
+    os8::paintIconButton (g, getLocalBounds(), state, os8::icon::outline (icon), os8::icon::sizeOf (icon));
+}
+
+// --- Os8CanvasToggle ----------------------------------------------------------
+
+Os8CanvasToggle::Os8CanvasToggle()
+{
+    setSize (os8::kCanvasToggleWidth, os8::kCanvasToggleHeight);
+}
+
+void Os8CanvasToggle::setGrid (bool g, juce::NotificationType n)
+{
+    if (g == grid) return;
+    grid = g;
+    repaint();
+    if (n != juce::dontSendNotification && onChange) onChange (grid);
+}
+
+void Os8CanvasToggle::paint (juce::Graphics& g)
+{
+    os8::paintCanvasToggle (g, {}, grid);
+}
+
+void Os8CanvasToggle::mouseDown (const juce::MouseEvent& e)
+{
+    setGrid (e.x < os8::kCanvasToggleWidth / 2, juce::sendNotification);
 }

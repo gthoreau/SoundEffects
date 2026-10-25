@@ -54,10 +54,24 @@ Os8Gallery::Os8Gallery()
     for (auto* c : std::initializer_list<juce::Component*> { &liveApply, &liveCancel, &liveCheck,
                                                             &liveRadioA, &liveRadioB, &liveDisabled,
                                                             &liveLarge, &liveSmall, &liveXSmall,
-                                                            &liveUnits, &liveMini })
+                                                            &liveUnits, &liveMini, &liveVolume, &livePan,
+                                                            &liveAmplify, &liveKeyboard, &liveCanvas })
         addAndMakeVisible (c);
 
-    setSize (920, 680);
+    // The fader runs -inf..+6 dB on a linear 0..1 here; the tick marks 0 dB.
+    liveVolume.setRange (0.0, 1.0);
+    liveVolume.setValue (0.55);
+    liveVolume.setMarkerValue (0.8);
+    liveVolume.setLevels (0.45f, 0.48f);
+    livePan.setRange (-1.0, 1.0);
+    livePan.setValue (0.0);
+    livePan.setDoubleClickReturnValue (true, 0.0);
+    liveAmplify.setRange (0.0, 400.0);
+    liveAmplify.setValue (75.0);
+    liveAmplify.setMarkerValue (100.0);
+    liveKeyboard.setClickingTogglesState (true);
+
+    setSize (920, 780);
 }
 
 void Os8Gallery::paint (juce::Graphics& g)
@@ -154,6 +168,34 @@ void Os8Gallery::paint (juce::Graphics& g)
         g.setColour (os8::colour::black);
         os8::drawText (g, "ms", os8::TextStyle::xSmallLabel, { (float) fa.getX() + 313.0f, (float) (fa.getY() + 8 + i * 24) + 1.5f, 30.0f, 9.0f });
     }
+
+    // Sliders exactly as the Figma variants draw them, then the icon button's three
+    // states and both canvas toggles.
+    const auto sa = slidersArea();
+    sectionTitle (g, "Sliders and switches", sa.getX(), sa.getY() - 28);
+    os8::SliderLook volume;
+    volume.thumbX = 74.0f; volume.markerX = 109.0f;
+    volume.levelLeft = 63.0f / 141.0f; volume.levelRight = 68.0f / 141.0f;
+    os8::paintSlider (g, { sa.getX(), sa.getY() + 6, 141, 18 }, os8::SliderKind::volume, volume);
+    os8::SliderLook pan;
+    pan.thumbX = 65.0f; pan.markerX = 70.0f; pan.centreX = 70.5f;
+    os8::paintSlider (g, { sa.getX(), sa.getY() + 30, 141, 18 }, os8::SliderKind::pan, pan);
+    os8::SliderLook amp;
+    amp.thumbX = 34.0f; amp.markerX = 70.0f;
+    os8::paintSlider (g, { sa.getX(), sa.getY() + 54, 141, 18 }, os8::SliderKind::amplify, amp);
+
+    const os8::IconButtonState ib[] = { os8::IconButtonState::normal, os8::IconButtonState::active,
+                                        os8::IconButtonState::disabled };
+    for (int i = 0; i < 3; ++i)
+        os8::paintIconButton (g, { sa.getX() + 160 + i * 46, sa.getY() + 6, 38, 20 }, ib[i],
+                              os8::icon::outline (os8::icon::Id::keyboard), os8::icon::sizeOf (os8::icon::Id::keyboard));
+    os8::paintCanvasToggle (g, { sa.getX() + 160, sa.getY() + 34 }, false);
+    os8::paintCanvasToggle (g, { sa.getX() + 214, sa.getY() + 34 }, true);
+}
+
+juce::Rectangle<int> Os8Gallery::slidersArea()
+{
+    return { kMargin, 690, 700, 80 };
 }
 
 juce::Rectangle<int> Os8Gallery::fieldsArea()
@@ -183,6 +225,13 @@ void Os8Gallery::resized()
     liveXSmall.setBounds (f.getX() + 102, f.getY() + 12, 40, 15);
     liveUnits.setBounds (f.getX() + 160, f.getY() + 10, 100, os8::kDropdownHeight);
     liveMini.setBounds (f.getX() + 276, f.getY() + 12, liveMini.preferredWidth(), os8::kMiniDropdownHeight);
+
+    const auto sl = slidersArea().translated (360, 0);
+    liveVolume.setBounds (sl.getX(), sl.getY() + 6, 141, os8::kSliderHeight);
+    livePan.setBounds (sl.getX(), sl.getY() + 30, 141, os8::kSliderHeight);
+    liveAmplify.setBounds (sl.getX(), sl.getY() + 54, 141, os8::kSliderHeight);
+    liveKeyboard.setBounds (sl.getX() + 160, sl.getY() + 6, 38, 20);
+    liveCanvas.setTopLeftPosition (sl.getX() + 210, sl.getY() + 6);
 }
 
 bool Os8Gallery::writeSnapshot (const juce::File& png, float scale, juce::Rectangle<int> area)

@@ -31,6 +31,9 @@ public:
     /** The fields-and-dropdowns row, below the UI elements. */
     static juce::Rectangle<int> fieldsArea();
 
+    /** Sliders, icon buttons and the canvas toggle. */
+    static juce::Rectangle<int> slidersArea();
+
 private:
     // Live controls, to be clicked: the painters above show every state at once,
     // these show the transitions between them (press, Done! flash, radio exclusion).
@@ -43,6 +46,10 @@ private:
     Os8TextField liveLarge { os8::FieldSize::large }, liveSmall { os8::FieldSize::small },
                  liveXSmall { os8::FieldSize::xSmall };
     Os8Dropdown liveUnits, liveMini { Os8Dropdown::Style::mini };
+    Os8Slider liveVolume { os8::SliderKind::volume }, livePan { os8::SliderKind::pan },
+              liveAmplify { os8::SliderKind::amplify };
+    Os8IconButton liveKeyboard { os8::icon::Id::keyboard };
+    Os8CanvasToggle liveCanvas;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8Gallery)
 };

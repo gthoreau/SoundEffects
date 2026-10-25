@@ -20,13 +20,21 @@ float sizeOf (TextStyle s) noexcept
     return 12.0f;
 }
 
+namespace {
+// Held by a DeletedAtShutdown singleton rather than a function static, so JUCE frees
+// it during shutdown — a static would outlive the leak detector and trip it.
+struct TypefaceHolder : juce::DeletedAtShutdown
+{
+    juce::Typeface::Ptr chicago = juce::Typeface::createSystemTypefaceFor (
+        BinaryData::ClassicChicago_ttf, (size_t) BinaryData::ClassicChicago_ttfSize);
+    ~TypefaceHolder() override { clearSingletonInstance(); }
+    JUCE_DECLARE_SINGLETON_INLINE (TypefaceHolder, true)
+};
+} // namespace
+
 juce::Typeface::Ptr chicago()
 {
-    // Made once and kept: a Typeface built from memory is not cheap, and every
-    // label in the app asks for it.
-    static juce::Typeface::Ptr typeface = juce::Typeface::createSystemTypefaceFor (
-        BinaryData::ClassicChicago_ttf, (size_t) BinaryData::ClassicChicago_ttfSize);
-    return typeface;
+    return TypefaceHolder::getInstance()->chicago;
 }
 
 juce::Font font (TextStyle s)
@@ -489,7 +497,7 @@ void paintDropdown (juce::Graphics& g, juce::Rectangle<int> bounds, DropdownStat
     pillFace (g, well, 1.0f, 1.0f, state, false);
 
     g.setColour (inkFor (state));
-    g.fillPath (icon::dropdownDoubleArrow(),
+    g.fillPath (icon::outline (icon::Id::dropdownDoubleArrow),
                 juce::AffineTransform::translation (well.getX() + 5.0f, well.getY() + 3.0f));
 
     // Figma puts the label's box at (7, 3.5); drawText rounds the baseline.
@@ -514,7 +522,173 @@ void paintMiniDropdown (juce::Graphics& g, juce::Point<int> origin, DropdownStat
     }
 
     g.setColour (state == DropdownState::active ? colour::white : colour::black);
-    g.fillPath (icon::dropdownSingleArrow(), juce::AffineTransform::translation (r.getX() + 6.0f, r.getY() + 4.0f));
+    g.fillPath (icon::outline (icon::Id::dropdownSingleArrow), juce::AffineTransform::translation (r.getX() + 6.0f, r.getY() + 4.0f));
+}
+
+// --- blending -----------------------------------------------------------------
+
+juce::Colour multiply (juce::Colour layer, juce::Colour under) noexcept
+{
+    const auto ch = [] (juce::uint8 a, juce::uint8 b) { return (juce::uint8) ((a * b + 127) / 255); };
+    const auto product = juce::Colour (ch (layer.getRed(), under.getRed()),
+                                       ch (layer.getGreen(), under.getGreen()),
+                                       ch (layer.getBlue(), under.getBlue()));
+    // A translucent layer multiplies only as much as it covers.
+    return under.interpolatedWith (product, layer.getFloatAlpha());
+}
+
+// --- sliders ----------------------------------------------------------------------
+
+void paintSliderThumb (juce::Graphics& g, juce::Point<float> o)
+{
+    using namespace colour;
+    const juce::Rectangle<float> r (o.x, o.y, (float) kThumbWidth, (float) kSliderHeight);
+    const auto shape = roundedRect (r, 2.0f);
+    g.setColour (gray100);
+    g.fillPath (shape);
+    innerShadow (g, shape,  2.0f,  2.0f, 0, white.withAlpha (0.5f));
+    innerShadow (g, shape, -2.0f, -2.0f, 0, black.withAlpha (0.25f));
+    strokeInside (g, r, 2.0f, 1.0f, black);
+
+    // Three grip lines, 11.25 px tall from y 3.375 — fractional in Figma, so drawn
+    // fractional here too and left to the same anti-aliasing.
+    g.setColour (black);
+    for (float x : { 3.0f, 5.0f, 7.0f })
+        g.fillRect (juce::Rectangle<float> (o.x + x, o.y + 3.375f, 1.0f, 11.25f));
+}
+
+void paintSlider (juce::Graphics& g, juce::Rectangle<int> bounds, SliderKind kind, const SliderLook& look)
+{
+    using namespace colour;
+    const auto b = bounds.toFloat();
+    const juce::Rectangle<float> trough (b.getX(), b.getY() + 4.0f, b.getWidth(), 10.0f);
+    const float radius = kind == SliderKind::volume ? 0.0f : 3.0f;
+    const auto shape = roundedRect (trough, radius);
+
+    // The trough is a MULTIPLY layer: #c0c0c0 with a dark band (1, 2) and a light
+    // band (-1, -2) inside it, the whole layer then multiplied onto what is below —
+    // on a tinted mixer strip that is what turns the grey into a darker tint.
+    const auto base = gray300;
+    g.setColour (multiply (base, look.under));
+    g.fillPath (shape);
+    innerShadow (g, shape,  1.0f,  2.0f, 0, multiply (base.interpolatedWith (black, 0.3f), look.under));
+    innerShadow (g, shape, -1.0f, -2.0f, 0, multiply (base.interpolatedWith (white, 0.5f), look.under));
+
+    if (kind == SliderKind::pan && look.centreX >= 0.0f)
+    {
+        // How far the balance is off centre, multiplied in a darker grey.
+        const float thumbCentre = look.thumbX + (float) kThumbWidth * 0.5f;
+        const float x0 = juce::jmin (look.centreX, thumbCentre), x1 = juce::jmax (look.centreX, thumbCentre);
+        juce::Graphics::ScopedSaveState save (g);
+        g.reduceClipRegion (shape);
+        g.setColour (multiply (gray400, multiply (base, look.under)));
+        g.fillRect (juce::Rectangle<float> (b.getX() + x0, trough.getY(), x1 - x0, trough.getHeight()));
+    }
+
+    // The trough's outline: square on the fader, a 4 px radius on the others.
+    strokeInside (g, trough, kind == SliderKind::volume ? 0.0f : 4.0f, 1.0f, black);
+
+    if (kind == SliderKind::volume)
+    {
+        // Two VU bars, left over right, each a 5 px bevelled segment.
+        const auto bar = [&] (float level, float y)
+        {
+            const float w = juce::jlimit (0.0f, 1.0f, level) * trough.getWidth();
+            if (w < 1.0f) return;
+            const juce::Rectangle<float> r (trough.getX(), y, std::round (w), 5.0f);
+            juce::Path seg;
+            seg.addRectangle (r);
+            if (look.muted)
+            {
+                g.setColour (gray400);
+                g.fillPath (seg);
+                strokeInside (g, r, 0.0f, 1.0f, gray400);
+            }
+            else
+            {
+                g.setColour (gray500);
+                g.fillPath (seg);
+                innerShadow (g, seg, 0.0f, -2.0f, 0, gray600);
+                innerShadow (g, seg, 0.0f,  2.0f, 0, gray600);
+                strokeInside (g, r, 0.0f, 1.0f, black);
+            }
+        };
+        bar (look.levelLeft,  trough.getY());
+        bar (look.levelRight, trough.getY() + 5.0f);
+    }
+
+    if (look.markerX >= 0.0f)
+    {
+        g.setColour (black);
+        if (kind == SliderKind::pan) g.fillRect (juce::Rectangle<float> (b.getX() + look.markerX, b.getY() + 7.0f, 1.0f, 4.0f));
+        else                         g.fillRect (juce::Rectangle<float> (b.getX() + look.markerX, b.getY() + 5.0f, 1.0f, 8.0f));
+    }
+
+    paintSliderThumb (g, { b.getX() + look.thumbX, b.getY() });
+}
+
+// --- icon button and canvas toggle --------------------------------------------------
+
+void paintIconButton (juce::Graphics& g, juce::Rectangle<int> bounds, IconButtonState state,
+                      const juce::Path& icon, juce::Point<int> iconSize)
+{
+    using namespace colour;
+    const auto r = bounds.toFloat();
+
+    switch (state)
+    {
+        case IconButtonState::normal:   bevelledFace (g, r, 3.0f, gray100, juce::Colour (0xfffffdfd), gray400, false, black); break;
+        case IconButtonState::active:   bevelledFace (g, r, 2.0f, gray500, gray600, gray400, false, black); break;
+        case IconButtonState::disabled:
+            g.setColour (gray100);
+            g.fillPath (roundedRect (r, 3.0f));
+            strokeInside (g, r, 3.0f, 1.0f, gray300);
+            break;
+    }
+
+    g.setColour (state == IconButtonState::active ? white : state == IconButtonState::disabled ? gray400 : black);
+    const auto origin = bounds.getCentre() - iconSize / 2;
+    g.fillPath (icon, juce::AffineTransform::translation (origin.toFloat()));
+}
+
+void paintCanvasToggle (juce::Graphics& g, juce::Point<int> o, bool gridActive)
+{
+    using namespace colour;
+    const auto half = [&] (juce::Rectangle<float> r, bool left, bool active)
+    {
+        juce::Path shape;
+        shape.addRoundedRectangle (r.getX(), r.getY(), r.getWidth(), r.getHeight(), 3.0f, 3.0f,
+                                   left, ! left, left, ! left);
+        g.setColour (active ? gray500 : gray100);
+        g.fillPath (shape);
+
+        // The bevel offsets differ per half, as drawn: the left half's dark band is
+        // 1 px wide (its right edge is the seam), the right half's light band
+        // narrows to 1 px when it is not the pressed one.
+        innerShadow (g, shape, left ? -1.0f : -2.0f, -2.0f, 0, gray400);
+        innerShadow (g, shape, (left || active) ? 2.0f : 1.0f, 2.0f, 0,
+                     active ? gray600 : juce::Colour (0xfffffdfd));
+
+        // Outline on three sides only: neither half strokes the seam.
+        juce::Graphics::ScopedSaveState save (g);
+        g.reduceClipRegion ((left ? r.withTrimmedRight (1.0f) : r.withTrimmedLeft (1.0f)).toNearestInt());
+        const auto inset = r.reduced (0.5f);
+        juce::Path edge;   // an "inside" stroke: the path half a pixel in
+        edge.addRoundedRectangle (inset.getX(), inset.getY(), inset.getWidth(), inset.getHeight(),
+                                  2.5f, 2.5f, left, ! left, left, ! left);
+        g.setColour (black);
+        g.strokePath (edge, juce::PathStrokeType (1.0f));
+    };
+
+    const juce::Rectangle<float> left ((float) o.x, (float) o.y, 22.0f, 20.0f);
+    const auto right = left.translated (22.0f, 0.0f);
+    half (left, true, gridActive);
+    half (right, false, ! gridActive);
+
+    g.setColour (gridActive ? white : black);
+    g.fillPath (icon::outline (icon::Id::canvasGrid), juce::AffineTransform::translation (left.getX() + 5.0f, left.getY() + 4.0f));
+    g.setColour (gridActive ? black : white);
+    g.fillPath (icon::outline (icon::Id::canvasFree), juce::AffineTransform::translation (right.getX() + 4.0f, right.getY() + 3.0f));
 }
 
 } // namespace os8
