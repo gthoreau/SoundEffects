@@ -274,4 +274,22 @@ inline constexpr int kDirectionMenuWidth = 72, kDirectionMenuHeight = 27, kDirec
     inner bands, a black inside stroke and a hard 1 px drop shadow. */
 void paintMenuFrame (juce::Graphics&, juce::Rectangle<float>);
 
+// --- title bars ("window-bar" 293:8807, "bar-handle" 522:4634) ----------------
+
+inline constexpr int kTitleBarHeight = 21;
+
+/** The engraved stripes of a title bar: 7 one-pixel lines, 2 px apart, starting 4 px
+    down, within `area` (whose height should be the bar's, 21 px). */
+void paintTitleStripes (juce::Graphics&, juce::Rectangle<int> area);
+
+/** A title bar: stripes either side of a centred title, `leftInset` / `rightInset`
+    px kept clear at the ends for buttons. Inactive bars have no stripes, as on the
+    Mac. */
+void paintTitleBar (juce::Graphics&, juce::Rectangle<int> bar, const juce::String& title,
+                    bool active, int leftInset, int rightInset);
+
+/** An 11 x 11 title-bar box (close box, M, S, collapse): bevelled face, 1 px black
+    stroke outside it, drawn with its face's top-left at `origin`. */
+void paintTitleBarBox (juce::Graphics&, juce::Point<int> origin, bool pressed);
+
 } // namespace os8

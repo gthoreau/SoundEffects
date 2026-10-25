@@ -76,6 +76,25 @@ public:
     /** Shared clipboard slot (owned by the canvas). */
     std::unique_ptr<se::SoundDocument>* clipboard = nullptr;
 
+    /** What the application menus and their shortcuts can ask a Window to do. The
+        Window no longer reads those keys itself: the shortcut table (AppCommands)
+        binds them once for the whole app and routes them here, to the selected
+        Window. */
+    enum class Action
+    {
+        playPause, stop, toggleLoop, toggleAdvance,
+        selectAll, cut, copy, paste, clear, crop, insertSilence,
+        rename
+    };
+    /** Do it; false when it does not apply right now (nothing to paste, say). */
+    bool perform (Action);
+    /** Would perform() do anything? Drives the menus' greying. */
+    bool canPerform (Action) const;
+
+    bool isPlaying() const;
+    bool isLoopOn() const noexcept    { return loopEnabled; }
+    bool isAdvanceOn() const noexcept { return advanceEnabled; }
+
     void refresh();
     std::function<void (uint64_t)> onClose;
     /** Clicked — the canvas makes this the selected Window. Separate from keyboard

@@ -1134,40 +1134,67 @@ void WindowComponent::endNameEdit (bool keepChanges)
     repaint();
 }
 
-bool WindowComponent::keyPressed (const juce::KeyPress& k)
+bool WindowComponent::keyPressed (const juce::KeyPress&)
 {
-    auto* d = doc(); if (d == nullptr) return false;
-    const int code = k.getKeyCode();
+    // Every key this Window used to read itself — Space, Delete and its variants,
+    // ⌘A/⌘C/⌘X/⌘V — is now an application command (AppCommands), bound once and
+    // routed to the selected Window through perform(). Declining here lets the key
+    // bubble up to those bindings.
+    return false;
+}
 
-    // Space: play/pause the ACTIVE Window — the one holding keyboard focus, which
-    // is the one the thick border is already pointing at. Same toggle as the
-    // transport's play button, so the two can never disagree.
-    if (code == juce::KeyPress::spaceKey && ! k.getModifiers().isAnyModifierKeyDown())
+bool WindowComponent::isPlaying() const
+{
+    auto* w = engine.windowById (id);
+    return w != nullptr && w->transport->uiState() == se::TransportState::playing;
+}
+
+bool WindowComponent::canPerform (Action a) const
+{
+    auto* d = doc();
+    if (d == nullptr) return false;
+
+    switch (a)
     {
-        togglePlayPause();
-        return true;
+        case Action::paste:
+            return clipboard != nullptr && *clipboard != nullptr;
+        case Action::cut: case Action::copy: case Action::clear:
+        case Action::crop: case Action::insertSilence:
+            return d->selEnd > d->selSt;   // an insertion point has nothing to act on
+        case Action::playPause: case Action::stop: case Action::toggleLoop:
+        case Action::toggleAdvance: case Action::selectAll: case Action::rename:
+            return true;
     }
+    return false;
+}
 
-    // Delete / Backspace: remove selected audio (like Cut — splices out, shortens).
-    // Option/Alt + Delete: crop — keep the selection, discard the rest.
-    // Shift + Delete: replace the selected audio with silence (no length change).
-    if (code == juce::KeyPress::deleteKey || code == juce::KeyPress::backspaceKey)
+bool WindowComponent::perform (Action a)
+{
+    if (! canPerform (a)) return false;
+    auto* d = doc();
+
+    switch (a)
     {
-        if (k.getModifiers().isAltDown())        se::crop (*d);
-        else if (k.getModifiers().isShiftDown()) se::silenceSelection (*d);
-        else                                     se::clear (*d);
-        commit(); resizeToFit();
-        return true;
+        case Action::playPause: togglePlayPause(); return true;
+        case Action::stop:      engine.stop (id); advanceEnabled = false; repaint(); return true;
+        case Action::toggleLoop: loopEnabled = ! loopEnabled; repaint(); return true;
+        case Action::toggleAdvance:
+            // advance() starts playback if the transport is stopped, so engaging it
+            // also rolls — the same as the button.
+            if (advanceEnabled) engine.normalSpeed (id);
+            else                engine.advance (id);
+            advanceEnabled = ! advanceEnabled;
+            repaint();
+            return true;
+
+        case Action::selectAll: selectAllAudio(); return true;
+        case Action::copy:      *clipboard = se::copy (*d); return true;
+        case Action::cut:       *clipboard = se::cut (*d); commit(); resizeToFit(); return true;
+        case Action::paste:     se::paste (*d, **clipboard); commit(); resizeToFit(); return true;
+        case Action::clear:     se::clear (*d); commit(); resizeToFit(); return true;            // splice out, shortens
+        case Action::crop:      se::crop (*d); commit(); resizeToFit(); return true;             // keep only the selection
+        case Action::insertSilence: se::silenceSelection (*d); commit(); return true;          // zeros in place, same length
+        case Action::rename:    beginNameEdit(); return true;
     }
-
-    if (! k.getModifiers().isCommandDown()) return false;
-
-    // On macOS a Command-combo yields no text character, so match on the key code
-    // (modifier-independent), accepting either case.
-    const auto is = [code] (int lo, int up) { return code == lo || code == up; };
-    if (is ('a', 'A')) { selectAllAudio(); return true; }
-    if (is ('c', 'C')) { if (clipboard) *clipboard = se::copy (*d); return true; }
-    if (is ('x', 'X')) { if (clipboard) { *clipboard = se::cut (*d); commit(); resizeToFit(); } return true; }
-    if (is ('v', 'V')) { if (clipboard && *clipboard) { se::paste (*d, **clipboard); commit(); resizeToFit(); } return true; }
     return false;
 }

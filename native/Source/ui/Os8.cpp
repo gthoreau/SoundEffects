@@ -837,4 +837,71 @@ void paintDirectionMenu (juce::Graphics& g, juce::Point<int> o, int current, int
     }
 }
 
+// --- title bars ---------------------------------------------------------------------
+
+void paintTitleStripes (juce::Graphics& g, juce::Rectangle<int> area)
+{
+    using namespace colour;
+    if (area.getWidth() <= 2) return;
+
+    // Each stripe is a 50% black line with a soft white highlight under it and a
+    // 35% black bleed at each end, as the bar-handle's drop shadows draw it; the
+    // first line also has a highlight above.
+    for (int i = 0; i < 7; ++i)
+    {
+        const float y = (float) area.getY() + 4.0f + (float) i * 2.0f;
+        const auto line = juce::Rectangle<float> ((float) area.getX(), y, (float) area.getWidth(), 1.0f);
+
+        g.setColour (white.withAlpha (0.5f));
+        g.fillRect (line.translated (0.0f, 1.0f));
+        if (i == 0) g.fillRect (line.translated (0.0f, -1.0f));
+        g.setColour (black.withAlpha (0.35f));
+        g.fillRect (juce::Rectangle<float> (line.getX() - 1.0f, y, 1.0f, 1.0f));
+        g.fillRect (juce::Rectangle<float> (line.getRight(), y, 1.0f, 1.0f));
+        g.setColour (black.withAlpha (0.5f));
+        g.fillRect (line);
+    }
+}
+
+void paintTitleBar (juce::Graphics& g, juce::Rectangle<int> bar, const juce::String& title,
+                    bool active, int leftInset, int rightInset)
+{
+    const int titleW = widthOf (title, TextStyle::headline);
+    const int titleX = bar.getCentreX() - titleW / 2;
+
+    g.setColour (colour::black);
+    drawText (g, title, TextStyle::headline,
+              { (float) titleX, (float) bar.getY() + 4.5f, (float) titleW, 12.0f });
+
+    if (! active) return;
+
+    // 8 px of clear bar between the stripes and the title, as drawn.
+    const int left0 = bar.getX() + leftInset, left1 = titleX - 8;
+    const int right0 = titleX + titleW + 8, right1 = bar.getRight() - rightInset;
+    paintTitleStripes (g, { left0, bar.getY(), left1 - left0, kTitleBarHeight });
+    paintTitleStripes (g, { right0, bar.getY(), right1 - right0, kTitleBarHeight });
+}
+
+void paintTitleBarBox (juce::Graphics& g, juce::Point<int> o, bool pressed)
+{
+    using namespace colour;
+    const juce::Rectangle<float> face ((float) o.x, (float) o.y, 11.0f, 11.0f);
+    juce::Path shape;
+    shape.addRectangle (face);
+
+    // window-button: a white glint below-right and a dark one above-left, the
+    // black outline outside the face, then the bevel inside.
+    g.setColour (white.withAlpha (0.5f));
+    g.fillRect (face.translated (1.0f, 1.0f).expanded (1.0f));
+    g.setColour (black.withAlpha (0.35f));
+    g.fillRect (face.translated (-1.0f, -1.0f).expanded (1.0f));
+    g.setColour (black);
+    g.fillRect (face.expanded (1.0f));
+
+    g.setColour (pressed ? gray400 : gray100);
+    g.fillPath (shape);
+    innerShadow (g, shape, pressed ? -1.0f : 1.0f, pressed ? -1.0f : 1.0f, 0, white);
+    innerShadow (g, shape, pressed ? 1.0f : -1.0f, pressed ? 1.0f : -1.0f, 0, black.withAlpha (0.35f));
+}
+
 } // namespace os8

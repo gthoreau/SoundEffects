@@ -80,10 +80,10 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - [x] 1.7 `AppPrefs` over ApplicationProperties (auto-apply, setups, time unit, panel visibility/collapse)
 
 ### 2. App shell and menus
-- [ ] 2.1 Standalone window: hidden native title bar, traffic lights in the app bar (ObjC++ NSWindow tweak), `[canvas-name]` label
-- [ ] 2.2 `AppMenuBar` component, with menu look per design (item states, checks, submenu arrow, shortcut column)
-- [ ] 2.3 Single `ApplicationCommandManager` and shortcut table. Migrate the existing keyPressed handlers (PluginEditor, WindowComponent, CanvasComponent) and wire File, plus the Edit/Selection items that already exist.
-- [ ] 2.4 Side panels: 270 px, window-bar title, collapse/expand button, Show/Hide Side Panels (⇥)
+- [x] 2.1 Standalone window: hidden native title bar, traffic lights in the app bar (ObjC++ NSWindow tweak), `[canvas-name]` label
+- [x] 2.2 `AppMenuBar` component, with menu look per design (item states, checks, submenu arrow, shortcut column)
+- [x] 2.3 Single `ApplicationCommandManager` and shortcut table. Migrate the existing keyPressed handlers (PluginEditor, WindowComponent, CanvasComponent) and wire File, plus the Edit/Selection items that already exist.
+- [x] 2.4 Side panels: 270 px, window-bar title, collapse/expand button, Show/Hide Side Panels (⇥)
 
 ### 3. Sound Window
 - [ ] 3.1 Title bar: close, stripes, name, M/S buttons, resize; Default/Hover/Active × Mute states (mute greys the waveform)
@@ -143,7 +143,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - UI: capture the running standalone at 1× and compare it with the Figma node capture. Drive-test the feature in the app.
 
 ## Open questions
-- (none yet)
+- **"Set Loop" (spec) or "Loop Selection" (Figma menu, 569:13068)?** The menus use the spec's wording for now. Same question for "Audio/Midi Settings" (spec) and "Audio/Midi Setup" (Figma): the menu uses Figma's.
+- **The top bar's black outline and 18 px top corners** (700:14311) are not drawn: in the standalone the real window supplies its own border and corners, and in a plugin the host window does. Say so if the outline is wanted anyway.
 
 ## How to compare with Figma, pixel by pixel
 Use `use_figma` to export a node at 1x: `figma.base64Encode(await node.exportAsync({format:'PNG', constraint:{type:'SCALE', value:1}}))`. Decode it into the scratchpad, then diff it against `--gallery-snapshot` with a small PIL script that composites over white and prints one hex digit per pixel side by side. Figma rasterises text at fractional positions, so mask text out of the mean, or compare rows only.
@@ -157,6 +158,10 @@ Rules learned this way, all in `ui/Os8.cpp`:
 - **Read `effect.spread` too:** a (0,0) shadow with spread is a ring, and an inner shadow with spread is a band (the field halo and the Highlighted white margin).
 
 ## Notes for later steps
+- **Step 4:** keys 1–0 (focus slots) are not bound yet, because slots don't exist. When they land, add them to `AppCommands` and to the Window menu's sound list shortcut column (`[ch.#]`).
+- **Step 7.5:** Zoom to Fit is in the table and greyed (the canvas has no fit yet). Window ▸ Change Name, Color, the sound list, Hide/Show Keyboard, Grid/Free and Zoom 100 % already work (done early in step 2).
+- **Steps 7–9:** each new feature only needs `getCommandInfo` (active/ticked) and `perform` in `PluginEditor.cpp`. The command, its menu row and its key are already in the table.
+- **Driving the app:** NEVER put a filler `element_index` click in an app_batch. On 2026-10-25 one landed on the window's close box and quit the app (state saved, nothing lost).
 - **Where the step-1 vocabulary lives:** `ui/Os8.{h,cpp}` holds the tokens and painters, `ui/Os8Widgets.{h,cpp}` the JUCE components (Os8Button, Os8Toggle, Os8TextField, Os8Dropdown, Os8Slider, Os8IconButton, Os8CanvasToggle, Os8TransportButton, Os8ComboPlay, Os8LookAndFeel), `ui/Os8Icons` all 33 icons, and `ui/AppPrefs` the preferences. `--gallery` shows every piece live. Nothing in the app's panels uses them yet: steps 2–5 swap Sys7 out panel by panel, then Sys7 is deleted.
 - **Os8ComboPlay's direction menu** is a modal child of the top-level component. Picking works by click, not by press-drag-release (a drag stays with the combo). That is fine for the spec, but revisit it if press-and-drag is wanted.
 - **Step 4, tinted mixer strip** (`636:11566`): the strip fill is the theme colour. **Solved in 1.5:** the slider trough is a #c0c0c0 MULTIPLY layer, and that is the "darker shade". Pass the strip's theme colour to `Os8Slider::setUnder()`. A muted strip adds a `#ffffff@0.80` "content" overlay and greys its text to #9d9d9d. A selected (Active) strip shows the 4 drag-handle bars at `#000000@0.50`.
@@ -165,6 +170,7 @@ Rules learned this way, all in `ui/Os8.cpp`:
 ## Journal
 One line per finished sub-step: date · sub-step · what was verified · commit.
 
+- 2026-10-25 · step 2 (2.1–2.4) · **2.1** `ui/MacWindowChrome.mm`: native title bar hidden (full-size content), traffic lights re-placed at the design's x 18/41/64, y 16.5 (KVO + NSWindowDidUpdate, because AppKit re-lays them via constraints), bar drags the window and double-click zooms per the system setting; macOS menu bar keeps only the app menu. **2.2** `ui/AppMenuBar`: `AppTopBar` (canvas name item + JUCE MenuBarComponent) and `Os8AppMenuLookAndFeel` (diagonal bevel, 18 px rows, border 3, icons, shortcut column in #666); File menu frame = Figma's 175 × 214 exactly. **2.3** `ui/AppCommands`: ONE table of all 50 spec commands (name, menu, keys, design-ordered shortcut text ⌘⇧⌥⌃); the editor owns the ApplicationCommandManager and the menus (standalone + plugin), and the standalone MainWindow is the next target for canvas/device commands; WindowComponent's own key handling is replaced by `perform(Action)`; single-key shortcuts stand down while a TextEditor has focus; features not built yet are listed but greyed. **2.4** `ui/SidePanel`: 270 px Mixer/Effects frames with a striped title bar and a provisional collapse (window-shade) box, which floats the shaded bar over the canvas and is persisted; ⇥ hides/shows both. Live-tested: menus open over the app, states follow the selected Window, Play from the menu, Space play/pause, ⇥, collapse box, Window ▸ Color list, canvas survives quit/relaunch. `--app-snapshot <png>` renders the editor + every menu off-screen. Tests green.
 - 2026-10-25 · 1.7 + step 1 drive-test · `ui/AppPrefs` (own file `~/Library/Application Support/SoundEffects/Preferences.settings`, shared by standalone + plugin, Listener API, XML slots for setups); live in the app: Done! flash 0.5 s then back, radios exclusive, ↑↑⇧↑ took 75 → 87 with the field Highlighted + halo, units popup opens/hovers/selects, direction menu opens over Play / hovers / picking ◀ changes Play's icon, Auto-apply untick survived quit + relaunch (restored to on afterwards); existing Windows already wear the 24 themes; all tests green. **STEP 1 COMPLETE.**
 - 2026-10-25 · 1.6 · `paintTransportButton` (normal/active/disabled), `paintPlayDirectionButton`, `paintDirectionMenu`, shared `paintMenuFrame`; widgets `Os8TransportButton` and `Os8ComboPlay` (Play + direction strip + modal direction menu, async close); disabled transport stop = 0.00 vs Figma, normal 3.5, active 5.0 (icons at Figma's half pixels); **design slip resolved:** Figma's disabled ping-pong icon stays red, ours is #9d9d9d like every other disabled icon
 - 2026-10-25 · 1.5 · `os8::paintSlider` (volume + stereo VU + 0 dB tick, pan + deviation bar, amplify + 100 % tick), thumb, `Os8Slider` (juce::Slider), `Os8IconButton`, `Os8CanvasToggle`, `os8::multiply()` for Figma MULTIPLY layers; `Os8Icons` now holds ALL 33 Figma icons as verbatim SVG (Drawable, multi-colour) + `outline()` for recolouring; statics moved to DeletedAtShutdown singletons (no leak asserts); diffs: volume 0.17, pan 0.38, icon button 0.58, canvas toggle 12.6 (Figma's icons sit at y 3.5 → blurred; ours snap)

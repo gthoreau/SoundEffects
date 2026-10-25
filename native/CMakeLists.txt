@@ -79,6 +79,9 @@ target_sources(SoundEffects PRIVATE
     Source/ui/Os8Widgets.cpp
     Source/ui/Os8Icons.cpp
     Source/ui/AppPrefs.cpp
+    Source/ui/AppCommands.cpp
+    Source/ui/AppMenuBar.cpp
+    Source/ui/SidePanel.cpp
     Source/ui/EffectsPanel.cpp
     Source/ui/KeyboardArt.cpp
     Source/ui/KeyboardPalette.cpp
@@ -92,6 +95,11 @@ target_sources(SoundEffects PRIVATE
 # pixel-exact face cannot depend on what happens to be installed.
 juce_add_binary_data(SoundEffectsData SOURCES
     Resources/fonts/ClassicChicago.ttf)
+
+# The standalone folds its title bar into the app's top bar; that needs AppKit.
+if(APPLE)
+    target_sources(SoundEffects PRIVATE Source/ui/MacWindowChrome.mm)
+endif()
 
 target_compile_definitions(SoundEffects PUBLIC
     JUCE_WEB_BROWSER=0

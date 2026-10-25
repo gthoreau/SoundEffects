@@ -54,6 +54,9 @@ juce::Point<int> sizeOf (Id);
 /** Draw the icon in its own colours with its top-left at `origin`. */
 void draw (juce::Graphics&, Id, juce::Point<float> origin, float opacity = 1.0f);
 
+/** A copy of the icon as a Drawable — what a PopupMenu row takes as its image. */
+std::unique_ptr<juce::Drawable> makeDrawable (Id);
+
 /** The icon's silhouette, every colour merged — for one-colour icons that change
     colour with state (black → white when pressed, grey when disabled, red in the
     transport). Origin at the icon's top-left. */

@@ -88,6 +88,11 @@ void draw (juce::Graphics& g, Id id, juce::Point<float> origin, float opacity)
     drawable (id).draw (g, opacity, juce::AffineTransform::translation (origin));
 }
 
+std::unique_ptr<juce::Drawable> makeDrawable (Id id)
+{
+    return drawable (id).createCopy();
+}
+
 const juce::Path& outline (Id id)
 {
     auto& slot = Cache::getInstance()->outlines[(size_t) id];

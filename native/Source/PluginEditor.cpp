@@ -1,6 +1,9 @@
 #include "PluginEditor.h"
 
 #include "engine/Import.h"
+#include "ui/AppCommands.h"
+#include "ui/AppPrefs.h"
+#include "ui/Os8Icons.h"
 
 namespace {
 /** How much canvas stays visible below the floating view palette. */
@@ -13,13 +16,26 @@ constexpr int kPaletteStackGap = 6;
 
 SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffectsAudioProcessor& p)
     : juce::AudioProcessorEditor (&p), processorRef (p),
+      topBar (*this, p.wrapperType == juce::AudioProcessor::wrapperType_Standalone),
       canvas (p.engine()), mixer (p.engine()), effects (p.engine()), keyboard (p.engine())
 {
     formatManager.registerBasicFormats();   // WAV, AIFF, and more
 
+    addAndMakeVisible (topBar);
+    commandManager.registerAllCommandsForTarget (this);
+    commandManager.setFirstCommandTarget (this);
+    addKeyListener (commandManager.getKeyMappings());
+    setApplicationCommandManagerToWatch (&commandManager);   // menus follow greying
+
     addAndMakeVisible (canvas);
-    addAndMakeVisible (mixer);
-    addAndMakeVisible (effects);
+    addAndMakeVisible (mixerPanel);
+    addAndMakeVisible (effectsPanel);
+
+    // Each panel shades to its title bar from the box in that bar, and stays so.
+    mixerPanel.setCollapsed (AppPrefs::get().mixerCollapsed(), juce::dontSendNotification);
+    effectsPanel.setCollapsed (AppPrefs::get().effectsCollapsed(), juce::dontSendNotification);
+    mixerPanel.onCollapsedChanged = [this] (bool c) { AppPrefs::get().setMixerCollapsed (c); resized(); };
+    effectsPanel.onCollapsedChanged = [this] (bool c) { AppPrefs::get().setEffectsCollapsed (c); resized(); };
     addAndMakeVisible (palette);   // last, so it floats over the canvas
     addChildComponent (keyboard);  // ...and this one starts hidden
 
@@ -108,19 +124,315 @@ bool SoundEffectsAudioProcessorEditor::keyPressed (const juce::KeyPress& k)
     // that leaves focus on the Window, not on the panel. It only fires when there IS
     // something runnable; otherwise the key falls through untouched. A Window being
     // renamed keeps its own Return (WindowComponent's name editor consumes it).
-    if (k.getKeyCode() == juce::KeyPress::returnKey
+    return k.getKeyCode() == juce::KeyPress::returnKey
         && ! k.getModifiers().isAnyModifierKeyDown()
-        && effects.applyFromKeyboard())
-        return true;
+        && effects.applyFromKeyboard();
+}
 
-    if (! k.getModifiers().isCommandDown()) return false;
+// --- commands ---------------------------------------------------------------------
 
-    // A Command-combo produces no text character on macOS, so match the key code
-    // (modifier-independent) and accept either case.
-    const int code = k.getKeyCode();
-    if (code == 'n' || code == 'N') { newWindow(); return true; }
-    if (code == 'o' || code == 'O') { openFile();  return true; }
+namespace {
+// Answered by the standalone when it hosts us; greyed placeholders in a plugin.
+const juce::CommandID kHostCommands[] = { cmd::newCanvas, cmd::openCanvas, cmd::saveCanvas,
+                                          cmd::saveCanvasAs, cmd::revertCanvas, cmd::audioSettings };
+}
+
+void SoundEffectsAudioProcessorEditor::setHostCommandTarget (juce::ApplicationCommandTarget* t)
+{
+    hostTarget = t;
+    commandManager.clearCommands();
+    commandManager.registerAllCommandsForTarget (this);
+    if (hostTarget != nullptr) commandManager.registerAllCommandsForTarget (hostTarget);
+    commandManager.commandStatusChanged();
+}
+
+void SoundEffectsAudioProcessorEditor::setCanvasName (const juce::String& name)
+{
+    topBar.setCanvasName (name);
+}
+
+bool SoundEffectsAudioProcessorEditor::isTyping()
+{
+    return dynamic_cast<juce::TextEditor*> (juce::Component::getCurrentlyFocusedComponent()) != nullptr;
+}
+
+void SoundEffectsAudioProcessorEditor::getAllCommands (juce::Array<juce::CommandID>& c)
+{
+    for (const auto& spec : cmd::table())
+    {
+        const bool hostOnly = std::find (std::begin (kHostCommands), std::end (kHostCommands), spec.id)
+                              != std::end (kHostCommands);
+        if (! hostOnly || hostTarget == nullptr)
+            c.add (spec.id);
+    }
+}
+
+void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce::ApplicationCommandInfo& r)
+{
+    cmd::fill (r, id);
+
+    auto* w = targetWindow();
+    const auto can = [w] (WindowComponent::Action a) { return w != nullptr && w->canPerform (a); };
+    auto* engineWindow = processorRef.engine().windowById (canvas.selectedWindowId());
+
+    // Single keys are letters a text field wants; while one is being typed in, they
+    // stand down (and a disabled command lets the key through to the field).
+    const bool singleKey = ! r.defaultKeypresses.isEmpty()
+                        && ! r.defaultKeypresses.getReference (0).getModifiers().isAnyModifierKeyDown();
+    const bool typing = singleKey && isTyping();
+
+    bool active = false;
+    switch (id)
+    {
+        case cmd::newSound: case cmd::openSound: active = true; break;
+        case cmd::closeSound:    active = w != nullptr; break;
+
+        case cmd::cut:           active = can (WindowComponent::Action::cut); break;
+        case cmd::copy:          active = can (WindowComponent::Action::copy); break;
+        case cmd::paste:         active = can (WindowComponent::Action::paste); break;
+        case cmd::clear:         active = can (WindowComponent::Action::clear); break;
+        case cmd::selectAll:     active = can (WindowComponent::Action::selectAll); break;
+        case cmd::crop:          active = can (WindowComponent::Action::crop); break;
+        case cmd::insertSilence: active = can (WindowComponent::Action::insertSilence); break;
+
+        case cmd::stop:          active = w != nullptr; break;
+        case cmd::play:          active = w != nullptr && ! w->isPlaying(); break;
+        case cmd::pause:         active = w != nullptr && w->isPlaying(); break;
+        case cmd::loop:          active = w != nullptr; r.setTicked (w != nullptr && w->isLoopOn()); break;
+        case cmd::fastForward:   active = w != nullptr; r.setTicked (w != nullptr && w->isAdvanceOn()); break;
+        case cmd::mute:
+            active = engineWindow != nullptr;
+            r.setTicked (engineWindow != nullptr && engineWindow->muted.load (std::memory_order_relaxed));
+            break;
+        case cmd::solo:
+            active = engineWindow != nullptr;
+            r.setTicked (engineWindow != nullptr && engineWindow->soloed.load (std::memory_order_relaxed));
+            break;
+        case cmd::playForward:
+            active = w != nullptr; r.setTicked (w != nullptr);   // the only direction until step 8
+            break;
+
+        case cmd::changeName:    active = w != nullptr; break;
+        case cmd::toggleSidePanels:
+            active = true;
+            r.shortName = AppPrefs::get().sidePanelsShown() ? "Hide Side Panels" : "Show Side Panels";
+            break;
+        case cmd::toggleKeyboard:
+            active = true;
+            r.shortName = keyboard.isVisible() ? "Hide Keyboard" : "Show Keyboard";
+            break;
+        case cmd::toggleGrid:
+            active = true;
+            r.shortName = canvas.isMosaicMode() ? "Free Canvas" : "Grid Canvas";
+            break;
+        case cmd::zoom100:       active = true; break;
+
+        // Undo is always inactive (that's the joke). Everything else here is a
+        // command whose feature lands in a later step: listed, greyed.
+        default:                 active = false; break;
+    }
+
+    r.setActive (active && ! typing);
+}
+
+bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
+{
+    auto* w = targetWindow();
+    const auto act = [w] (WindowComponent::Action a) { return w != nullptr && w->perform (a); };
+    auto* engineWindow = processorRef.engine().windowById (canvas.selectedWindowId());
+
+    switch (info.commandID)
+    {
+        case cmd::newSound:      newWindow(); return true;
+        case cmd::openSound:     openFile(); return true;
+        case cmd::closeSound:    closeFocusedWindow(); return true;
+
+        case cmd::cut:           return act (WindowComponent::Action::cut);
+        case cmd::copy:          return act (WindowComponent::Action::copy);
+        case cmd::paste:         return act (WindowComponent::Action::paste);
+        case cmd::clear:         return act (WindowComponent::Action::clear);
+        case cmd::selectAll:     return act (WindowComponent::Action::selectAll);
+        case cmd::crop:          return act (WindowComponent::Action::crop);
+        case cmd::insertSilence: return act (WindowComponent::Action::insertSilence);
+
+        // Play and Pause share Space: whichever is active is the one that runs, and
+        // both are the same toggle the transport button uses.
+        case cmd::play: case cmd::pause:
+                                 return act (WindowComponent::Action::playPause);
+        case cmd::stop:          return act (WindowComponent::Action::stop);
+        case cmd::loop:          return act (WindowComponent::Action::toggleLoop);
+        case cmd::fastForward:   return act (WindowComponent::Action::toggleAdvance);
+        case cmd::changeName:    return act (WindowComponent::Action::rename);
+
+        case cmd::mute:
+            if (engineWindow == nullptr) return false;
+            engineWindow->muted.store (! engineWindow->muted.load (std::memory_order_relaxed), std::memory_order_relaxed);
+            return true;
+        case cmd::solo:
+            if (engineWindow == nullptr) return false;
+            engineWindow->soloed.store (! engineWindow->soloed.load (std::memory_order_relaxed), std::memory_order_relaxed);
+            return true;
+
+        case cmd::toggleSidePanels:
+            AppPrefs::get().setSidePanelsShown (! AppPrefs::get().sidePanelsShown());
+            resized();
+            return true;
+        case cmd::toggleKeyboard: setKeyboardShown (! keyboard.isVisible()); return true;
+        case cmd::toggleGrid:     canvas.setMosaicMode (! canvas.isMosaicMode()); return true;
+        case cmd::zoom100:        canvas.setZoom (1.0f); return true;
+        default: break;
+    }
     return false;
+}
+
+// --- menus --------------------------------------------------------------------------
+
+juce::StringArray SoundEffectsAudioProcessorEditor::getMenuBarNames()
+{
+    return { "File", "Edit", "Selection", "Transport", "Window" };
+}
+
+juce::PopupMenu SoundEffectsAudioProcessorEditor::getMenuForIndex (int index, const juce::String&)
+{
+    juce::PopupMenu m;
+    const auto add = [&m, this] (std::initializer_list<juce::CommandID> ids)
+    {
+        for (auto id : ids) m.addCommandItem (&commandManager, id);
+    };
+    // A command item whose row carries an icon, as the Transport menu's first rows do.
+    const auto addWithIcon = [&m, this] (juce::CommandID id, os8::icon::Id icon)
+    {
+        juce::ApplicationCommandInfo info (id);
+        commandManager.getTargetForCommand (id, info);
+        juce::PopupMenu::Item item (info.shortName);
+        item.setID (id);
+        item.setEnabled ((info.flags & juce::ApplicationCommandInfo::isDisabled) == 0);
+        item.setTicked ((info.flags & juce::ApplicationCommandInfo::isTicked) != 0);
+        item.commandManager = &commandManager;
+        item.setImage (os8::icon::makeDrawable (icon));
+        m.addItem (std::move (item));
+    };
+
+    switch (index)
+    {
+        case 0:   // File
+            add ({ cmd::newSound, cmd::openSound, cmd::closeSound });
+            m.addSeparator();
+            add ({ cmd::importSound, cmd::exportSound });
+            m.addSeparator();
+            add ({ cmd::newCanvas, cmd::openCanvas, cmd::saveCanvas, cmd::saveCanvasAs, cmd::revertCanvas });
+            m.addSeparator();
+            add ({ cmd::audioSettings });
+            break;
+
+        case 1:   // Edit
+            add ({ cmd::undo });
+            m.addSeparator();
+            add ({ cmd::cut, cmd::copy, cmd::paste, cmd::duplicate });
+            m.addSeparator();
+            add ({ cmd::leaveSilence, cmd::shiftSound });
+            m.addSeparator();
+            add ({ cmd::clear });
+            break;
+
+        case 2:   // Selection
+            add ({ cmd::selectAll });
+            m.addSeparator();
+            add ({ cmd::extendToBeginning, cmd::extendToEnd, cmd::extendAbove, cmd::extendBelow });
+            m.addSeparator();
+            add ({ cmd::insertSilence, cmd::crop });
+            m.addSeparator();
+            add ({ cmd::setLoop, cmd::selectLoop });
+            m.addSeparator();
+            add ({ cmd::selectExactly, cmd::selectPeak, cmd::selectSilence });
+            break;
+
+        case 3:   // Transport
+            addWithIcon (cmd::record, os8::icon::Id::record);
+            add ({ cmd::selectAudioSource });
+            m.addSeparator();
+            addWithIcon (cmd::stop, os8::icon::Id::stop);
+            addWithIcon (cmd::play, os8::icon::Id::playForward);
+            addWithIcon (cmd::pause, os8::icon::Id::pause);
+            addWithIcon (cmd::loop, os8::icon::Id::loop);
+            addWithIcon (cmd::fastForward, os8::icon::Id::fastForward);
+            m.addSeparator();
+            add ({ cmd::playForward, cmd::playBackward, cmd::playPingPong });
+            m.addSeparator();
+            add ({ cmd::mute, cmd::solo });
+            break;
+
+        case 4:
+            return windowMenu();
+
+        default: break;
+    }
+    return m;
+}
+
+juce::PopupMenu SoundEffectsAudioProcessorEditor::windowMenu()
+{
+    juce::PopupMenu m;
+    auto& engine = processorRef.engine();
+    const auto selected = canvas.selectedWindowId();
+    const auto nameOf = [&engine] (uint64_t id) -> juce::String
+    {
+        auto* w = engine.windowById (id);
+        return w != nullptr && w->uiDoc != nullptr ? juce::String (w->uiDoc->name) : juce::String();
+    };
+
+    // The selected sound, ticked and inert: it says what the next two items act on.
+    if (selected != 0)
+    {
+        m.addItem (juce::PopupMenu::Item (nameOf (selected)).setTicked (true).setEnabled (false));
+
+        // Color: [name] ▸ — the 24 themes, each with its swatch.
+        auto* w = engine.windowById (selected);
+        const int current = w != nullptr ? w->tint : -1;
+        juce::PopupMenu colours;
+        for (int i = 0; i < os8::kNumThemes; ++i)
+        {
+            auto swatch = std::make_unique<juce::DrawablePath>();
+            juce::Path dot;
+            dot.addEllipse (0.0f, 0.0f, 10.0f, 10.0f);
+            swatch->setPath (dot);
+            swatch->setFill (os8::themeColour (i));
+
+            juce::PopupMenu::Item item (os8::themeName (i));
+            item.setTicked (i == current);
+            item.setImage (std::move (swatch));
+            item.setAction ([this, selected, i]
+            {
+                if (auto* win = processorRef.engine().windowById (selected))
+                    win->tint = i;
+                canvas.refresh();
+            });
+            colours.addItem (std::move (item));
+        }
+
+        auto colourDot = std::make_unique<juce::DrawablePath>();
+        juce::Path dot;
+        dot.addEllipse (0.0f, 0.0f, 10.0f, 10.0f);
+        colourDot->setPath (dot);
+        colourDot->setFill (os8::themeColour (current));
+        m.addSubMenu ("Color: " + os8::themeName (current), colours, true, std::move (colourDot));
+    }
+    m.addCommandItem (&commandManager, cmd::changeName);
+    m.addSeparator();
+
+    // Every sound on the canvas; picking one brings it into focus.
+    for (auto id : engine.windowIds())
+        m.addItem (juce::PopupMenu::Item (nameOf (id)).setTicked (id == selected)
+                       .setAction ([this, id] { canvas.focusWindow (id); }));
+    if (! engine.windowIds().empty()) m.addSeparator();
+
+    m.addCommandItem (&commandManager, cmd::toggleSidePanels);
+    m.addCommandItem (&commandManager, cmd::toggleKeyboard);
+    m.addCommandItem (&commandManager, cmd::toggleGrid);
+    m.addSeparator();
+    m.addCommandItem (&commandManager, cmd::zoom100);
+    m.addCommandItem (&commandManager, cmd::zoomToFit);
+    return m;
 }
 
 SoundEffectsAudioProcessorEditor::~SoundEffectsAudioProcessorEditor()
@@ -210,14 +522,44 @@ void SoundEffectsAudioProcessorEditor::paint (juce::Graphics& g)
 void SoundEffectsAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds();
+    topBar.setBounds (area.removeFromTop (AppTopBar::kHeight + 1));
 
-    // The two panels are fixed columns, kMaxWidth at most and never more than a
-    // third of the editor each — so a small host window still leaves a canvas to
-    // work on between them.
-    mixer.setBounds   (area.removeFromLeft  (juce::jmin (MixerComponent::kMaxWidth, area.getWidth() / 3)));
-    effects.setBounds (area.removeFromRight (juce::jmin (EffectsPanelComponent::kMaxWidth, area.getWidth() / 2)));
-    canvas.setBounds  (area);
+    // The side panels are 270 px columns. Hidden (⇥) they are gone; shaded to their
+    // title bar they float over the canvas's top corner and give it the column.
+    const bool panels = AppPrefs::get().sidePanelsShown();
+    mixerPanel.setVisible (panels);
+    effectsPanel.setVisible (panels);
 
+    // Never more than a third of the editor each, so a small host window still
+    // leaves a canvas between them.
+    const int w = juce::jmin (SidePanel::kWidth, area.getWidth() / 3);
+    const auto column = [&area, w] (SidePanel& panel, bool left)
+    {
+        if (panel.isCollapsed())
+        {
+            const int x = left ? area.getX() : area.getRight() - w;
+            panel.setBounds (x, area.getY(), w, SidePanel::kCollapsedHeight);
+            return;
+        }
+        panel.setBounds (left ? area.removeFromLeft (w) : area.removeFromRight (w));
+    };
+
+    if (panels)
+    {
+        column (mixerPanel, true);
+        column (effectsPanel, false);
+    }
+
+    canvas.setBounds (area);
+    mixerPanel.toFront (false);     // over the canvas when shaded
+    effectsPanel.toFront (false);
+    palette.toFront (false);
+    keyboard.toFront (false);
+    layoutPalettes (area);
+}
+
+void SoundEffectsAudioProcessorEditor::layoutPalettes (juce::Rectangle<int> area)
+{
     // The palette hangs over the canvas — centred on the VIEWPORT, not on the
     // editor, so it stays over the board it drives rather than drifting under a
     // panel as the panels take their share. It narrows with the viewport too, down

@@ -1,14 +1,16 @@
 // StandaloneApp — the app's OWN macOS window, as opposed to the sound Windows.
 //
 // Two window vocabularies live in this program and they must not be confused. The
-// Windows on the canvas are faux-System 7 down to the pixel: flat grey face, 1px
-// black frames, hand-painted close and zoom boxes. That is the product. But the
-// thing those Windows float inside is a macOS application window, and a macOS
-// window wears macOS chrome — traffic lights at the top left, a working zoom
-// button, a real menu bar.
+// Windows on the canvas are drawn by the app, Mac OS 8 down to the pixel. The thing
+// those Windows float inside is a real macOS window: real traffic lights, a working
+// zoom, real full screen. Since 0.4.0 its title bar is folded into the app's own top
+// bar (MacWindowChrome): the native bar is hidden, the traffic lights sit at the
+// left of our bar where the design puts them, and the application menus are drawn
+// by the editor in that bar — the same menus the plugin shows. The macOS menu bar
+// keeps only the application menu (About, Quit). [NATIVE]
 //
-// JUCE's stock standalone gives it none of that. It hands you a DocumentWindow with
-// a JUCE-DRAWN title bar, an "Options" button squeezed in beside the buttons, and a
+// JUCE's stock standalone gives none of that. It hands you a DocumentWindow with a
+// JUCE-DRAWN title bar, an "Options" button squeezed in beside the buttons, and a
 // yellow banner across the top announcing that the audio input is muted. So we do
 // not use it: JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP tells the wrapper to call our
 // juce_CreateApplication() instead of defining its own, and this file supplies the
@@ -36,6 +38,9 @@
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 
 #include "PluginEditor.h"
+#include "ui/AppCommands.h"
+#include "ui/AppMenuBar.h"
+#include "ui/MacWindowChrome.h"
 #include "ui/Os8Gallery.h"
 
 #include <memory>
@@ -43,83 +48,6 @@
 namespace {
 
 class MainWindow;
-
-/** Everything the File menu can do. Commands rather than plain menu items, so that
-    one declaration in MainWindow::getCommandInfo carries the name, the key and
-    whether the item is greyed — and macOS gets a real key equivalent out of it
-    instead of decorative shortcut text. */
-namespace CommandIDs
-{
-    enum
-    {
-        newSound = 0x5e01,   // Window-level: one more sound on the canvas
-        openSound,
-        closeSound,
-
-        newCanvas,           // canvas-level: the document the Windows live on
-        openCanvas,
-        saveCanvas,
-        saveCanvasAs,
-        revertCanvas,
-
-        audioSettings
-    };
-}
-
-/**
- * The File menu, in the menu bar where it belongs.
- *
- * The original's File menu is the model (New / Open / Close / Save / Save As /
- * Revert / Preferences / Quit) and the two halves here are the two things this
- * program has that can be opened and saved. The TOP half is the original's, verb
- * for verb, aimed at a sound Window. The BOTTOM half is the canvas those Windows
- * live on, which the original had no equivalent of because it had no canvas.
- *
- * Quit is deliberately absent: System 7 had no application menu, so File was the
- * only place to put it, and macOS has put Quit in the app menu since 2001. It is
- * already there, with ⌘Q already working. [NATIVE]
- */
-class FileMenuBar final : public juce::MenuBarModel
-{
-public:
-    explicit FileMenuBar (juce::ApplicationCommandManager& cm) : commands (cm)
-    {
-        setApplicationCommandManagerToWatch (&commands);   // so greying stays live
-    }
-
-    juce::StringArray getMenuBarNames() override { return { "File" }; }
-
-    juce::PopupMenu getMenuForIndex (int, const juce::String&) override
-    {
-        juce::PopupMenu m;
-        m.addCommandItem (&commands, CommandIDs::newSound);
-        m.addCommandItem (&commands, CommandIDs::openSound);
-        m.addCommandItem (&commands, CommandIDs::closeSound);
-        m.addSeparator();
-        m.addCommandItem (&commands, CommandIDs::newCanvas);
-        m.addCommandItem (&commands, CommandIDs::openCanvas);
-        m.addCommandItem (&commands, CommandIDs::saveCanvas);
-        m.addCommandItem (&commands, CommandIDs::saveCanvasAs);
-        m.addCommandItem (&commands, CommandIDs::revertCanvas);
-        m.addSeparator();
-
-        juce::PopupMenu preferences;
-        preferences.addCommandItem (&commands, CommandIDs::audioSettings);
-        m.addSubMenu ("Preferences", preferences);
-
-        return m;
-    }
-
-    /** Nothing, and it must stay nothing. A command item is dispatched by the
-        command manager when it is picked — and JUCE then calls this as well, so
-        doing the work here too would run every item twice. */
-    void menuItemSelected (int, int) override {}
-
-private:
-    juce::ApplicationCommandManager& commands;
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FileMenuBar)
-};
 
 /** The app window: a plain Mac window with the plugin editor as its content, and
     the target every File command is routed to.
@@ -179,22 +107,24 @@ public:
         }
 
         updateTitle();
+    }
 
-        commands.registerAllCommandsForTarget (this);
-        commands.setFirstCommandTarget (this);
-        addKeyListener (commands.getKeyMappings());
+    /** Fold the title bar into the app's top bar. Needs the native peer, so it runs
+        once the window is on screen. The traffic lights go where the design has
+        them: 14 px circles centred at x = 18, 41, 64, 16.5 px down the 32 px bar. */
+    void adoptTopBarChrome()
+    {
+        os8::chrome::adoptAppTopBar (*this, 16.5f, { 18.0f, 41.0f, 64.0f });
 
-        fileMenu = std::make_unique<FileMenuBar> (commands);
-        juce::MenuBarModel::setMacMainMenu (fileMenu.get());
+        // The window was sized while it still had a title bar of its own, which is
+        // now gone: fill the screen again, so the top bar sits where the title bar
+        // was rather than one title bar lower.
+        if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+            setBounds (display->userArea);
     }
 
     ~MainWindow() override
     {
-        // Before fileMenu dies: the menu bar holds a raw pointer to it.
-        juce::MenuBarModel::setMacMainMenu (nullptr);
-        removeKeyListener (commands.getKeyMappings());
-        commands.setFirstCommandTarget (nullptr);
-
         pluginHolder->stopPlaying();
         detachEditor();
         pluginHolder = nullptr;
@@ -211,87 +141,37 @@ public:
 
     juce::ApplicationCommandTarget* getNextCommandTarget() override { return nullptr; }
 
+    /** The commands only the standalone can answer: the canvas as a document, and
+        the audio device. The editor owns the command manager and the menus; it
+        hands these on to us (setHostCommandTarget). Names and keys come from the
+        one shortcut table, AppCommands. */
     void getAllCommands (juce::Array<juce::CommandID>& c) override
     {
-        c.addArray ({ CommandIDs::newSound,   CommandIDs::openSound,    CommandIDs::closeSound,
-                      CommandIDs::newCanvas,  CommandIDs::openCanvas,   CommandIDs::saveCanvas,
-                      CommandIDs::saveCanvasAs, CommandIDs::revertCanvas,
-                      CommandIDs::audioSettings });
+        c.addArray ({ cmd::newCanvas, cmd::openCanvas, cmd::saveCanvas, cmd::saveCanvasAs,
+                      cmd::revertCanvas, cmd::audioSettings });
     }
 
     void getCommandInfo (juce::CommandID id, juce::ApplicationCommandInfo& r) override
     {
-        using Mods = juce::ModifierKeys;
-        const auto cmd = Mods::commandModifier;
+        cmd::fill (r, id);
 
-        switch (id)
-        {
-            case CommandIDs::newSound:
-                r.setInfo ("New", "Add an empty sound Window to the canvas", "File", 0);
-                r.addDefaultKeypress ('N', cmd);
-                break;
-
-            case CommandIDs::openSound:
-                r.setInfo (ellipsis ("Open"), "Import an audio file into a new Window", "File", 0);
-                r.addDefaultKeypress ('O', cmd);
-                break;
-
-            case CommandIDs::closeSound:
-                r.setInfo ("Close", "Close the focused Window", "File", 0);
-                r.addDefaultKeypress ('W', cmd);
-                r.setActive (ourEditor() != nullptr && ourEditor()->hasFocusedWindow());
-                break;
-
-            case CommandIDs::newCanvas:
-                r.setInfo ("New Canvas", "Start again with an empty canvas", "File", 0);
-                break;
-
-            case CommandIDs::openCanvas:
-                r.setInfo (ellipsis ("Open Canvas"), "Open a saved canvas", "File", 0);
-                break;
-
-            case CommandIDs::saveCanvas:
-                // Never greyed, unlike the original's Save. There is nothing to be
-                // gained by refusing ⌘S: with no file yet it means Save As, which
-                // is what every program written since has done. [NATIVE]
-                r.setInfo ("Save Canvas", "Save the canvas", "File", 0);
-                r.addDefaultKeypress ('S', cmd);
-                break;
-
-            case CommandIDs::saveCanvasAs:
-                r.setInfo (ellipsis ("Save Canvas As"), "Save the canvas to a new file", "File", 0);
-                r.addDefaultKeypress ('S', cmd | Mods::shiftModifier);
-                break;
-
-            case CommandIDs::revertCanvas:
-                r.setInfo ("Revert Canvas", "Go back to the last saved version", "File", 0);
-                r.setActive (canvasFile.existsAsFile());
-                break;
-
-            case CommandIDs::audioSettings:
-                r.setInfo (ellipsis ("Audio/MIDI Settings"), "Choose the audio device", "File", 0);
-                r.addDefaultKeypress (',', cmd);
-                break;
-
-            default: break;
-        }
+        // Save Canvas is never greyed, unlike the original's Save: with no file yet
+        // it means Save As, which is what every program written since has done.
+        // [NATIVE]
+        if (id == cmd::revertCanvas)
+            r.setActive (canvasFile.existsAsFile());
     }
 
     bool perform (const InvocationInfo& info) override
     {
         switch (info.commandID)
         {
-            case CommandIDs::newSound:      if (auto* e = ourEditor()) e->newWindow();          return true;
-            case CommandIDs::openSound:     if (auto* e = ourEditor()) e->openFile();           return true;
-            case CommandIDs::closeSound:    if (auto* e = ourEditor()) e->closeFocusedWindow(); return true;
-
-            case CommandIDs::newCanvas:     newCanvas();                            return true;
-            case CommandIDs::openCanvas:    openCanvas();                           return true;
-            case CommandIDs::saveCanvas:    saveCanvas();                           return true;
-            case CommandIDs::saveCanvasAs:  saveCanvasAs();                         return true;
-            case CommandIDs::revertCanvas:  revertCanvas();                         return true;
-
-            case CommandIDs::audioSettings: pluginHolder->showAudioSettingsDialog(); return true;
+            case cmd::newCanvas:     newCanvas();                            return true;
+            case cmd::openCanvas:    openCanvas();                           return true;
+            case cmd::saveCanvas:    saveCanvas();                           return true;
+            case cmd::saveCanvasAs:  saveCanvasAs();                         return true;
+            case cmd::revertCanvas:  revertCanvas();                         return true;
+            case cmd::audioSettings: pluginHolder->showAudioSettingsDialog(); return true;
             default: break;
         }
 
@@ -444,7 +324,13 @@ private:
                                           : canvasFile.getFileNameWithoutExtension();
     }
 
-    void updateTitle() { setName (canvasName()); }
+    /** The window's name (for the Dock and Mission Control — the title bar itself
+        is hidden) and the name at the left of the app's top bar. */
+    void updateTitle()
+    {
+        setName (canvasName());
+        if (auto* e = ourEditor()) e->setCanvasName (canvasName());
+    }
 
     void setCanvasFile (const juce::File& file)
     {
@@ -454,7 +340,8 @@ private:
         if (auto* props = pluginHolder->settings.get())
             props->setValue (kCanvasFileKey, file.getFullPathName());
 
-        commands.commandStatusChanged();   // Revert may have just become available
+        if (auto* e = ourEditor())
+            e->commands().commandStatusChanged();   // Revert may have just become available
     }
 
     void writeCanvasTo (const juce::File& file)
@@ -621,10 +508,20 @@ private:
         }
 
         setContentNonOwned (editor.get(), false);
+
+        // The editor owns the menus and the command manager; we answer the commands
+        // only a standalone can (see getAllCommands), and supply the canvas's name.
+        if (auto* ours = dynamic_cast<SoundEffectsAudioProcessorEditor*> (editor.get()))
+        {
+            ours->setHostCommandTarget (this);
+            ours->setCanvasName (canvasName());
+        }
     }
 
     void detachEditor()
     {
+        if (auto* ours = dynamic_cast<SoundEffectsAudioProcessorEditor*> (editor.get()))
+            ours->setHostCommandTarget (nullptr);
         clearContentComponent();
 
         if (editor != nullptr)
@@ -638,10 +535,6 @@ private:
 
     std::unique_ptr<juce::AudioProcessorEditor> editor;
 
-    // Declared BEFORE the menu bar, which holds a reference to it, and destroyed
-    // after — the menu is watching it for enable/disable changes.
-    juce::ApplicationCommandManager commands;
-    std::unique_ptr<FileMenuBar> fileMenu;
 
     /** The file this canvas came from, empty until it has been saved once. */
     juce::File canvasFile;
@@ -732,8 +625,19 @@ public:
             appProperties.getUserSettings());
 
         mainWindow->setVisible (true);
+        mainWindow->adoptTopBarChrome();
 
         // After the main window, so the workbench opens in front of it.
+        // The whole editor, off-screen: <name>.png, plus each application menu drawn
+        // as it would drop down, <name>-menu-<Title>.png. A check of the top bar and
+        // the menus that needs no screen (and no user at it).
+        if (const int i = args.indexOf ("--app-snapshot"); i >= 0 && i + 1 < args.size())
+        {
+            setApplicationReturnValue (writeAppSnapshot (juce::File (args[i + 1].unquoted())) ? 0 : 1);
+            quit();
+            return;
+        }
+
         if (args.contains ("--gallery"))
         {
             struct GalleryWindow : juce::DocumentWindow
@@ -786,6 +690,73 @@ public:
     }
 
 private:
+    static bool writePng (const juce::Image& image, const juce::File& png)
+    {
+        png.deleteFile();
+        juce::FileOutputStream out (png);
+        juce::PNGImageFormat format;
+        return out.openedOk() && format.writeImageToStream (image, out);
+    }
+
+    /** See --app-snapshot. Menus are drawn through the same LookAndFeel calls a
+        real popup makes, laid out the way JUCE lays them (rows from x = 0 in a
+        window the border wider on each side). */
+    static bool writeAppSnapshot (const juce::File& png)
+    {
+        std::unique_ptr<juce::AudioProcessor> processor (createPluginFilter());
+        std::unique_ptr<juce::AudioProcessorEditor> editor (processor->createEditorIfNeeded());
+        auto* ours = dynamic_cast<SoundEffectsAudioProcessorEditor*> (editor.get());
+        if (ours == nullptr) return false;
+
+        ours->setCanvasName ("Untitled Canvas");
+        ours->newWindow();
+        ours->newWindow();
+        ours->setSize (1440, 900);
+        bool ok = writePng (ours->createComponentSnapshot (ours->getLocalBounds(), true, 1.0f), png);
+
+        const auto names = ours->getMenuBarNames();
+        for (int m = 0; m < names.size(); ++m)
+        {
+            auto menu = ours->getMenuForIndex (m, names[m]);
+            auto& lf = Os8AppMenuLookAndFeel::instance();
+            const juce::PopupMenu::Options options;
+            const int border = lf.getPopupMenuBorderSizeWithOptions (options);
+
+            int width = 0, height = 0;
+            std::vector<std::pair<juce::PopupMenu::Item, int>> rows;
+            for (juce::PopupMenu::MenuItemIterator it (menu); it.next();)
+            {
+                const auto& item = it.getItem();
+                int w = 0, h = 0;
+                auto measured = item.text;
+                if (item.commandManager != nullptr)
+                    if (auto* info = item.commandManager->getCommandForID (item.itemID))
+                        if (! info->defaultKeypresses.isEmpty())
+                            measured << "   " << info->defaultKeypresses.getReference (0).getTextDescriptionWithIcons();
+                lf.getIdealPopupMenuItemSizeWithOptions (measured, item.isSeparator, 16, w, h, options);
+                width = juce::jmax (width, w);
+                rows.emplace_back (item, h);
+                height += h;
+            }
+
+            juce::Image image (juce::Image::ARGB, width + 2 * border, height + 2 * border, true);
+            juce::Graphics g (image);
+            g.fillAll (juce::Colours::white);
+            lf.drawPopupMenuBackgroundWithOptions (g, image.getWidth(), image.getHeight(), options);
+            int y = border;
+            for (auto& [item, h] : rows)
+            {
+                lf.drawPopupMenuItemWithOptions (g, { 0, y, width, h }, false, item, options);
+                y += h;
+            }
+            ok = ok && writePng (image, png.getSiblingFile (png.getFileNameWithoutExtension() + "-menu-" + names[m] + ".png"));
+        }
+
+        processor->editorBeingDeleted (editor.get());
+        editor = nullptr;
+        return ok;
+    }
+
     /** The app was called "SoundEffect", singular, until the name was corrected, and
         the properties file is named after the app — so the rename on its own would
         have left the autosaved canvas, the audio device choice and the window size

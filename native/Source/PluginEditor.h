@@ -14,13 +14,17 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "PluginProcessor.h"
+#include "ui/AppMenuBar.h"
 #include "ui/CanvasComponent.h"
 #include "ui/EffectsPanel.h"
 #include "ui/KeyboardPalette.h"
 #include "ui/MixerComponent.h"
+#include "ui/SidePanel.h"
 #include "ui/ViewPalette.h"
 
 class SoundEffectsAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                        public juce::ApplicationCommandTarget,
+                                        public juce::MenuBarModel,
                                         private juce::Timer
 {
 public:
@@ -58,27 +62,65 @@ public:
         greying of the File menu's Close item. */
     bool hasFocusedWindow() const;
 
+    // --- the application menus ------------------------------------------------
+    // The menus are drawn by the editor (AppTopBar), so the standalone and the plugin
+    // have the same ones. Every command is dispatched through this manager, and its
+    // key mappings are listened to on the editor, so every shortcut in the table
+    // (AppCommands) works wherever focus is — except single keys while a text field
+    // is being typed in.
+
+    juce::ApplicationCommandManager& commands() noexcept { return commandManager; }
+
+    /** The standalone app answers the commands only it can: the canvas as a file
+        (New/Open/Save/Revert Canvas) and the audio device. It registers itself here
+        as the next target in the chain; in a plugin nothing does and those items
+        are shown greyed. */
+    void setHostCommandTarget (juce::ApplicationCommandTarget*);
+
+    /** The name shown at the left of the top bar. */
+    void setCanvasName (const juce::String&);
+
+    juce::ApplicationCommandTarget* getNextCommandTarget() override { return hostTarget; }
+    void getAllCommands (juce::Array<juce::CommandID>&) override;
+    void getCommandInfo (juce::CommandID, juce::ApplicationCommandInfo&) override;
+    bool perform (const InvocationInfo&) override;
+
+    juce::StringArray getMenuBarNames() override;
+    juce::PopupMenu getMenuForIndex (int, const juce::String&) override;
+    /** Nothing: command items are dispatched by the manager, and dynamic items carry
+        their own actions. Doing work here would run every item twice. */
+    void menuItemSelected (int, int) override {}
+
     void paint (juce::Graphics&) override;
     void resized() override;
-    /** ⌘N / ⌘O (Ctrl elsewhere). Reached by bubbling: the focused Window and the
-        canvas both decline the combo, so it arrives here.
-
-        In the STANDALONE these two combos never get this far: the File menu binds
-        them as real command keys and macOS dispatches them straight to the menu,
-        which calls the same two methods. This is the path for a VST3/AU, where
-        there is no menu bar of ours at all. */
+    /** Return applies the effect that is open in the panel. Everything else is in
+        the command table. */
     bool keyPressed (const juce::KeyPress&) override;
 
 private:
     void timerCallback() override;
+    /** The Window the menus act on: the canvas's selected one. */
+    WindowComponent* targetWindow() const { return canvas.selectedWindowComponent(); }
+    /** Is the user typing into a text field? Single-key shortcuts stand down then. */
+    static bool isTyping();
+    juce::PopupMenu windowMenu();
+    /** The floating palette stack, over the canvas's `area`. */
+    void layoutPalettes (juce::Rectangle<int> area);
     /** Show or hide the Keyboard palette, and re-lay the floating stack. */
     void setKeyboardShown (bool shown);
 
     SoundEffectsAudioProcessor& processorRef;
 
+    // Before the top bar, which shows menus built from it.
+    juce::ApplicationCommandManager commandManager;
+    juce::ApplicationCommandTarget* hostTarget = nullptr;
+    AppTopBar topBar;
+
     CanvasComponent       canvas;
     MixerComponent        mixer;
     EffectsPanelComponent effects;
+    SidePanel             mixerPanel   { "Mixer", mixer };      // the frames around them
+    SidePanel             effectsPanel { "Effects", effects };
     ViewPalette           palette;    // floats OVER the canvas, so it is added last
     KeyboardPalette       keyboard;   // ...and hangs directly below the palette
 

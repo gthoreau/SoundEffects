@@ -78,6 +78,8 @@ public:
         Deliberately NOT keyboard focus — a panel with clickable controls takes
         focus, and what a panel operates on must survive that. */
     uint64_t selectedWindowId() const noexcept { return selectedId; }
+    /** The selected Window's component — what the application menus act on. */
+    WindowComponent* selectedWindowComponent() const { return find (selectedId); }
     void selectWindow (uint64_t id);
 
     /** Select a Window AND put it in front of you: raised above its neighbours (the
