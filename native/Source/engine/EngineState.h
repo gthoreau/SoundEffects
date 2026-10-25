@@ -66,6 +66,8 @@ struct WindowState
     float gain   = 1.0f;
     bool  muted  = false;
     bool  soloed = false;
+    float balance = 0.0f;              // since v2
+    int   slot    = Window::kNoSlot;   // since v2: 0-based mixer slot
 };
 
 /** The whole canvas, in creation order. */
@@ -74,8 +76,9 @@ struct EngineState
     std::vector<WindowState> windows;
 };
 
-/** Current format version written by serializeState(). Readers accept <= this. */
-constexpr uint32_t kEngineStateVersion = 1;
+/** Current format version written by serializeState(). Readers accept <= this.
+    v2 (0.4.0) appends each Window's balance and mixer slot. */
+constexpr uint32_t kEngineStateVersion = 2;
 
 /** The extension a saved canvas wears on disk. Lives here, beside the magic and
     the version, because it is part of the same identity: a file called .sefx is

@@ -30,6 +30,7 @@
 #include "SpscQueue.h"
 #include "Transport.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
@@ -61,10 +62,17 @@ struct Window
     // hear. See render().
     std::atomic<bool>  soloed { false };
 
-    // Post-gain peak of THIS Window's own contribution to the sum, published by
-    // the audio thread for the mixer's VU meters. It falls back on its own (see
-    // render()), so the UI can sample it at any rate and still see a decay.
-    std::atomic<float> meter { 0.0f };
+    // Stereo balance, -1 (hard left) .. 0 (centre) .. +1 (hard right). Linear and
+    // one-sided: unity at centre, and moving toward one side only attenuates the
+    // OTHER side, down to silence at the end stop. See balanceGains().
+    std::atomic<float> balance { 0.0f };
+
+    // Post-gain, post-balance peaks of THIS Window's own contribution to the sum,
+    // one per output side, published by the audio thread for the mixer's stereo
+    // VU. They fall back on their own (see render()), so the UI can sample them at
+    // any rate and still see a decay.
+    std::atomic<float> meterLeft  { 0.0f };
+    std::atomic<float> meterRight { 0.0f };
 
     // Canvas placement, in canvas ("world") coordinates. Zero means "not placed
     // yet" — the canvas picks a spot and a size the first time it sees the Window.
@@ -80,6 +88,12 @@ struct Window
     // Cell address in the canvas grid, and index into the canvas tint palette
     // (tint < 0 = unpainted).
     int gridCol = kNoCell, gridRow = 0, tint = -1;
+
+    /** The mixer slot the Window's strip sits in, 0-based (the panel shows it
+        1-based). kNoSlot = not seated yet; the mixer gives it the lowest free one.
+        Message-thread data, like the placement above. */
+    static constexpr int kNoSlot = -1;
+    int slot = kNoSlot;
 
     ~Window() { delete audioDoc; }
 };
@@ -136,6 +150,15 @@ public:
     static float dbToGain (float db) noexcept
     {
         return db <= -96.0f ? 0.0f : std::pow (10.0f, db * 0.05f);
+    }
+
+    /** Left and right multipliers for a balance in -1..+1: unity at centre, the
+        opposite side scaled down linearly to 0 at the end stop. */
+    struct BalanceGains { float left = 1.0f, right = 1.0f; };
+    static BalanceGains balanceGains (float balance) noexcept
+    {
+        const float b = std::clamp (balance, -1.0f, 1.0f);
+        return { b > 0.0f ? 1.0f - b : 1.0f, b < 0.0f ? 1.0f + b : 1.0f };
     }
 
 private:

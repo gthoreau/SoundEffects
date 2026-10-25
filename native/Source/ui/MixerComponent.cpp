@@ -208,7 +208,7 @@ void MixerStrip::refreshState (bool soloFilterOn)
         repaint();
     }
 
-    const float pos = w != nullptr ? ampToPos (w->meter.load (std::memory_order_relaxed)) : 0.0f;
+    const float pos = w != nullptr ? ampToPos (std::max (w->meterLeft.load (std::memory_order_relaxed), w->meterRight.load (std::memory_order_relaxed))) : 0.0f;
 
     // Half a pixel of a ~115px trough: below that the repaint would show nothing.
     if (std::abs (pos - meterLevel) < 0.004f) return;

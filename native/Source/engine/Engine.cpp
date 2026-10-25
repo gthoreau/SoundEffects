@@ -216,12 +216,14 @@ void Engine::render (float* left, float* right, int frames) noexcept
 
     for (Window* w : live)
     {
-        float peak = 0.0f;
+        float peakL = 0.0f, peakR = 0.0f;
 
         const bool playable = w->transport != nullptr && w->audioDoc != nullptr;
         const bool audible  = ! w->muted.load (std::memory_order_relaxed)
                               && (! anySolo || w->soloed.load (std::memory_order_relaxed));
         const float g = w->gain.load (std::memory_order_relaxed);
+        const auto  bal = balanceGains (w->balance.load (std::memory_order_relaxed));
+        const float gl = g * bal.left, gr = g * bal.right;
 
         if (playable)
         {
@@ -240,17 +242,20 @@ void Engine::render (float* left, float* right, int frames) noexcept
             {
                 for (int i = 0; i < written; ++i)
                 {
-                    const float l = scratchL[static_cast<size_t> (i)] * g;
-                    const float r = scratchR[static_cast<size_t> (i)] * g;
+                    const float l = scratchL[static_cast<size_t> (i)] * gl;
+                    const float r = scratchR[static_cast<size_t> (i)] * gr;
                     left[i]  += l;
                     right[i] += r;
-                    peak = std::max (peak, std::max (std::abs (l), std::abs (r)));
+                    peakL = std::max (peakL, std::abs (l));
+                    peakR = std::max (peakR, std::abs (r));
                 }
             }
         }
 
-        const float held = w->meter.load (std::memory_order_relaxed) * meterDecay;
-        w->meter.store (std::max (peak, held), std::memory_order_relaxed);
+        const float heldL = w->meterLeft.load (std::memory_order_relaxed) * meterDecay;
+        const float heldR = w->meterRight.load (std::memory_order_relaxed) * meterDecay;
+        w->meterLeft.store  (std::max (peakL, heldL), std::memory_order_relaxed);
+        w->meterRight.store (std::max (peakR, heldR), std::memory_order_relaxed);
     }
 
     for (int i = 0; i < frames; ++i)

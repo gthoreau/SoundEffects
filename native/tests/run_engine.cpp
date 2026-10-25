@@ -1,5 +1,6 @@
-// Engine tests — the desktop-wide mixer: per-Window gain, mute and the CUMULATIVE
-// solo filter, plus the rule that none of them may stop a transport.
+// Engine tests — the desktop-wide mixer: per-Window gain, balance, mute, the
+// CUMULATIVE solo filter and the stereo VU feed, plus the rule that none of
+// them may stop a transport.
 //
 // These are the parts of the Engine that have no golden vector to check them
 // against (there is no 1994 original for a mixer that never existed), so they are
@@ -134,6 +135,66 @@ int main()
     wa->gain = 0.5f;
     checkClose (renderLevel (engine), la * 0.5f + lb + lc, tol, "gain 0.5 halves that channel");
     wa->gain = 1.0f;
+
+    // --- balance: linear, one-sided ------------------------------------------
+    // The DC documents route to both sides, so with no balance the right channel
+    // carries the same sum as the left.
+    {
+        const auto centre = se::Engine::balanceGains (0.0f);
+        const auto half   = se::Engine::balanceGains (-0.5f);
+        const auto hardR  = se::Engine::balanceGains (1.0f);
+        const auto past   = se::Engine::balanceGains (-3.0f);
+        check (centre.left == 1.0f && centre.right == 1.0f, "balance 0: unity on both sides");
+        check (half.left == 1.0f && half.right == 0.5f, "balance -0.5: left unity, right halved");
+        check (hardR.left == 0.0f && hardR.right == 1.0f, "balance +1: left silent, right unity");
+        check (past.left == 1.0f && past.right == 0.0f, "balance clamps to the end stop");
+    }
+    {
+        std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
+        auto render = [&] { engine.render (l.data(), r.data(), kBlock); };
+
+        render();
+        checkClose (r[0], la + lb + lc, tol, "centred: right carries the full sum too");
+
+        wb->balance = -0.5f;     // b leans left: its right side halves
+        render();
+        checkClose (l[0], la + lb + lc, tol, "b at -0.5: the left sum is untouched");
+        checkClose (r[0], la + lb * 0.5f + lc, tol, "b at -0.5: b's right is halved");
+
+        wb->balance = 1.0f;      // b hard right: gone from the left
+        render();
+        checkClose (l[0], la + lc, tol, "b hard right: absent from the left");
+        checkClose (r[0], la + lb + lc, tol, "b hard right: full on the right");
+        wb->balance = 0.0f;
+    }
+
+    // --- the stereo VU feed ----------------------------------------------------
+    // Each side's meter is that Window's OWN post-gain, post-balance peak.
+    {
+        // The meters hold and decay, so first let what earlier checks lit fall
+        // away (~-60 dB per 300 ms; 400 blocks is well over a second of silence).
+        wa->muted = wb->muted = wc->muted = true;
+        renderBlocks (engine, 400);
+        wa->muted = wb->muted = wc->muted = false;
+        check (wa->meterLeft.load() < 1.0e-4f && wb->meterRight.load() < 1.0e-4f,
+               "VU: silence drains the meters");
+
+        wa->balance = 1.0f;      // a: right only
+        wb->gain = 0.5f;         // b: both sides at half
+        renderBlocks (engine, 1);
+        checkClose (wa->meterLeft.load(), 0.0f, 1.0e-3f, "VU: a hard right reads nothing on the left");
+        checkClose (wa->meterRight.load(), la, tol, "VU: a's right reads its own level");
+        checkClose (wb->meterLeft.load(), lb * 0.5f, tol, "VU: b's left reads its post-gain level");
+        checkClose (wb->meterRight.load(), lb * 0.5f, tol, "VU: b's right likewise");
+
+        // Silence: the meters fall on their own, block by block.
+        wa->muted = true;
+        const float before = wa->meterRight.load();
+        renderBlocks (engine, 4);
+        const float after = wa->meterRight.load();
+        check (after < before && after > 0.0f, "VU: a muted channel's meter decays, not drops");
+        wa->muted = false; wa->balance = 0.0f; wb->gain = 1.0f;
+    }
 
     // --- an unheard channel still ROLLS -------------------------------------
     // The whole point of running several Windows at once is loops of different

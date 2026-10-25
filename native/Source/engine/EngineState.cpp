@@ -230,6 +230,8 @@ std::vector<uint8_t> serializeState (const EngineState& state)
         putF32 (out, w.gain);
         putU8 (out, w.muted ? 1 : 0);
         putU8 (out, w.soloed ? 1 : 0);
+        putF32 (out, w.balance);
+        putI32 (out, w.slot);
     }
 
     return out;
@@ -308,6 +310,11 @@ bool parseEngineState (const void* data, size_t sizeBytes, EngineState& out)
         w.gain   = r.f32();
         w.muted  = r.u8() != 0;
         w.soloed = r.u8() != 0;
+        if (version >= 2)
+        {
+            w.balance = r.f32();
+            w.slot    = r.i32();
+        }
 
         // A depth outside 1..32 would make frameSize/getSample nonsense, so a blob
         // claiming one is not a blob we wrote. Same for a document with no track.
@@ -361,6 +368,8 @@ EngineState captureEngineState (Engine& engine)
         w.gain   = window->gain.load (std::memory_order_relaxed);
         w.muted  = window->muted.load (std::memory_order_relaxed);
         w.soloed = window->soloed.load (std::memory_order_relaxed);
+        w.balance = window->balance.load (std::memory_order_relaxed);
+        w.slot    = window->slot;
 
         state.windows.push_back (std::move (w));
     }
@@ -421,6 +430,8 @@ bool applyEngineState (Engine& engine, const EngineState& state)
         window->gain.store (w.gain, std::memory_order_relaxed);
         window->muted.store (w.muted, std::memory_order_relaxed);
         window->soloed.store (w.soloed, std::memory_order_relaxed);
+        window->balance.store (std::clamp (w.balance, -1.0f, 1.0f), std::memory_order_relaxed);
+        window->slot = w.slot >= 0 ? w.slot : Window::kNoSlot;
     }
 
     return complete;

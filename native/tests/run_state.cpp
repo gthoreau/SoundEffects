@@ -75,11 +75,13 @@ void buildCanvas (se::Engine& engine)
     wa->x = 512.0f; wa->y = 640.0f; wa->width = 380.0f; wa->height = 220.0f;
     wa->gridCol = -2; wa->gridRow = 3; wa->tint = 7;
     wa->gain = 0.25f; wa->muted = true; wa->soloed = false;
+    wa->balance = -0.5f; wa->slot = 4;
 
     auto* wb = engine.windowById (b);
     wb->x = 900.0f; wb->y = 128.0f; wb->width = 240.0f; wb->height = 180.0f;
     wb->gridCol = 1; wb->gridRow = 0; wb->tint = 23;   // past the 0.3 palette's 12: the 0.4 table has 24
     wb->gain = 1.75f; wb->muted = false; wb->soloed = true;
+    wb->balance = 1.0f; wb->slot = 0;
 }
 
 void checkRestored (se::Engine& engine)
@@ -127,6 +129,8 @@ void checkRestored (se::Engine& engine)
     check (wa->gain.load() == 0.25f && wa->muted.load() && ! wa->soloed.load(),
            "mixer channel: gain and mute");
     check (wb->gain.load() == 1.75f && wb->soloed.load(), "mixer channel: solo");
+    check (wa->balance.load() == -0.5f && wb->balance.load() == 1.0f, "mixer channel: balance (v2)");
+    check (wa->slot == 4 && wb->slot == 0, "mixer slot (v2)");
 }
 
 /** A blob the reader must refuse — without reading past it and without crashing. */
@@ -189,6 +193,26 @@ int main()
         auto* w = engine.windowById (engine.windowIds()[1]);   // "hat": audible
         check (w->transport->uiPlayhead() > 0, "a restored Window plays");
         engine.collectRetired();
+    }
+
+    // --- a v1 blob (0.3.x) still opens -----------------------------------------
+    // v2 only APPENDS balance + slot to each Window. With one Window those are the
+    // blob's last 8 bytes, so dropping them and stamping version 1 gives exactly
+    // what 0.3 wrote; it must come back centred and unseated.
+    {
+        se::EngineState one;
+        one.windows.push_back (state.windows[0]);
+        auto v1 = se::serializeState (one);
+        v1.resize (v1.size() - 8);
+        v1[4] = 1;
+
+        se::EngineState old;
+        check (se::parseEngineState (v1.data(), v1.size(), old) && old.windows.size() == 1,
+               "a v1 blob parses");
+        check (! old.windows.empty() && old.windows[0].balance == 0.0f
+                 && old.windows[0].slot == se::Window::kNoSlot
+                 && old.windows[0].gain == 0.25f,
+               "v1: centred balance, no slot, the rest intact");
     }
 
     // --- blobs we did not write ---------------------------------------------
