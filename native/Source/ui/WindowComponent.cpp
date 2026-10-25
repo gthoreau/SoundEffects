@@ -1,6 +1,7 @@
 #include "WindowComponent.h"
 
 #include "engine/SampleFormat.h"
+#include "Os8Icons.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,23 +11,70 @@ using juce::Graphics;
 using juce::Rectangle;
 
 namespace {
-const Colour kFace  { 0xffbfbfbf };
-const Colour kInk   { 0xff000000 };
-const Colour kWhite { 0xffffffff };
-const Colour kWave  { 0xff202020 };
-const Colour kSelFill { 0x553060c0 };
-const Colour kRecord { 0xffcc2222 };   // the record dot, red on any tint
-// Audio input muted. This grey IS the app's statement that input is off — it
-// replaces the banner JUCE used to run across the top of the whole window, saying
-// the same thing in the one place where it matters.
-const Colour kRecordOff { 0xff8a8a8a };
-const Colour kNavView { 0xff2020cc };  // navigator: the slice of sound on screen
+using namespace os8::colour;
+
+const Colour kViewBar  { 0xff1313f5 };   // overview: the slice of sound on screen
+const Colour kWaveMuted = gray300;       // a muted Window's waveform
+
+// The units the selection readout can speak, in AppPrefs::timeUnit order.
+const juce::StringArray kUnitNames  { "Seconds", "Milliseconds", "Samples" };
+const juce::StringArray kUnitShorts { "s.", "ms", "smp" };
+
+/** |a - b| per channel: Figma's DIFFERENCE blend, for the selection's inversion. */
+Colour difference (Colour a, Colour b)
+{
+    const auto d = [] (juce::uint8 x, juce::uint8 y) { return (juce::uint8) std::abs ((int) x - (int) y); };
+    return Colour (d (a.getRed(), b.getRed()), d (a.getGreen(), b.getGreen()), d (a.getBlue(), b.getBlue()));
 }
+} // namespace
 
 WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
     : engine (e), id (wid)
 {
     setWantsKeyboardFocus (true);
+
+    // A click on any control here also selects this Window: the controls take the
+    // mouse, so the Window hears about it through childClicks.
+    for (auto* c : std::initializer_list<juce::Component*> { &startField, &lengthField, &endField, &unitDropdown,
+                                                            &sourceButton, &recordButton, &stopButton, &playButton,
+                                                            &pauseButton, &fastForwardButton, &loopButton })
+    {
+        addAndMakeVisible (c);
+        c->addMouseListener (&childClicks, true);
+    }
+
+    startField.onCommit  = [this] (const juce::String&) { commitSelectionField (0); };
+    lengthField.onCommit = [this] (const juce::String&) { commitSelectionField (1); };
+    endField.onCommit    = [this] (const juce::String&) { commitSelectionField (2); };
+
+    unitDropdown.setItems (kUnitNames, kUnitShorts);
+    unitDropdown.setSelectedIndex (AppPrefs::get().timeUnit());
+    unitDropdown.onChange = [] (int i) { AppPrefs::get().setTimeUnit (i); };
+    AppPrefs::get().addListener (this);
+    configureSelectionFields();
+
+    sourceButton.setTextStyle (os8::TextStyle::smallLabel);
+    sourceButton.onClick = [this] { if (onRecordRequested) onRecordRequested(); };
+    stopButton.onClick = [this] { perform (Action::stop); };
+    playButton.onPlay = [this] { if (! isPlaying()) togglePlayPause(); };
+    pauseButton.onClick = [this]
+    {
+        auto* w = engineWindow();
+        if (w != nullptr && w->transport->uiState() != se::TransportState::stopped)
+            engine.pause (id);   // playing <-> paused
+        updateTransportButtons();
+    };
+    fastForwardButton.onClick = [this] { perform (Action::toggleAdvance); };
+    loopButton.onClick = [this] { perform (Action::toggleLoop); };
+    // Recording lands in step 9; until then the button is shown, and greyed.
+    recordButton.setEnabled (false);
+
+    updateTransportButtons();
+}
+
+WindowComponent::~WindowComponent()
+{
+    AppPrefs::get().removeListener (this);
 }
 
 int WindowComponent::numTracks() const noexcept
@@ -61,18 +109,23 @@ void WindowComponent::refresh()
 {
     if (doc() == nullptr) { if (onClose) onClose (id); return; }
 
-    // The editor's timer is only here to animate the playhead, so repaint only
-    // when something that MOVES has moved. Everything else (edits, selection,
-    // toggles, resize) already repaints itself at the point of change. Without
-    // this, every Window redrew 30 times a second forever, and that load landed
-    // on top of panning and zooming — which repaint the whole board anyway.
-    auto* w = engine.windowById (id);
+    updateSelectionFields();
+    updateTransportButtons();
+
+    // The editor's timer is only here to animate the playhead and to follow the
+    // mixer, so repaint only when something that MOVES has moved. Everything else
+    // (edits, selection, toggles, resize) already repaints itself where it changes.
+    auto* w = engineWindow();
     const bool playing = w != nullptr && w->transport->uiState() == se::TransportState::playing;
     const size_t head = w != nullptr ? w->transport->uiPlayhead() : 0;
+    const bool muted = w != nullptr && w->muted.load (std::memory_order_relaxed);
+    const bool soloed = w != nullptr && w->soloed.load (std::memory_order_relaxed);
 
-    if (playing == lastPlaying && head == lastPlayhead) return;
+    if (playing == lastPlaying && head == lastPlayhead && muted == lastMuted && soloed == lastSoloed) return;
     lastPlaying = playing;
     lastPlayhead = head;
+    lastMuted = muted;
+    lastSoloed = soloed;
     repaint();
 }
 
@@ -88,129 +141,146 @@ void WindowComponent::resizeToFit()
 
 // --- geometry ---------------------------------------------------------------
 
-Rectangle<int> WindowComponent::contentRect() const
+Rectangle<int> WindowComponent::body() const { return getLocalBounds().reduced (kRing); }
+
+Rectangle<int> WindowComponent::titleBar() const { return body().withHeight (kTitleH); }
+
+Rectangle<int> WindowComponent::statusArea() const
 {
-    return getLocalBounds().withTrimmedTop (kTitleH).reduced (kMargin);
+    const auto b = body();
+    return { b.getX() + kSideInset, b.getY() + kTitleH, b.getWidth() - 2 * kSideInset, kStatusH };
 }
 
-Rectangle<int> WindowComponent::lanesRect() const
+Rectangle<int> WindowComponent::tracksArea() const
 {
-    auto c = contentRect();
-    c.removeFromTop (kInfoH + kMargin);
-    c.removeFromBottom (kTransportH + kMargin + kNavH + kMargin);
-    return c;
+    const auto s = statusArea();
+    return { s.getX(), s.getBottom(), s.getWidth(), numTracks() * laneH };
 }
 
-Rectangle<int> WindowComponent::lanesInner() const { return lanesRect().reduced (kPad); }
-
-int WindowComponent::waveOriginX() const noexcept { return lanesInner().getX() + kLrW; }
-
-int WindowComponent::waveWidth() const noexcept
+Rectangle<int> WindowComponent::trackRow (int t) const
 {
-    return std::max (1, lanesInner().getWidth() - kLrW - kCtrlW);
+    const auto a = tracksArea();
+    return { a.getX(), a.getY() + t * laneH, a.getWidth() - kNewDelW, laneH };
 }
 
-Rectangle<int> WindowComponent::infoRect() const { return contentRect().withHeight (kInfoH); }
-
-Rectangle<int> WindowComponent::nameBounds() const
+Rectangle<int> WindowComponent::speakerBox (int t, bool right) const
 {
-    return Rectangle<int> (0, 0, getWidth(), kTitleH).withTrimmedLeft (26).withTrimmedRight (26);
-}
-
-Rectangle<int> WindowComponent::addTrackButton() const
-{
-    auto r = infoRect().reduced (kPad);
-    return { r.getRight() - 15, r.getCentreY() - 7, 15, 15 };
-}
-
-Rectangle<int> WindowComponent::laneRect (int t) const
-{
-    auto lanes = lanesInner();
-    return { lanes.getX(), lanes.getY() + t * laneH, lanes.getWidth(), laneH };
-}
-
-Rectangle<int> WindowComponent::resizeGripBounds() const
-{
-    return { getWidth() - kGripW - 1, getHeight() - kGripW - 1, kGripW, kGripW };
-}
-
-// The output-channel selector and the up/down/trash controls are chrome: they keep
-// a fixed size no matter how tall the lane is. Only the waveform between them grows.
-//
-// Both clusters are CENTRED on the lane, which puts them on the waveform's zero
-// line — the horizontal rule running through the middle of the trace. Pinned to the
-// top of the lane, as they were, they drifted further from it the taller the lane
-// got, and a tall window ended up with its controls huddled at the top of a lot of
-// empty space.
-
-Rectangle<int> WindowComponent::outRect (int t, int which) const
-{
-    auto lane = laneRect (t);
-    auto col = lane.removeFromLeft (kLrW).reduced (2, 0);
-    const int h = std::clamp ((lane.getHeight() - 4) / 3, 4, 10);
-    const int top = lane.getCentreY() - (3 * h) / 2;   // removeFromLeft left the height alone
-    return { col.getX(), top + which * h, col.getWidth(), h };
-}
-
-int WindowComponent::outSelection (const se::Track& track) noexcept
-{
-    if (track.outLeft && track.outRight) return 1;   // L+R
-    if (track.outLeft)                   return 0;   // L
-    if (track.outRight)                  return 2;   // R
-    return -1;                                       // routed nowhere: no cell lit
-}
-
-Rectangle<int> WindowComponent::ctrlRect (int t, int which) const
-{
-    auto lane = laneRect (t);
-    auto col = lane.removeFromRight (kCtrlW);
-    const int h = std::min (12, col.getHeight() / 3);
-    const int top = col.getCentreY() - (3 * h) / 2;
-    return { col.getX(), top + which * h, col.getWidth(), h };
+    // The speakers sit at 6.5 and 21.5 px into the row in Figma; rounded to whole
+    // pixels, as pixel art must be.
+    const auto row = trackRow (t);
+    return { row.getX() + (right ? 22 : 7), row.getY() + (laneH - 13) / 2, 13, 13 };
 }
 
 Rectangle<int> WindowComponent::waveRect (int t) const
 {
-    auto lane = laneRect (t);
-    lane.removeFromLeft (kLrW);
-    lane.removeFromRight (kCtrlW);
-    return lane;
+    const auto row = trackRow (t);
+    return { row.getX() + kVoicesW, row.getY(), row.getWidth() - kVoicesW - kMoveW, laneH };
 }
 
-Rectangle<int> WindowComponent::transportBounds() const
+Rectangle<int> WindowComponent::moveHandle (int t) const
 {
-    return contentRect().removeFromBottom (kTransportH);
+    const auto w = waveRect (t);
+    return { w.getRight() + 4, w.getY() + (laneH - 13) / 2, 16, 11 };
 }
 
-// --- navigator geometry -----------------------------------------------------
-
-Rectangle<int> WindowComponent::navRect() const
+Rectangle<int> WindowComponent::newTrackHandle() const
 {
-    auto c = contentRect();
-    c.removeFromBottom (kTransportH + kMargin);
-    return c.removeFromBottom (kNavH);
+    const auto a = tracksArea();
+    return { a.getRight() - kNewDelW + 4, a.getY() + 2, 16, 11 };
 }
 
-Rectangle<int> WindowComponent::navWellRect() const
+Rectangle<int> WindowComponent::trashRect() const
 {
-    auto bar = navRect();
-    const int left  = 3 * (kNavBtnW + kNavGap) + kNavArrowW + kNavGap;
-    const int right = kNavArrowW + kNavGap;
-    // The well is the elastic part: the buttons keep their size at every window
-    // width and the well takes what is left, down to a floor that keeps it a well
-    // rather than a sliver.
-    return { bar.getX() + left, bar.getY(),
-             std::max (8, bar.getWidth() - left - right), bar.getHeight() };
+    const auto a = tracksArea();
+    return { a.getRight() - kNewDelW + 5, a.getBottom() - 18, 14, 16 };
 }
 
-Rectangle<int> WindowComponent::navWellInner() const { return navWellRect().reduced (2, 2); }
-
-Rectangle<int> WindowComponent::navButton (int i) const
+Rectangle<int> WindowComponent::zoomArea() const
 {
-    auto bar = navRect();
-    if (i < 3) return { bar.getX() + i * (kNavBtnW + kNavGap), bar.getY(), kNavBtnW, bar.getHeight() };
-    if (i == 3) return { navWellRect().getX() - kNavGap - kNavArrowW, bar.getY(), kNavArrowW, bar.getHeight() };
-    return { navWellRect().getRight() + kNavGap, bar.getY(), kNavArrowW, bar.getHeight() };
+    const auto a = tracksArea();
+    return { a.getX(), a.getBottom(), a.getWidth(), kZoomH };
+}
+
+Rectangle<int> WindowComponent::zoomButton (int i) const
+{
+    const auto z = zoomArea();
+    const int x0 = z.getX() + kVoicesW, y = z.getY() + 5;
+    switch (i)
+    {
+        case 0: return { x0,      y, 16, 16 };
+        case 1: return { x0 + 19, y, 16, 16 };
+        case 2: return { x0 + 38, y, 16, 16 };
+        case 3: return { x0 + 63, y, 16, 16 };
+        default: return { z.getRight() - 65, y, 16, 16 };
+    }
+}
+
+Rectangle<int> WindowComponent::overviewRect() const
+{
+    const int x0 = zoomButton (3).getRight() + 3;
+    const int x1 = zoomButton (4).getX() - 3;
+    return { x0, zoomButton (3).getY(), std::max (8, x1 - x0), 16 };
+}
+
+Rectangle<int> WindowComponent::transportArea() const
+{
+    const auto z = zoomArea();
+    return { z.getX(), z.getBottom(), z.getWidth(), kTransportH };
+}
+
+Rectangle<int> WindowComponent::gripRect() const
+{
+    const auto b = body();
+    return { b.getRight() - 14, b.getBottom() - 14, 10, 10 };
+}
+
+Rectangle<int> WindowComponent::closeBox() const { return { body().getX() + 6, body().getY() + 5, 11, 11 }; }
+Rectangle<int> WindowComponent::muteBox() const  { return { body().getRight() - 34, body().getY() + 5, 11, 11 }; }
+Rectangle<int> WindowComponent::soloBox() const  { return { body().getRight() - 16, body().getY() + 5, 11, 11 }; }
+
+Rectangle<int> WindowComponent::nameBounds() const
+{
+    const auto t = titleBar();
+    return { t.getX() + 30, t.getY() + 3, std::max (40, muteBox().getX() - 8 - (t.getX() + 30)), 15 };
+}
+
+int WindowComponent::waveOriginX() const noexcept { return waveRect (0).getX(); }
+int WindowComponent::waveWidth() const noexcept   { return std::max (1, waveRect (0).getWidth()); }
+
+void WindowComponent::resized()
+{
+    cachedWidth = -1;
+    clampView();
+
+    // The selection readout, right-aligned in the status row: start, length and end,
+    // each behind its icon, then the unit. Spacing as "selection-info" 526:4846.
+    const auto s = statusArea();
+    const int right = s.getRight() - 8;
+    unitDropdown.setBounds (right - 36, s.getY() + 9, 36, os8::kMiniDropdownHeight);
+    endField.setBounds    (right - 90,  s.getY() + 8, 50, 15);
+    lengthField.setBounds (right - 162, s.getY() + 8, 50, 15);
+    startField.setBounds  (right - 239, s.getY() + 8, 50, 15);
+
+    // The transport, centred as one group ("Transport-controls" 589:8301).
+    const auto t = transportArea();
+    const int x0 = t.getCentreX() - 114;
+    sourceButton.setBounds (x0, t.getY() + 9, 50, 20);
+    // Transport faces are 25 px with a 1 px outside stroke; the component carries
+    // the stroke, so it sits 1 px up and left of the face.
+    const auto face = [&t, x0] (juce::Component& c, int dx) { c.setBounds (x0 + dx - 1, t.getY() + 6 - 1, 27, 27); };
+    face (recordButton, 58);
+    face (stopButton, 85);
+    playButton.setTopLeftPosition (x0 + 112, t.getY() + 5);
+    face (pauseButton, 149);
+    face (fastForwardButton, 176);
+    face (loopButton, 203);
+}
+
+bool WindowComponent::hitTest (int x, int y)
+{
+    // The border ring outside the 2 px frame is empty until hovered or selected:
+    // clicks there belong to the canvas.
+    return body().expanded (2).contains (x, y);
 }
 
 // --- the view ---------------------------------------------------------------
@@ -250,26 +320,14 @@ void WindowComponent::panBy (double pages)
     cachedWidth = -1;
 }
 
-void WindowComponent::setViewCentreFromWellX (int x)
+void WindowComponent::setViewCentreFromOverviewX (int x)
 {
-    auto well = navWellInner();
-    const double f = std::clamp ((double) (x - well.getX()) / (double) std::max (1, well.getWidth()),
-                                0.0, 1.0);
+    const auto o = overviewRect().reduced (2, 0);
+    const double f = std::clamp ((double) (x - o.getX()) / (double) std::max (1, o.getWidth()), 0.0, 1.0);
     viewStartFrac = f - viewSpanFrac * 0.5;
     clampView();
     cachedWidth = -1;
 }
-
-Rectangle<int> WindowComponent::transportButton (int i) const
-{
-    auto bar = transportBounds().reduced (kBtnMargin, kBtnMargin);
-    const int total = kNumTransportButtons * kBtnSize + (kNumTransportButtons - 1) * kBtnGap;
-    const int x0 = bar.getX() + std::max (0, (bar.getWidth() - total) / 2);
-    const int y0 = bar.getY() + (bar.getHeight() - kBtnSize) / 2;
-    return { x0 + i * (kBtnSize + kBtnGap), y0, kBtnSize, kBtnSize };
-}
-
-Rectangle<int> WindowComponent::closeBoxBounds() const { return { 5, 4, 11, 11 }; }
 
 size_t WindowComponent::byteAtX (int x, size_t maxSize) const noexcept
 {
@@ -293,7 +351,13 @@ int WindowComponent::xAtByte (size_t b, size_t maxSize) const noexcept
 
 int WindowComponent::trackAtY (int y, int n) const noexcept
 {
-    return std::clamp ((y - lanesInner().getY()) / std::max (1, laneH), 0, std::max (0, n - 1));
+    return std::clamp ((y - tracksArea().getY()) / std::max (1, laneH), 0, std::max (0, n - 1));
+}
+
+int WindowComponent::insertionAtY (int y, int n) const noexcept
+{
+    const double rows = (double) (y - tracksArea().getY()) / (double) std::max (1, laneH);
+    return std::clamp ((int) std::lround (rows), 0, n);
 }
 
 // --- waveform peaks (shared byte axis over the longest track) ---------------
@@ -353,140 +417,6 @@ void WindowComponent::ensurePeaks (se::SoundDocument& d)
     }
 }
 
-// --- transport symbols ------------------------------------------------------
-
-void WindowComponent::drawTransportSymbol (Graphics& g, int which, Rectangle<int> button,
-                                           bool playing) const
-{
-    // Every symbol is built inside the SAME centred square, so they all carry the
-    // same visual weight. The play triangle fills it exactly — it is the benchmark
-    // the others are matched to.
-    const float s = (float) button.getWidth() * 0.44f;
-    const auto box = juce::Rectangle<float> (s, s).withCentre (button.toFloat().getCentre());
-
-    switch (which)
-    {
-        case 0:     // record: a dot inscribed in the box
-            g.fillEllipse (box);
-            break;
-
-        case 1:     // stop: the box itself
-            g.fillRect (box);
-            break;
-
-        case 2:
-            if (playing)    // pause: two bars spanning the box
-            {
-                const float bw = s * 0.34f;
-                g.fillRect (box.getX(), box.getY(), bw, s);
-                g.fillRect (box.getRight() - bw, box.getY(), bw, s);
-            }
-            else            // play: the benchmark triangle
-            {
-                juce::Path p;
-                p.addTriangle (box.getX(), box.getY(),
-                               box.getX(), box.getBottom(),
-                               box.getRight(), box.getCentreY());
-                g.fillPath (p);
-            }
-            break;
-
-        case 3:     // 2x: two triangles sharing the same box
-        {
-            const float tw = s * 0.46f;
-            juce::Path p;
-            p.addTriangle (box.getX(), box.getY(),
-                           box.getX(), box.getBottom(),
-                           box.getX() + tw, box.getCentreY());
-            p.addTriangle (box.getRight() - tw, box.getY(),
-                           box.getRight() - tw, box.getBottom(),
-                           box.getRight(), box.getCentreY());
-            g.fillPath (p);
-            break;
-        }
-
-        case 4:     // loop: a circular arrow inscribed in the box
-        {
-            const float r = s * 0.5f;
-            const float cx = box.getCentreX(), cy = box.getCentreY();
-            const float end = juce::MathConstants<float>::twoPi * 0.92f;
-
-            juce::Path arc;
-            arc.addCentredArc (cx, cy, r, r, 0.0f,
-                               juce::MathConstants<float>::twoPi * 0.10f, end, true);
-            g.strokePath (arc, juce::PathStrokeType (std::max (1.5f, s * 0.16f)));
-
-            // Arrowhead on the arc's end, pointing along the (clockwise) tangent.
-            // JUCE measures these angles clockwise from 12 o'clock.
-            const juce::Point<float> tip { cx + r * std::sin (end), cy - r * std::cos (end) };
-            const juce::Point<float> dir { std::cos (end), std::sin (end) };
-            const juce::Point<float> nrm { -dir.y, dir.x };
-            const float h = s * 0.34f;
-
-            juce::Path head;
-            head.addTriangle (tip + dir * h,
-                              tip - nrm * (h * 0.6f),
-                              tip + nrm * (h * 0.6f));
-            g.fillPath (head);
-            break;
-        }
-
-        default: break;
-    }
-}
-
-// --- navigator icons --------------------------------------------------------
-
-// The zoom pair is the original's mountain range, drawn twice: ONE big peak (zoomed
-// in — the sound magnified) against THREE small ones (zoomed out — more of it, each
-// feature smaller). Side by side the direction is unmistakable, which a magnifier
-// glyph at 10 pixels never is. Peaks, not the stroked waveform this used to draw:
-// a baseline with two ticks on it reads as a letter H at this size, not a sound.
-void WindowComponent::drawNavIcon (Graphics& g, int which, Rectangle<int> button) const
-{
-    const auto box = button.reduced (5, 5).toFloat();
-
-    switch (which)
-    {
-        case 0:     // zoom in
-        case 1:     // zoom out
-        {
-            const int n = which == 0 ? 1 : 3;
-            const float w = box.getWidth() / (float) n;
-            juce::Path p;
-            for (int i = 0; i < n; ++i)
-            {
-                const float x = box.getX() + (float) i * w;
-                p.addTriangle (x, box.getBottom(), x + w, box.getBottom(),
-                               x + w * 0.5f, box.getY());
-            }
-            g.fillPath (p);
-            break;
-        }
-
-        case 2:     // whole sound: three stacked rules, the "flat" view
-            for (int i = 0; i < 3; ++i)
-                g.fillRect (juce::Rectangle<float> (box.getX(),
-                                                    box.getY() + box.getHeight() * 0.5f * (float) i,
-                                                    box.getWidth(), 1.5f));
-            break;
-
-        case 3:     // pan left
-        case 4:     // pan right
-        {
-            const float w = box.getWidth() * 0.8f, h = box.getHeight() * 0.8f;
-            const auto a = juce::Rectangle<float> (w, h).withCentre (box.getCentre());
-            juce::Path p;
-            if (which == 3) p.addTriangle (a.getRight(), a.getY(), a.getRight(), a.getBottom(), a.getX(), a.getCentreY());
-            else            p.addTriangle (a.getX(), a.getY(), a.getX(), a.getBottom(), a.getRight(), a.getCentreY());
-            g.fillPath (p);
-            break;
-        }
-
-        default: break;
-    }
-}
-
 // --- paint ------------------------------------------------------------------
 
 void WindowComponent::paint (Graphics& g)
@@ -497,118 +427,235 @@ void WindowComponent::paint (Graphics& g)
     // before anything is measured against it.
     clampView();
     ensurePeaks (*d);
-    const size_t maxSize = d->maxTrackSize();
 
-    // The whole window is painted in its tint; the waveform bed is the same hue
-    // washed out towards white so the trace stays readable.
-    const Colour face = tint;
-    const Colour bed  = tint.interpolatedWith (kWhite, 0.72f);
+    auto* w = engineWindow();
+    const bool muted = w != nullptr && w->muted.load (std::memory_order_relaxed);
+    const bool soloed = w != nullptr && w->soloed.load (std::memory_order_relaxed);
 
-    auto full = getLocalBounds();
-    g.setColour (face); g.fillRect (full);
+    // The face is the theme colour; muted, a white veil at 80% washes it out (the
+    // "Window" frame's own fill in the Mute=On variants).
+    const auto b = body();
+    g.setColour (muted ? tint.interpolatedWith (white, 0.8f) : tint);
+    g.fillRect (b);
 
-    // Title bar.
-    auto title = full.removeFromTop (kTitleH);
-    g.setColour (kInk); g.drawHorizontalLine (title.getBottom() - 1, (float) title.getX(), (float) title.getRight());
-    for (int y = title.getY() + 3; y < title.getBottom() - 3; y += 2)
-        g.drawHorizontalLine (y, (float) (title.getX() + 22), (float) (title.getRight() - 22));
-    g.setColour (kInk); g.drawRect (closeBoxBounds(), 1);
-    if (nameEditor == nullptr)   // while renaming, the editor IS the name
-    { auto na = nameBounds();
-      g.setColour (face); g.fillRect (na.reduced (24, 2));
-      g.setColour (kInk); g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
-      g.drawText (juce::String (d->name), na, juce::Justification::centred, false); }
+    paintTitle (g, *d, muted, soloed);
+    paintStatus (g, *d);
+    paintTracks (g, *d, muted);
+    paintZoomBar (g, *d);
 
-    // Info strip + add-track button.
-    auto info = infoRect();
-    g.setColour (kInk); g.drawRect (info, 1);
-    g.setFont (juce::FontOptions (10.0f));
-    juce::String l; l << juce::String (d->rateHz / 1000.0, 1) << " kHz; " << d->bps << " bits    "
-                     << d->numTracks() << (d->numTracks() == 1 ? " track   " : " tracks   ") << (int) maxSize << " bytes";
-    g.drawText (l, info.reduced (kPad * 2, kPad).withTrimmedRight (24),
-                juce::Justification::centredLeft, false);
-    auto add = addTrackButton();
-    g.setColour (face); g.fillRect (add); g.setColour (kInk); g.drawRect (add, 1);
-    g.drawText ("+", add, juce::Justification::centred, false);
+    // Source is joined to Record by a short groove ("Menu_separator", 8 x 2): the
+    // source feeds the recording.
+    {
+        const auto t = transportArea();
+        const float x = (float) (t.getCentreX() - 114 + 50), y = (float) t.getY() + 18.0f;
+        const juce::Colour rules[] = { gray200, gray400, gray500, white };
+        for (int i = 0; i < 4; ++i)
+        {
+            g.setColour (rules[i]);
+            g.fillRect (juce::Rectangle<float> (x, y + (float) i * 0.5f, 8.0f, 0.5f));
+        }
+    }
 
-    // Track lanes.
-    const int n = d->numTracks();
-    auto* wsnap = engine.windowById (id);
+    paintGrip (g);
+
+    // The border: 2 px always, 3 px under the pointer, 5 px when selected, all
+    // OUTSIDE the body. Drawn last so nothing paints over it.
+    const int border = selected ? 5 : hovered ? 3 : 2;
+    g.setColour (black);
+    const auto outer = b.expanded (border);
+    g.fillRect (outer.getX(), outer.getY(), outer.getWidth(), border);
+    g.fillRect (outer.getX(), b.getBottom(), outer.getWidth(), border);
+    g.fillRect (outer.getX(), b.getY(), border, b.getHeight());
+    g.fillRect (b.getRight(), b.getY(), border, b.getHeight());
+}
+
+void WindowComponent::paintTitle (Graphics& g, const se::SoundDocument& d, bool muted, bool soloed)
+{
+    const auto bar = titleBar();
+    const auto close = closeBox(), mute = muteBox(), solo = soloBox();
+
+    // Stripes only on the active (selected) Window, as on the Mac. They start 24 px
+    // in and stop 8 px short of M.
+    os8::paintTitleBar (g, bar, nameEditor != nullptr ? juce::String() : juce::String (d.name),
+                        selected, close.getRight() + 7 - bar.getX(), bar.getRight() - mute.getX() + 8);
+
+    os8::paintTitleBarBox (g, close.getPosition(), false, os8::TitleBox::close);
+    os8::paintTitleBarBox (g, mute.getPosition(), muted, os8::TitleBox::mute);
+    os8::paintTitleBarBox (g, solo.getPosition(), soloed, os8::TitleBox::solo);
+}
+
+void WindowComponent::paintStatus (Graphics& g, const se::SoundDocument& d)
+{
+    const auto s = statusArea();
+    // Outline on three sides; the tracks below close it.
+    g.setColour (black);
+    g.fillRect (s.getX(), s.getY(), s.getWidth(), 1);
+    g.fillRect (s.getX(), s.getY(), 1, s.getHeight());
+    g.fillRect (s.getRight() - 1, s.getY(), 1, s.getHeight());
+
+    // The mixer slot, boxed.
+    const juce::Rectangle<int> box (s.getX() + 8, s.getY() + 7, 16, 16);
+    g.drawRect (box, 1);
+    os8::drawText (g, slot > 0 ? juce::String (slot) : juce::String ("-"), os8::TextStyle::xSmallLabel,
+                   { (float) box.getX() + 1.0f, (float) box.getY() + 2.0f, 14.0f, 9.0f },
+                   juce::Justification::horizontallyCentred);
+
+    // Rate, bits, tracks, length — 6 px apart, and dropped from the right when the
+    // window is too narrow for them beside the selection readout.
+    const double seconds = d.rateHz > 0.0 && d.frameSize() > 0
+                         ? (double) d.maxTrackSize() / (double) d.frameSize() / d.rateHz : 0.0;
+    const juce::String parts[] = {
+        juce::String (d.rateHz / 1000.0, 1) + "khz",
+        juce::String (d.bps) + "bits",
+        juce::String (d.numTracks()) + (d.numTracks() == 1 ? " track" : " tracks"),
+        juce::String (seconds, 2) + "s"
+    };
+    const int limit = startField.getX() - 14 - 8;   // the start icon, and some air
+    int x = box.getRight() + 6;
+    for (const auto& part : parts)
+    {
+        const int w = os8::widthOf (part, os8::TextStyle::smallLabel);
+        if (x + w > limit) break;
+        os8::drawText (g, part, os8::TextStyle::smallLabel, { (float) x, (float) s.getY() + 10.0f, (float) w, 10.0f });
+        x += w + 6;
+    }
+
+    // The readout's three icons, each centred in its frame (14, 19 and 14 px wide).
+    const auto iconAt = [&g, &s] (os8::icon::Id icon, int frameX, int frameW)
+    {
+        const auto size = os8::icon::sizeOf (icon);
+        g.setColour (black);
+        g.fillPath (os8::icon::outline (icon),
+                    juce::AffineTransform::translation ((float) (frameX + (frameW - size.x) / 2), (float) s.getY() + 10.0f));
+    };
+    iconAt (os8::icon::Id::selectionStart,  startField.getX() - 18,  14);
+    iconAt (os8::icon::Id::selectionLength, lengthField.getX() - 23, 19);
+    iconAt (os8::icon::Id::selectionEnd,    endField.getX() - 18,    14);
+}
+
+void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool muted)
+{
+    const auto area = tracksArea();
+    const int n = d.numTracks();
+    const size_t maxSize = d.maxTrackSize();
+
+    auto* wsnap = engineWindow();
     const bool playing = wsnap && wsnap->transport->uiState() == se::TransportState::playing;
     const size_t playPos = wsnap ? wsnap->transport->uiPlayhead() : 0;
     const se::LoopMode loopMode = wsnap ? wsnap->transport->uiLoopMode() : se::LoopMode::once;
-
     // What is ACTUALLY playing, frozen when play was pressed — not the document's
     // selection. Selecting elsewhere mid-loop leaves the old region looping (stop
-    // and play again is how you re-aim it), so the playhead below and the block in
-    // the navigator both come from here. Reading the live selection instead put
-    // the playhead in a range the ear was not hearing.
+    // and play again is how you re-aim it).
     const bool rolling = wsnap && wsnap->transport->uiState() != se::TransportState::stopped;
     const size_t loopSt   = rolling ? wsnap->transport->uiPlaySt()  : 0;
     const size_t loopEnd  = rolling ? wsnap->transport->uiPlayEnd() : 0;
     const int loopFirstTr = rolling ? wsnap->transport->uiFirstPlayTrack() : 1;
     const int loopLastTr  = rolling ? wsnap->transport->uiLastPlayTrack()  : 1;
+
+    const Colour ink = muted ? kWaveMuted : black;
+    // The selection inverts what is under it: a DIFFERENCE layer, white (or #666
+    // on a muted Window), as the waveform placeholder draws it.
+    const Colour sel = muted ? gray500 : white;
+
     for (int t = 0; t < n; ++t)
     {
-        // Output channel: one three-way selector, L / L+R / R top to bottom. The
-        // chosen cell is inverted, the same "on" convention as the transport.
-        const auto& track = d->tracks[(size_t) t];
-        static const char* const outLabels[] = { "L", "L+R", "R" };
-        const int chosen = outSelection (track);
-        for (int i = 0; i < 3; ++i)
+        const auto& track = d.tracks[(size_t) t];
+
+        // Output speakers: lit (white, with the speaker) or off (the theme, with a
+        // one-pixel highlight at its bottom-right).
+        for (int right = 0; right < 2; ++right)
         {
-            auto b = outRect (t, i);
-            const bool on = i == chosen;
-            g.setColour (on ? kInk : face);  g.fillRect (b);
-            g.setColour (kInk);              g.drawRect (b, 1);
-            g.setColour (on ? kWhite : kInk);
-            g.setFont (juce::FontOptions (std::min (8.0f, (float) b.getHeight() - 1.0f)));
-            g.drawText (outLabels[i], b, juce::Justification::centred, false);
-        }
-
-        // Right controls: move up / down / trash. The colour has to be set here:
-        // without it these inherited whatever the selector loop above left behind,
-        // so a track routed to R — the last cell drawn, and the lit one — painted
-        // its three controls in WHITE and they all but disappeared. Every R track
-        // and the right half of every stereo import was affected.
-        g.setColour (kInk);
-        g.setFont (juce::FontOptions (9.0f));
-        g.drawText (juce::String::fromUTF8 ("\xE2\x96\xB2"), ctrlRect (t, 0), juce::Justification::centred, false);
-        g.drawText (juce::String::fromUTF8 ("\xE2\x96\xBC"), ctrlRect (t, 1), juce::Justification::centred, false);
-        g.drawText (juce::String::fromUTF8 ("\xC3\x97"),     ctrlRect (t, 2), juce::Justification::centred, false);
-
-        // Waveform on a shared byte-time axis. Silence (real samples) draws as a
-        // solid line; absence (past this track's end) draws as a dotted line.
-        auto wr = waveRect (t);
-        g.setColour (bed); g.fillRect (wr);
-        const float mid = (float) wr.getCentreY();
-        const float amp = (float) wr.getHeight() * 0.5f - 3.0f;
-        const size_t lenT = track.data.size();
-        // Zoomed in, this track's end is routinely off one side of the lane or the
-        // other, so the split between "audio" and "past the end" is clamped rather
-        // than trusted: unclamped it drew the baseline backwards, or dotted the
-        // whole lane of a track that is entirely on screen.
-        const int endX = std::clamp (xAtByte (lenT, maxSize), wr.getX(), wr.getRight());
-
-        g.setColour (kWave);
-        g.drawHorizontalLine ((int) mid, (float) wr.getX(), (float) endX);   // silence: solid baseline
-        if (t < (int) peaks.size())
-        {
-            const auto& cols = peaks[(size_t) t];
-            for (int x = 0; x < (int) cols.size() && wr.getX() + x < endX; ++x)
+            const auto boxR = speakerBox (t, right == 1);
+            const bool on = right == 1 ? track.outRight : track.outLeft;
+            if (on)
             {
-                const auto r = cols[(size_t) x];
-                if (r.getStart() == 0.0f && r.getEnd() == 0.0f) continue;
-                g.drawVerticalLine (wr.getX() + x, mid - r.getEnd() * amp, mid - r.getStart() * amp + 1.0f);
+                g.setColour (white); g.fillRect (boxR);
+                g.setColour (black); g.drawRect (boxR, 1);
+                os8::icon::draw (g, right == 1 ? os8::icon::Id::speakerRightOn : os8::icon::Id::speakerLeftOn,
+                                 boxR.getPosition().toFloat() + juce::Point<float> (1.0f, 1.0f));
+            }
+            else
+            {
+                g.setColour (tint); g.fillRect (boxR);
+                g.setColour (juce::Colour (0xfffffdfd));
+                g.fillRect (boxR.getX() + 1, boxR.getBottom() - 2, boxR.getWidth() - 2, 1);
+                g.fillRect (boxR.getRight() - 2, boxR.getY() + 1, 1, boxR.getHeight() - 2);
+                g.setColour (gray600); g.drawRect (boxR, 1);
             }
         }
-        for (int x = endX + 1; x < wr.getRight(); x += 3)                    // absence: dotted
-            g.fillRect (x, (int) mid, 1, 1);
 
-        // Per-track playhead (each track at its OWN loop phase).
+        // The waveform bed: white, framed in 20% black on three sides (the lane
+        // below supplies the fourth).
+        const auto wr = waveRect (t);
+        g.setColour (white); g.fillRect (wr);
+        g.setColour (black.withAlpha (0.2f));
+        g.fillRect (wr.getX(), wr.getY(), wr.getWidth(), 1);
+        g.fillRect (wr.getX(), wr.getY(), 1, wr.getHeight());
+        g.fillRect (wr.getRight() - 1, wr.getY(), 1, wr.getHeight());
+
+        const auto lane = wr.reduced (1, 0).withTrimmedTop (1);
+        const float mid = (float) lane.getCentreY();
+        const float amp = (float) lane.getHeight() * 0.5f - 3.0f;
+        const size_t lenT = track.data.size();
+        const int endX = std::clamp (xAtByte (lenT, maxSize), lane.getX(), lane.getRight());
+
+        // Silence (real samples) is a solid line; absence (past this track's end) a
+        // dotted one — two different things, drawn differently.
+        const auto drawWave = [&] (Colour colour)
+        {
+            g.setColour (colour);
+            g.drawHorizontalLine ((int) mid, (float) lane.getX(), (float) endX);
+            if (t < (int) peaks.size())
+            {
+                const auto& cols = peaks[(size_t) t];
+                for (int x = 0; x < (int) cols.size() && waveOriginX() + x < endX; ++x)
+                {
+                    const auto r = cols[(size_t) x];
+                    if (juce::exactlyEqual (r.getStart(), 0.0f) && juce::exactlyEqual (r.getEnd(), 0.0f)) continue;
+                    const int px = waveOriginX() + x;
+                    if (px < lane.getX() || px >= lane.getRight()) continue;
+                    g.drawVerticalLine (px, mid - r.getEnd() * amp, mid - r.getStart() * amp + 1.0f);
+                }
+            }
+            for (int x = endX + 1; x < lane.getRight(); x += 3)
+                g.fillRect (x, (int) mid, 1, 1);
+        };
+        drawWave (ink);
+
+        // The selection, inverted under a DIFFERENCE layer.
+        const bool inSel = t >= d.firstSelTrack - 1 && t <= d.lastSelTrack - 1;
+        if (inSel && d.selEnd > d.selSt)
+        {
+            const int x0 = std::max (xAtByte (d.selSt, maxSize), lane.getX());
+            const int x1 = std::min (xAtByte (d.selEnd, maxSize), lane.getRight());
+            if (x1 > x0)
+            {
+                juce::Graphics::ScopedSaveState save (g);
+                const Rectangle<int> selRect (x0, lane.getY(), x1 - x0, lane.getHeight());
+                g.reduceClipRegion (selRect);
+                g.setColour (difference (white, sel));
+                g.fillRect (selRect);
+                drawWave (difference (ink, sel));
+            }
+        }
+        else if (inSel && d.selSt == d.selEnd)
+        {
+            // The insertion point: a serifed I-beam, so it cannot pass for a playhead.
+            const int cx = xAtByte (d.selSt, maxSize);
+            const auto r = lane.reduced (0, 2);
+            if (cx >= r.getX() + 2 && cx <= r.getRight() - 3)
+            {
+                g.setColour (black);
+                g.drawVerticalLine (cx, (float) r.getY(), (float) r.getBottom());
+                g.fillRect (cx - 2, r.getY(), 5, 1);
+                g.fillRect (cx - 2, r.getBottom() - 1, 5, 1);
+            }
+        }
+
+        // Per-track playhead, each track at its OWN loop phase.
         if (playing && lenT > 0)
         {
-            const size_t fs = (size_t) std::max (1, d->frameSize());
+            const size_t fs = (size_t) std::max (1, d.frameSize());
             const size_t lenA = lenT - lenT % fs;
             bool present = true; size_t ph = 0;
             switch (loopMode)
@@ -625,201 +672,173 @@ void WindowComponent::paint (Graphics& g)
                     else present = false;
                     break;
             }
-            // ...and only if it is inside the view. Zoomed in, the playhead spends
-            // most of its pass off-lane; drawn anyway it would sit on the edge and
-            // read as a playhead that had stopped there.
             const int px = xAtByte (ph, maxSize);
-            if (present && px >= wr.getX() && px < wr.getRight())
-            { g.setColour (kInk); g.drawVerticalLine (px, (float) wr.getY(), (float) wr.getBottom()); }
+            if (present && px >= lane.getX() && px < lane.getRight())
+            {
+                g.setColour (black);
+                g.drawVerticalLine (px, (float) lane.getY(), (float) lane.getBottom());
+            }
         }
+
+        // The track's drag handle.
+        const auto handle = moveHandle (t);
+        g.setColour (black);
+        g.fillPath (os8::icon::outline (os8::icon::Id::activeTrack),
+                    juce::AffineTransform::translation (handle.getPosition().toFloat()));
     }
 
-    // Rules LAST, so the beds cannot paint over them: the block is one framed well
-    // with a hairline between each pair of lanes, spanning the padded width rather
-    // than running into the frame. (Drawn per lane before the bed, as they used to
-    // be, every separator vanished across the waveform region and survived only in
-    // the two control columns either side of it.)
-    g.setColour (kInk);
-    for (int t = 0; t < n - 1; ++t)
-    {
-        auto lane = laneRect (t);
-        g.drawHorizontalLine (lane.getBottom() - 1, (float) lane.getX(), (float) lane.getRight());
-    }
-    g.drawRect (lanesRect(), 1);
-
-    // Selection overlay (across the selected track range) — or, when it is empty,
-    // the INSERTION POINT. A click without a drag has always set one (an empty
-    // selection at the clicked byte) and paste has always honoured it, but nothing
-    // drew it, so the click looked like it had done nothing at all. It is an I-beam
-    // caret, serifed, so it cannot be read as the playhead: that is a plain rule.
-    //
-    // Both are CLIPPED to the lane. Zoomed in, the selection routinely runs off one
-    // or both ends of the view, and an unclipped fill would spill sideways over the
-    // control columns and the window frame.
-    if (d->selSt != d->selEnd)
-    {
-        const int rawL = xAtByte (d->selSt, maxSize), rawR = xAtByte (d->selEnd, maxSize);
-        g.setColour (kSelFill);
-        for (int t = d->firstSelTrack - 1; t <= d->lastSelTrack - 1 && t < n; ++t)
-        {
-            if (t < 0) continue;
-            auto wr = waveRect (t);
-            if (rawR < wr.getX() || rawL > wr.getRight()) continue;   // wholly off-view
-            const int x0 = std::max (rawL, wr.getX()), x1 = std::min (rawR, wr.getRight());
-            g.fillRect (Rectangle<int> (x0, wr.getY(), std::max (1, x1 - x0), wr.getHeight()));
-        }
-    }
-    else
-    {
-        const int cx = xAtByte (d->selSt, maxSize);
-        g.setColour (kInk);
-        for (int t = d->firstSelTrack - 1; t <= d->lastSelTrack - 1 && t < n; ++t)
-        {
-            if (t < 0) continue;
-            auto wr = waveRect (t).reduced (0, 2);
-            if (cx < wr.getX() + 2 || cx > wr.getRight() - 3) continue;   // serifs need room
-            g.drawVerticalLine (cx, (float) wr.getY(), (float) wr.getBottom());
-            g.fillRect (cx - 2, wr.getY(), 5, 1);              // serifs, top and bottom
-            g.fillRect (cx - 2, wr.getBottom() - 1, 5, 1);
-        }
-    }
-
-    // Navigator: zoom in · zoom out · whole sound, then ◀ well ▶. The well is the
-    // whole sound at a glance — the blue bar is the slice the lanes above are
-    // showing, the black block is what is PLAYING (stopped: what would play, i.e.
-    // the selection).
-    {
-        const bool canZoomIn  = viewSpanFrac > minSpanFrac();
-        const bool canZoomOut = viewSpanFrac < 1.0;
-        const bool canLeft    = viewStartFrac > 0.0;
-        const bool canRight   = viewStartFrac + viewSpanFrac < 1.0;
-        const bool enabled[5] = { canZoomIn, canZoomOut, canZoomOut, canLeft, canRight };
-
-        for (int i = 0; i < 5; ++i)
-        {
-            auto b = navButton (i);
-            g.setColour (face);  g.fillRect (b);
-            g.setColour (kInk);  g.drawRect (b, 1);
-            // A button with nothing left to do says so, rather than clicking and
-            // appearing to do nothing: fully zoomed out, that is three of the five.
-            g.setColour (enabled[i] ? kInk : kInk.withAlpha (0.30f));
-            drawNavIcon (g, i, b);
-        }
-
-        auto well = navWellRect();
-        g.setColour (kWhite); g.fillRect (well);
-        g.setColour (kInk);   g.drawRect (well, 1);
-
-        auto inner = navWellInner();
-        auto barRow = inner.removeFromBottom (std::max (4, inner.getHeight() / 2));
-        auto topRow = inner;
-
-        // Quarter ticks, so a glance at the well is a glance at a position.
-        g.setColour (kInk);
-        for (int i = 0; i <= 4; ++i)
-        {
-            const int x = topRow.getX() + (int) std::lround ((double) i / 4.0 * (topRow.getWidth() - 1));
-            g.drawVerticalLine (x, (float) topRow.getY(), (float) topRow.getBottom());
-        }
-
-        const auto spanX = [&] (Rectangle<int> row, double f0, double f1)
-        {
-            const int x0 = row.getX() + (int) std::lround (std::clamp (f0, 0.0, 1.0) * row.getWidth());
-            const int x1 = row.getX() + (int) std::lround (std::clamp (f1, 0.0, 1.0) * row.getWidth());
-            return Rectangle<int> (x0, row.getY(), std::max (2, x1 - x0), row.getHeight());
-        };
-
-        // The block: the looping region while it rolls, the selection while stopped.
-        // They usually coincide — until you select somewhere else mid-loop, and then
-        // the block is the only thing on screen still telling you what you can hear.
-        const bool showLoop = rolling && loopEnd > loopSt;
-        const bool hasSel   = d->selEnd > d->selSt;
-        const bool diverged = showLoop && hasSel && (d->selSt != loopSt || d->selEnd != loopEnd);
-
-        // Once they HAVE diverged, the selection gets a hollow box: solid is what
-        // the ear is getting, hollow is what the next play would take. Drawn FIRST,
-        // over its own white, so the quarter ticks do not run through it and split
-        // it in two — and so the solid loop block wins any overlap.
-        if (maxSize > 0 && diverged)
-        {
-            const auto r = spanX (topRow, (double) d->selSt  / (double) maxSize,
-                                          (double) d->selEnd / (double) maxSize);
-            g.setColour (kWhite); g.fillRect (r);
-            g.setColour (kInk);   g.drawRect (r, 1);
-        }
-
-        if (maxSize > 0 && (showLoop || hasSel))
-        {
-            const size_t b0 = showLoop ? loopSt  : d->selSt;
-            const size_t b1 = showLoop ? loopEnd : d->selEnd;
-            g.fillRect (spanX (topRow, (double) b0 / (double) maxSize,
-                                       (double) b1 / (double) maxSize));
-        }
-
-        g.setColour (kNavView);
-        g.fillRect (spanX (barRow, viewStartFrac, viewStartFrac + viewSpanFrac));
-    }
-
-    // Transport strip.
-    auto tb = transportBounds();
-    g.setColour (kInk); g.drawRect (tb, 1);
-    // record · stop · play/pause · 2x · loop. The play button doubles as pause
-    // while playing, so the pair is one toggle rather than two buttons.
-    for (int i = 0; i < kNumTransportButtons; ++i)
-    {
-        auto b = transportButton (i);
-        const bool lit = (i == 2 && playing) || (i == 3 && advanceEnabled) || (i == 4 && loopEnabled);
-        // Record greys out while audio input is muted — frame AND glyph, not just
-        // the glyph: a black box around a grey dot reads as a live button whose icon
-        // happens to be pale. It stays clickable either way; see mouseDown.
-        const bool greyed = (i == 0 && ! recordEnabled);
-        g.setColour (lit ? kInk : face); g.fillRect (b);
-        g.setColour (greyed ? kRecordOff : (lit ? kWhite : kInk)); g.drawRect (b, 1);
-        g.setColour (greyed ? kRecordOff : (i == 0 ? kRecord : (lit ? kWhite : kInk)));
-        drawTransportSymbol (g, i, b, playing);
-    }
-
-    // Grow box: the System 7 corner grip, drag it to resize.
-    auto grip = resizeGripBounds();
-    g.setColour (bed); g.fillRect (grip);
-    g.setColour (kInk);   g.drawRect (grip, 1);
-    for (int i = 3; i < kGripW - 1; i += 3)
-        g.drawLine ((float) (grip.getRight() - i), (float) (grip.getBottom() - 2),
-                    (float) (grip.getRight() - 2), (float) (grip.getBottom() - i));
-
-    // Border LAST, so the highlight is never partly overdrawn by the contents.
-    // Weight is the whole signal: plain, hovered, active. Since Windows in the
-    // grid touch, a thicker border grows inwards and never disturbs a neighbour.
-    const int border = selected ? kBorderActive
-                     : hovered  ? kBorderHover
-                                : kBorderIdle;
-    g.setColour (kInk);
-    g.drawRect (getLocalBounds(), border);
+    // The tracks' outline, left and right; the new-track handle and the trash.
+    g.setColour (black);
+    g.fillRect (area.getX(), area.getY(), 1, area.getHeight());
+    g.fillRect (area.getRight() - 1, area.getY(), 1, area.getHeight());
+    g.fillPath (os8::icon::outline (os8::icon::Id::newTrack),
+                juce::AffineTransform::translation (newTrackHandle().getPosition().toFloat()));
+    os8::icon::draw (g, os8::icon::Id::trashcan, trashRect().getPosition().toFloat());
 }
 
-void WindowComponent::mouseEnter (const juce::MouseEvent&) { hovered = true;  repaint(); }
-void WindowComponent::mouseExit  (const juce::MouseEvent&) { hovered = false; repaint(); }
-void WindowComponent::focusGained (FocusChangeType) { repaint(); }
-void WindowComponent::focusLost   (FocusChangeType) { repaint(); }
+void WindowComponent::paintZoomBar (Graphics& g, const se::SoundDocument& d)
+{
+    const auto z = zoomArea();
+    g.setColour (black);
+    g.fillRect (z.getX(), z.getY(), 1, z.getHeight());
+    g.fillRect (z.getRight() - 1, z.getY(), 1, z.getHeight());
+    g.fillRect (z.getX(), z.getBottom() - 1, z.getWidth(), 1);
+    g.setColour (black.withAlpha (0.25f));               // its drop shadow
+    g.fillRect (z.getX(), z.getBottom(), z.getWidth(), 1);
+
+    const bool canZoomIn  = viewSpanFrac > minSpanFrac();
+    const bool canZoomOut = viewSpanFrac < 1.0;
+    const bool canLeft    = viewStartFrac > 0.0;
+    const bool canRight   = viewStartFrac + viewSpanFrac < 1.0;
+    const bool enabled[5] = { canZoomOut, canZoomIn, canZoomOut, canLeft, canRight };
+    const os8::icon::Id icons[5] = { os8::icon::Id::zoomOut, os8::icon::Id::zoomIn, os8::icon::Id::zoomReset,
+                                     os8::icon::Id::zoomArrowLeft, os8::icon::Id::zoomArrowRight };
+    for (int i = 0; i < 5; ++i)
+    {
+        const auto r = zoomButton (i);
+        os8::paintSmallBevelButton (g, r, pressedZoomButton == i);
+        // A button with nothing left to do says so rather than clicking and doing
+        // nothing: fully zoomed out, that is three of the five.
+        os8::icon::draw (g, icons[i], r.getPosition().toFloat() + juce::Point<float> (2.0f, 2.0f),
+                         enabled[i] ? 1.0f : 0.35f);
+    }
+
+    // The overview: the whole sound at a glance.
+    const auto o = overviewRect();
+    juce::Path shape;
+    shape.addRectangle (o.toFloat());
+    g.setColour (white);
+    g.fillPath (shape);
+    os8::innerShadow (g, shape,  1.0f,  1.0f, 0, juce::Colour (0xff777777));
+    os8::innerShadow (g, shape, -1.0f, -1.0f, 0, white);
+
+    const auto inner = o.reduced (2, 0);
+    const size_t maxSize = d.maxTrackSize();
+    const auto spanX = [&inner] (double f0, double f1, int y, int h)
+    {
+        const int x0 = inner.getX() + (int) std::lround (std::clamp (f0, 0.0, 1.0) * inner.getWidth());
+        const int x1 = inner.getX() + (int) std::lround (std::clamp (f1, 0.0, 1.0) * inner.getWidth());
+        return Rectangle<int> (x0, y, std::max (2, x1 - x0), h);
+    };
+
+    // Quarter ticks: full height at the ends, shorter between.
+    g.setColour (black);
+    for (int i = 0; i <= 4; ++i)
+    {
+        const int x = inner.getX() + (int) std::lround ((double) i / 4.0 * (inner.getWidth() - 1));
+        g.fillRect (x, o.getY() + 2, 1, (i == 0 || i == 4) ? 5 : 3);
+    }
+
+    // The block: the looping region while it rolls, the selection while stopped.
+    auto* w = engineWindow();
+    const bool rolling = w && w->transport->uiState() != se::TransportState::stopped;
+    const size_t b0 = rolling ? w->transport->uiPlaySt()  : d.selSt;
+    const size_t b1 = rolling ? w->transport->uiPlayEnd() : d.selEnd;
+    if (maxSize > 0 && b1 > b0)
+        g.fillRect (spanX ((double) b0 / (double) maxSize, (double) b1 / (double) maxSize, o.getY() + 2, 4));
+
+    // What the tracks above are showing.
+    g.setColour (kViewBar);
+    g.fillRect (spanX (viewStartFrac, viewStartFrac + viewSpanFrac, o.getY() + 8, 6));
+}
+
+void WindowComponent::paintGrip (Graphics& g)
+{
+    // "Resize-window": three 45° strokes, 50% black with a white highlight under each.
+    const auto r = gripRect().toFloat();
+    for (int k = 0; k < 3; ++k)
+    {
+        const float o = 2.0f * (float) k;
+        const juce::Line<float> line (r.getX() + 1.7f + o, r.getY() + 5.7f + o,
+                                      r.getX() + 6.7f + o, r.getY() + 0.7f + o);
+        g.setColour (white);
+        g.drawLine (line.getStartX(), line.getStartY() + 1.0f, line.getEndX(), line.getEndY() + 1.0f, 1.0f);
+        g.setColour (black.withAlpha (0.5f));
+        g.drawLine (line, 1.0f);
+    }
+}
+
+void WindowComponent::paintOverChildren (Graphics& g)
+{
+    if (trackDrag == TrackDrag::none) return;
+    auto* d = doc();
+    if (d == nullptr) return;
+
+    const int n = d->numTracks();
+    const auto area = tracksArea();
+    const bool overTrash = trackDrag == TrackDrag::move && trashRect().expanded (6).contains (dragPoint);
+
+    if (overTrash)
+    {
+        // The trash takes it: the trash is highlighted, nothing else is shown.
+        g.setColour (os8::colour::selectedMenuItem.withAlpha (0.35f));
+        g.fillRect (trashRect().expanded (3));
+        return;
+    }
+
+    if (! area.expanded (0, laneH / 2).contains (dragPoint)) return;
+
+    // The ghost target: a 2 px rule across the tracks at the gap it would land in,
+    // and the row's outline following the pointer.
+    const int gap = insertionAtY (dragPoint.getY(), n);
+    const int y = area.getY() + gap * laneH;
+    g.setColour (os8::colour::selectedMenuItem);
+    g.fillRect (area.getX() + 2, y - 1, area.getWidth() - kNewDelW - 4, 2);
+
+    const auto row = trackRow (0).withY (dragPoint.getY() - laneH / 2);
+    const float dashes[] = { 2.0f, 2.0f };
+    juce::Path outline;
+    outline.addRectangle (row.reduced (1).toFloat());
+    juce::Path dashed;
+    juce::PathStrokeType (1.0f).createDashedStroke (dashed, outline, dashes, 2);
+    g.setColour (black);
+    g.fillPath (dashed);
+}
+
+// --- hover, selection, record ---------------------------------------------------
+
+void WindowComponent::updateHover()
+{
+    const bool now = isMouseOver (true);
+    if (now == hovered) return;
+    hovered = now;
+    repaint();
+}
+
+void WindowComponent::mouseEnter (const juce::MouseEvent&) { updateHover(); }
+void WindowComponent::mouseExit  (const juce::MouseEvent&) { updateHover(); }
 
 void WindowComponent::invalidateWaveform()
 {
     cachedWidth = -1;
 
-    // A module that ADDS tracks — Selection to Channel, Iterative Crossfade, and
-    // Quick Mix or Difference rendering to a New Channel — leaves this Window laid
-    // out for the count it had a moment ago. The extra lanes then draw underneath
-    // the transport bar and the last one is off the bottom entirely, so the effect
-    // reports success and the result is invisible until you resize by hand.
-    //
-    // Every explicit sizing path ends at `chromeHeight() + n * laneH`, which is
-    // exactly what preferredHeight() returns — so a mismatch here means the TRACK
-    // COUNT moved and nothing else. That makes this safe to check on every
-    // document change: a Window the user resized still matches, and only a real
-    // change in track count re-fits.
+    // A module that ADDS tracks leaves this Window laid out for the count it had a
+    // moment ago, and the new lanes would be drawn under the zoom bar. Every sizing
+    // path ends at chromeHeight() + n * laneH, which is what preferredHeight()
+    // returns — so a mismatch means the TRACK COUNT moved, and only that re-fits.
     if (getHeight() != preferredHeight())
     {
-        resizeToFit();   // repaints, re-stores geometry, and relays out the board
+        resizeToFit();
         return;
     }
 
@@ -837,12 +856,131 @@ void WindowComponent::setRecordEnabled (bool enabled)
 {
     if (recordEnabled == enabled) return;
     recordEnabled = enabled;
-    repaint();
+    updateTransportButtons();
 }
 
-// A narrower lane holds fewer columns, so the zoom floor moves with the width —
-// a window shrunk while zoomed all the way in has to give some magnification back.
-void WindowComponent::resized() { cachedWidth = -1; clampView(); }
+// --- the selection readout --------------------------------------------------------
+
+double WindowComponent::toUnits (size_t bytes) const
+{
+    auto* d = doc();
+    if (d == nullptr) return 0.0;
+    const double frames = (double) bytes / (double) std::max (1, d->frameSize());
+    switch (AppPrefs::get().timeUnit())
+    {
+        case 0:  return d->rateHz > 0.0 ? frames / d->rateHz : 0.0;
+        case 1:  return d->rateHz > 0.0 ? frames / d->rateHz * 1000.0 : 0.0;
+        default: return frames;
+    }
+}
+
+size_t WindowComponent::fromUnits (double value) const
+{
+    auto* d = doc();
+    if (d == nullptr) return 0;
+    double frames = 0.0;
+    switch (AppPrefs::get().timeUnit())
+    {
+        case 0:  frames = value * d->rateHz; break;
+        case 1:  frames = value / 1000.0 * d->rateHz; break;
+        default: frames = value; break;
+    }
+    const auto fs = (size_t) std::max (1, d->frameSize());
+    const size_t bytes = (size_t) std::max (0.0, std::round (frames)) * fs;
+    return std::min (bytes, d->maxTrackSize() - d->maxTrackSize() % fs);
+}
+
+juce::String WindowComponent::formatUnits (double value) const
+{
+    switch (AppPrefs::get().timeUnit())
+    {
+        case 0:  return juce::String (value, 5);
+        case 1:  return juce::String (value, 2);
+        default: return juce::String ((juce::int64) std::llround (value));
+    }
+}
+
+void WindowComponent::configureSelectionFields()
+{
+    // ↑/↓ steps commensurate with the unit: a hundredth of a second, a millisecond,
+    // a sample — ×10 with shift.
+    const int unit = AppPrefs::get().timeUnit();
+    const double step = unit == 0 ? 0.01 : 1.0;
+    const int places = unit == 0 ? 5 : unit == 1 ? 2 : 0;
+    for (auto* f : { &startField, &lengthField, &endField })
+        f->setNumeric (step, places, 0.0, 1.0e12);
+}
+
+void WindowComponent::updateSelectionFields (bool force)
+{
+    auto* d = doc();
+    if (d == nullptr) return;
+    const int unit = AppPrefs::get().timeUnit();
+    if (! force && d->selSt == lastSelSt && d->selEnd == lastSelEnd && unit == lastUnit) return;
+    lastSelSt = d->selSt;
+    lastSelEnd = d->selEnd;
+    lastUnit = unit;
+
+    // A field being typed in keeps what is being typed.
+    const auto show = [this] (Os8TextField& f, size_t bytes)
+    {
+        if (f.currentState() == os8::FieldState::active) return;
+        f.setText (formatUnits (toUnits (bytes)));
+    };
+    show (startField, d->selSt);
+    show (lengthField, d->selEnd - d->selSt);
+    show (endField, d->selEnd);
+}
+
+void WindowComponent::commitSelectionField (int which)
+{
+    auto* d = doc();
+    if (d == nullptr) return;
+
+    size_t st = d->selSt, en = d->selEnd;
+    const size_t len = en - st;
+    switch (which)
+    {
+        case 0:   // start: the selection moves, keeping its length (none: the caret)
+            st = fromUnits (startField.getValue());
+            en = std::min (st + len, d->maxTrackSize());
+            break;
+        case 1:   // length: the end moves
+            en = std::min (st + fromUnits (lengthField.getValue()), d->maxTrackSize());
+            break;
+        default:  // end: the length follows; an end before the start swaps them
+            en = fromUnits (endField.getValue());
+            if (en < st) std::swap (st, en);
+            break;
+    }
+
+    se::setSelection (*d, st, en);
+    commit();
+    updateSelectionFields (true);
+}
+
+void WindowComponent::appPrefChanged (const juce::String& key)
+{
+    if (key != AppPrefs::timeUnitKey) return;
+    unitDropdown.setSelectedIndex (AppPrefs::get().timeUnit());
+    configureSelectionFields();
+    updateSelectionFields (true);
+}
+
+// --- transport ------------------------------------------------------------------
+
+void WindowComponent::updateTransportButtons()
+{
+    auto* w = engineWindow();
+    const auto state = w != nullptr ? w->transport->uiState() : se::TransportState::stopped;
+    playButton.setPlaying (state == se::TransportState::playing);
+    pauseButton.setToggleState (state == se::TransportState::paused, juce::dontSendNotification);
+    pauseButton.setEnabled (state != se::TransportState::stopped);
+    stopButton.setEnabled (state != se::TransportState::stopped);
+    fastForwardButton.setToggleState (advanceEnabled, juce::dontSendNotification);
+    loopButton.setToggleState (loopEnabled, juce::dontSendNotification);
+    recordButton.setEnabled (false);   // until recording exists (step 9)
+}
 
 // --- interaction ------------------------------------------------------------
 
@@ -855,9 +993,8 @@ juce::Point<int> WindowComponent::parentPos (const juce::MouseEvent& e) const
 
 void WindowComponent::mouseDown (const juce::MouseEvent& e)
 {
-    draggingTitle = false; selecting = false; resizingWindow = false; navDragging = false;
-    // Focus for the keyboard shortcuts (⌘X/⌘C/⌘V, Delete, Space); selection for
-    // everything that has to outlive focus moving to a panel.
+    draggingTitle = false; selecting = false; resizingWindow = false; overviewDragging = false;
+    trackDrag = TrackDrag::none; pressedZoomButton = -1; pressedTitleBox = -1;
     grabKeyboardFocus();
     if (onSelected) onSelected (id);
     auto* d = doc();
@@ -866,7 +1003,7 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
     const size_t maxSize = d->maxTrackSize();
     const int n = d->numTracks();
 
-    if (resizeGripBounds().contains (p))
+    if (gripRect().expanded (2).contains (p))
     {
         resizingWindow = true;
         dragMouseStart = parentPos (e);
@@ -875,77 +1012,79 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
-    if (closeBoxBounds().contains (p)) { if (onClose) onClose (id); return; }
-    if (addTrackButton().contains (p)) { d->addTrack(); commit(); resizeToFit(); return; }
-
-    // Navigator. It only ever moves the VIEW — no click in this strip touches the
-    // document, the selection or the transport, so nothing here needs a commit.
-    if (navRect().contains (p))
+    if (closeBox().expanded (1).contains (p)) { if (onClose) onClose (id); return; }
+    if (muteBox().expanded (1).contains (p) || soloBox().expanded (1).contains (p))
     {
-        if (navButton (0).contains (p)) { zoomBy (0.5); repaint(); return; }
-        if (navButton (1).contains (p)) { zoomBy (2.0); repaint(); return; }
-        if (navButton (2).contains (p)) { viewStartFrac = 0.0; viewSpanFrac = 1.0;
-                                          cachedWidth = -1; repaint(); return; }
-        if (navButton (3).contains (p)) { panBy (-0.5); repaint(); return; }
-        if (navButton (4).contains (p)) { panBy (+0.5); repaint(); return; }
-        if (navWellRect().contains (p))
+        if (auto* w = engineWindow())
         {
-            // Click anywhere in the well to jump there; hold and it scrubs.
-            navDragging = true;
-            setViewCentreFromWellX (p.getX());
+            auto& flag = muteBox().expanded (1).contains (p) ? w->muted : w->soloed;
+            flag.store (! flag.load (std::memory_order_relaxed), std::memory_order_relaxed);
+        }
+        repaint();
+        return;
+    }
+
+    // Track drags: the new-track handle, or a track's own handle.
+    if (newTrackHandle().expanded (3).contains (p))
+    {
+        trackDrag = TrackDrag::add;
+        dragPoint = p;
+        return;
+    }
+    for (int t = 0; t < n; ++t)
+        if (moveHandle (t).expanded (3).contains (p))
+        {
+            trackDrag = TrackDrag::move;
+            dragTrack = t;
+            dragPoint = p;
+            dragDuplicate = e.mods.isAltDown();
+            return;
+        }
+
+    // Output speakers: each one toggles its own side, so a track can go left, right,
+    // both — or nowhere.
+    for (int t = 0; t < n; ++t)
+        for (int right = 0; right < 2; ++right)
+            if (speakerBox (t, right == 1).contains (p))
+            {
+                auto& tr = d->tracks[(size_t) t];
+                (right == 1 ? tr.outRight : tr.outLeft) = ! (right == 1 ? tr.outRight : tr.outLeft);
+                commit();
+                return;
+            }
+
+    // The zoom bar only ever moves the VIEW — nothing here touches the document.
+    if (zoomArea().contains (p))
+    {
+        for (int i = 0; i < 5; ++i)
+            if (zoomButton (i).contains (p))
+            {
+                pressedZoomButton = i;
+                switch (i)
+                {
+                    case 0: zoomBy (2.0); break;
+                    case 1: zoomBy (0.5); break;
+                    case 2: viewStartFrac = 0.0; viewSpanFrac = 1.0; cachedWidth = -1; break;
+                    case 3: panBy (-0.5); break;
+                    default: panBy (+0.5); break;
+                }
+                repaint();
+                return;
+            }
+        if (overviewRect().contains (p))
+        {
+            // Click anywhere in the overview to jump there; hold and it scrubs.
+            overviewDragging = true;
+            setViewCentreFromOverviewX (p.getX());
             repaint();
         }
         return;
     }
 
-    if (transportBounds().contains (p))
-    {
-        for (int i = 0; i < kNumTransportButtons; ++i)
-            if (transportButton (i).contains (p))
-            {
-                switch (i)
-                {
-                    // Record while greyed — input muted — opens the audio device
-                    // settings, which is where input gets turned on. Once it IS on
-                    // the button is live and this is where recording will go; there
-                    // is nothing behind it yet, so for now the click does nothing.
-                    case 0:
-                        if (! recordEnabled && onRecordRequested) onRecordRequested();
-                        break;
-                    case 1: engine.stop (id); advanceEnabled = false; break;
-                    case 2: togglePlayPause(); break;       // same toggle as Space
-                    case 3:
-                        // 2x engaged / disengaged. advance() starts playback if
-                        // the transport is stopped, so engaging it also rolls.
-                        if (advanceEnabled) engine.normalSpeed (id);
-                        else                engine.advance (id);
-                        advanceEnabled = ! advanceEnabled;
-                        break;
-                    case 4: loopEnabled = ! loopEnabled; break;
-                    default: break;
-                }
-                repaint(); return;
-            }
-    }
-
     for (int t = 0; t < n; ++t)
-    {
-        for (int i = 0; i < 3; ++i)
-            if (outRect (t, i).contains (p))
-            {
-                auto& tr = d->tracks[(size_t) t];
-                tr.outLeft  = i != 2;    // L or L+R
-                tr.outRight = i != 0;    // R or L+R
-                commit(); repaint(); return;
-            }
-        if (ctrlRect (t, 0).contains (p)) { if (t > 0)     { d->swapTracks (t + 1, t);     commit(); repaint(); } return; }
-        if (ctrlRect (t, 1).contains (p)) { if (t < n - 1) { d->swapTracks (t + 1, t + 2); commit(); repaint(); } return; }
-        if (ctrlRect (t, 2).contains (p)) { if (d->delTrack (t + 1)) { commit(); resizeToFit(); } return; }
         if (waveRect (t).contains (p))
         {
             // Double-click: the whole track. Triple-click: every track, all of it.
-            // Neither arms a drag — the selection is final on the click itself, so
-            // it is published here rather than waiting for mouseUp.
             const int clicks = e.getNumberOfClicks();
             if (clicks >= 3) { selectAllAudio(); return; }
             if (clicks == 2)
@@ -959,9 +1098,8 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
             se::setSelection (*d, selAnchorByte, selAnchorByte);
             repaint(); return;
         }
-    }
 
-    if (p.getY() < kTitleH)
+    if (titleBar().contains (p))
     {
         draggingTitle = true;
         dragMouseStart = parentPos (e);
@@ -972,23 +1110,26 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
 
 void WindowComponent::mouseDrag (const juce::MouseEvent& e)
 {
+    if (trackDrag != TrackDrag::none)
+    {
+        dragPoint = e.getPosition();
+        repaint();
+        return;
+    }
     if (resizingWindow)
     {
         const auto delta = parentPos (e) - dragMouseStart;
-        applySize (resizeSizeStart.getX() + delta.getX(),
-                   resizeSizeStart.getY() + delta.getY());
+        applySize (resizeSizeStart.getX() + delta.getX(), resizeSizeStart.getY() + delta.getY());
         cachedWidth = -1;
         storeGeometry();
-        // Width first: in the grid the whole column takes this width, and the
-        // relayout right behind it is what draws the result.
         if (onWidthChanged) onWidthChanged (desiredW);
         if (onGeometryChanged) onGeometryChanged();
         repaint();
         return;
     }
-    if (navDragging)
+    if (overviewDragging)
     {
-        setViewCentreFromWellX (e.getPosition().getX());
+        setViewCentreFromOverviewX (e.getPosition().getX());
         repaint();
         return;
     }
@@ -998,17 +1139,13 @@ void WindowComponent::mouseDrag (const juce::MouseEvent& e)
         np = { std::max (0, np.getX()), std::max (0, np.getY()) };   // stay on the board
         setTopLeftPosition (np);
         storeGeometry();
-        // Report the window's own top-left, not the pointer: the cell you are
-        // aiming at is the one the window's corner is over.
         if (onDragged) onDragged (np);
         return;
     }
     if (selecting)
     {
-        // Not until the pointer has really travelled. A click is meant to leave an
-        // insertion point, and without the threshold a few pixels of hand-shake
-        // between press and release turned it into a one-frame selection instead —
-        // which looks the same but is NOT the same thing to paste or to Play.
+        // Not until the pointer has really travelled: a click leaves an insertion
+        // point, and hand-shake must not turn it into a one-frame selection.
         if (! e.mouseWasDraggedSinceMouseDown()) return;
 
         auto* d = doc(); if (d == nullptr) return;
@@ -1023,24 +1160,81 @@ void WindowComponent::mouseDrag (const juce::MouseEvent& e)
     }
 }
 
-void WindowComponent::mouseUp (const juce::MouseEvent&)
+void WindowComponent::mouseUp (const juce::MouseEvent& e)
 {
+    if (trackDrag != TrackDrag::none)
+    {
+        const auto kind = trackDrag;
+        trackDrag = TrackDrag::none;
+        auto* d = doc();
+        if (d == nullptr) { repaint(); return; }
+
+        const int n = d->numTracks();
+        const auto p = e.getPosition();
+        const bool inTracks = tracksArea().expanded (0, laneH / 2).contains (p);
+
+        if (kind == TrackDrag::move && dragTrack >= 0 && dragTrack < n)
+        {
+            if (trashRect().expanded (6).contains (p))
+            {
+                // Onto the trash: deleted. The last track of a sound refuses.
+                if (d->delTrack (dragTrack + 1)) { commit(); resizeToFit(); }
+            }
+            else if (inTracks)
+            {
+                const int gap = insertionAtY (p.getY(), n);
+                if (dragDuplicate || e.mods.isAltDown())
+                {
+                    // ⌥: a copy lands in the gap; the original stays.
+                    const auto copy = d->tracks[(size_t) dragTrack];
+                    auto& made = d->addTrack (gap + 1, 0);
+                    made = copy;
+                    commit(); resizeToFit();
+                }
+                else
+                {
+                    // Moved into the gap: one swap at a time, so the chunks follow.
+                    const int target = gap > dragTrack ? gap - 1 : gap;
+                    for (int t = dragTrack; t < target; ++t) d->swapTracks (t + 1, t + 2);
+                    for (int t = dragTrack; t > target; --t) d->swapTracks (t + 1, t);
+                    commit();
+                }
+            }
+        }
+        else if (kind == TrackDrag::add && inTracks)
+        {
+            d->addTrack (insertionAtY (p.getY(), n) + 1, 0);
+            commit(); resizeToFit();
+        }
+
+        repaint();
+        return;
+    }
+
     if (selecting) commit();       // publish the selection so Play can loop it
     if (draggingTitle && onDropped) onDropped();
-    draggingTitle = false; selecting = false; resizingWindow = false; navDragging = false;
+    if (pressedZoomButton >= 0) { pressedZoomButton = -1; repaint(); }
+    draggingTitle = false; selecting = false; resizingWindow = false; overviewDragging = false;
 }
 
 void WindowComponent::mouseMove (const juce::MouseEvent& e)
 {
-    setMouseCursor (resizeGripBounds().contains (e.getPosition())
-                        ? juce::MouseCursor::BottomRightCornerResizeCursor
-                        : juce::MouseCursor::NormalCursor);
+    updateHover();
+    const auto p = e.getPosition();
+    bool overHandle = newTrackHandle().expanded (3).contains (p);
+    for (int t = 0; t < numTracks() && ! overHandle; ++t)
+        overHandle = moveHandle (t).expanded (3).contains (p);
+
+    setMouseCursor (gripRect().expanded (2).contains (p) ? juce::MouseCursor::BottomRightCornerResizeCursor
+                    : overHandle                          ? juce::MouseCursor::DraggingHandCursor
+                                                          : juce::MouseCursor::NormalCursor);
 }
 
 void WindowComponent::mouseDoubleClick (const juce::MouseEvent& e)
 {
     const auto p = e.getPosition();
-    if (p.getY() < kTitleH && ! closeBoxBounds().contains (p))
+    if (titleBar().contains (p) && ! closeBox().expanded (1).contains (p)
+        && ! muteBox().expanded (1).contains (p) && ! soloBox().expanded (1).contains (p))
         beginNameEdit();
 }
 
@@ -1057,7 +1251,7 @@ void WindowComponent::selectAllAudio()
 
 void WindowComponent::togglePlayPause()
 {
-    auto* w = engine.windowById (id);
+    auto* w = engineWindow();
     const auto state = w != nullptr ? w->transport->uiState() : se::TransportState::stopped;
 
     // One toggle. Transport::pause() already flips playing <-> paused, so only a
@@ -1071,6 +1265,7 @@ void WindowComponent::togglePlayPause()
     }
     else engine.pause (id);
 
+    updateTransportButtons();
     repaint();
 }
 
@@ -1083,19 +1278,19 @@ void WindowComponent::beginNameEdit()
 
     nameEditor = std::make_unique<juce::TextEditor>();
     auto& ed = *nameEditor;
-    ed.setBounds (nameBounds().reduced (0, 2));
-    ed.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    ed.setBounds (nameBounds());
+    ed.setFont (os8::font (os8::TextStyle::headline));
     ed.setJustification (juce::Justification::centred);
     ed.setMultiLine (false);
     ed.setReturnKeyStartsNewLine (false);
     ed.setBorder (juce::BorderSize<int> (1));
-    // A white well with a black frame: the same System 7 grammar as everything else.
-    ed.setColour (juce::TextEditor::backgroundColourId, kWhite);
-    ed.setColour (juce::TextEditor::textColourId, kInk);
-    ed.setColour (juce::TextEditor::outlineColourId, kInk);
-    ed.setColour (juce::TextEditor::focusedOutlineColourId, kInk);
-    ed.setColour (juce::TextEditor::highlightColourId, kInk.withAlpha (0.25f));
-    ed.setColour (juce::TextEditor::highlightedTextColourId, kInk);
+    // A white well with a black frame, selected text in the field highlight.
+    ed.setColour (juce::TextEditor::backgroundColourId, white);
+    ed.setColour (juce::TextEditor::textColourId, black);
+    ed.setColour (juce::TextEditor::outlineColourId, black);
+    ed.setColour (juce::TextEditor::focusedOutlineColourId, black);
+    ed.setColour (juce::TextEditor::highlightColourId, selectedTextField);
+    ed.setColour (juce::TextEditor::highlightedTextColourId, black);
     ed.setText (juce::String (d->name), false);
 
     ed.onReturnKey = [this] { endNameEdit (true);  grabKeyboardFocus(); };
@@ -1176,14 +1371,15 @@ bool WindowComponent::perform (Action a)
     switch (a)
     {
         case Action::playPause: togglePlayPause(); return true;
-        case Action::stop:      engine.stop (id); advanceEnabled = false; repaint(); return true;
-        case Action::toggleLoop: loopEnabled = ! loopEnabled; repaint(); return true;
+        case Action::stop:      engine.stop (id); advanceEnabled = false; updateTransportButtons(); repaint(); return true;
+        case Action::toggleLoop: loopEnabled = ! loopEnabled; updateTransportButtons(); repaint(); return true;
         case Action::toggleAdvance:
             // advance() starts playback if the transport is stopped, so engaging it
             // also rolls — the same as the button.
             if (advanceEnabled) engine.normalSpeed (id);
             else                engine.advance (id);
             advanceEnabled = ! advanceEnabled;
+            updateTransportButtons();
             repaint();
             return true;
 

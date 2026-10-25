@@ -1,20 +1,27 @@
-// WindowComponent — one sound Window drawn on the canvas, System 7 styling.
+// WindowComponent — one sound Window drawn on the canvas, in the 0.4.0 Mac OS 8
+// design ("Sound-window" 135:4722, every measurement from that component).
 //
 // Draws the UI-authoritative document (engine.editDoc), edits it in place, and
 // publishes via engine.commitEdit — so edits apply mid-playback with no glitch.
-// Interactions: title drag, rename (double-click the title), close, transport
-// (Space toggles play/pause on the focused Window), the per-track output-channel
-// selector, add/move/trash track, selection drag (double-click a lane for the
-// whole track, triple-click or ⌘A for everything), and ⌘X/⌘C/⌘V clipboard.
+//
+// From the top: the title bar (close box, name, M and S); the status row (mixer
+// slot, rate, bits, tracks, length, then the selection readout: start, length, end
+// and their unit); the tracks, each with its two output speakers on the left and
+// its drag handle on the right, with the new-track handle and the trash in a column
+// of their own; the zoom bar (zoom out, zoom in, whole sound, then ◀ overview ▶);
+// and the transport (Source, record, stop, play with its direction, pause, fast
+// forward, loop), with the grow box in the corner.
+//
+// Tracks are moved, deleted, duplicated and added by DRAGGING: a track's handle
+// onto another place (⌥ duplicates), onto the trash, or the new-track handle into
+// the column of tracks — a ghost shows where it will land.
 //
 // Waveforms share one byte-time axis (spanning the window's longest track) so a
 // shorter track visibly ends partway and the selection lines up across tracks.
-// That axis is a VIEW onto the document, not the whole of it: the navigator strip
-// under the lanes zooms and pans it, exactly as the original's did.
+// That axis is a VIEW onto the document, not the whole of it: the zoom bar zooms
+// and pans it, exactly as the original's navigator did.
 //
-// The window is resizable by the grip in its bottom-right corner. The chrome
-// (title bar, info strip, transport) keeps a fixed height — resizing only ever
-// stretches the waveform lanes, horizontally and vertically.
+// The chrome keeps a fixed height; resizing only stretches the tracks.
 
 #pragma once
 
@@ -22,21 +29,25 @@
 
 #include "engine/Edit.h"
 #include "engine/Engine.h"
+#include "AppPrefs.h"
+#include "Os8Widgets.h"
 
 #include <algorithm>
 #include <functional>
 #include <memory>
 #include <vector>
 
-class WindowComponent : public juce::Component
+class WindowComponent : public juce::Component,
+                        private AppPrefs::Listener
 {
 public:
     WindowComponent (se::Engine& engine, uint64_t id);
+    ~WindowComponent() override;
 
     uint64_t windowId() const noexcept { return id; }
 
-    static constexpr int kDefaultWidth = 380;
-    static constexpr int kMinWidth = 200;
+    static constexpr int kDefaultWidth = 533;   // the design's 523 + the border ring
+    static constexpr int kMinWidth = 330;
     static constexpr int kMinLaneH = 20;
     static constexpr int kMaxLaneH = 400;
 
@@ -56,15 +67,17 @@ public:
     /** Write this window's desired size and position back to the engine's Window. */
     void storeGeometry();
 
-    /** Flat colour this window is painted in. */
-    void setTint (juce::Colour c) { tint = c; repaint(); }
+    /** The theme colour this window is painted in: its face and its speakers. */
+    void setTint (juce::Colour c) { if (c != tint) { tint = c; repaint(); } }
+
+    /** The mixer slot shown in the status row's little box. */
+    void setSlotNumber (int n) { if (slot != n) { slot = n; repaint(); } }
 
     /** Canvas selection state — what the effects panel acts on. */
     void setSelected (bool shouldBeSelected);
     bool isSelected() const noexcept { return selected; }
 
-    /** Is audio input live? The record button is red when it is and grey when it is
-        not, which is the only place the app says whether input is on. */
+    /** Is audio input live? Record is enabled when it is. */
     void setRecordEnabled (bool enabled);
 
     /** The audio was rewritten under us — drop the cached peaks.
@@ -77,7 +90,7 @@ public:
     std::unique_ptr<se::SoundDocument>* clipboard = nullptr;
 
     /** What the application menus and their shortcuts can ask a Window to do. The
-        Window no longer reads those keys itself: the shortcut table (AppCommands)
+        Window does not read those keys itself: the shortcut table (AppCommands)
         binds them once for the whole app and routes them here, to the selected
         Window. */
     enum class Action
@@ -111,13 +124,15 @@ public:
     std::function<void (juce::Point<int>)> onDragged;
     /** Title-bar drag finished — settle into the layout. */
     std::function<void()> onDropped;
-    /** The record button was clicked while greyed — i.e. while audio input is muted.
-        The canvas routes this to the audio device settings, which is where the input
-        gets turned on. Left null in a plugin build, where the host owns the device. */
+    /** Source was clicked. Until the audio-source popup exists (step 9) the canvas
+        routes this to the audio device settings, which is where input is turned on.
+        Left null in a plugin build, where the host owns the device. */
     std::function<void()> onRecordRequested;
 
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
+    bool hitTest (int x, int y) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp   (const juce::MouseEvent&) override;
@@ -125,14 +140,11 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseEnter (const juce::MouseEvent&) override;
     void mouseExit  (const juce::MouseEvent&) override;
-    // The active window is the one holding keyboard focus — i.e. the one ⌘X/⌘C/⌘V
-    // and Delete act on. Highlighting it makes that otherwise invisible.
-    void focusGained (FocusChangeType) override;
-    void focusLost   (FocusChangeType) override;
     bool keyPressed (const juce::KeyPress&) override;
 
 private:
     se::SoundDocument* doc() const noexcept { return engine.editDoc (id); }
+    se::Window* engineWindow() const noexcept { return engine.windowById (id); }
     // Publish the edit AND invalidate the waveform cache (content may have changed
     // without a size change, e.g. silence — the size-based cache wouldn't notice).
     void commit()   { engine.commitEdit (id); cachedWidth = -1; repaint(); }
@@ -141,86 +153,95 @@ private:
     /** Mouse position in canvas ("world") coordinates — stable while this window
         moves or the canvas is zoomed, unlike local or screen coordinates. */
     juce::Point<int> parentPos (const juce::MouseEvent&) const;
+    void appPrefChanged (const juce::String& key) override;
 
-    // geometry
-    int numTracks() const noexcept;
-    int laneHeight() const noexcept { return laneH; }
-    // Title bar, then the content inset on all four sides, with a gap above and
-    // below the block of lanes and another under the navigator — five margins of
-    // air. Plus the lane block's own padding, top and bottom, which is height the
-    // lanes themselves never get to use.
+    // --- geometry (Figma "Sound-window", in body coordinates) -------------------
+    //
+    // The component is the window body plus a ring around it for the border, which
+    // is 2 px at rest, 3 px under the pointer and 5 px when selected — growing
+    // OUTWARD, as the design draws it. The ring is always there, so neighbours in
+    // the grid never overlap, and clicks in its unused part go through to the canvas.
+    static constexpr int kRing = 5;
+    static constexpr int kTitleH = 21;
+    static constexpr int kStatusH = 30;
+    static constexpr int kZoomH = 26;
+    static constexpr int kTransportH = 34;
+    static constexpr int kBottomH = 4;
+    static constexpr int kSideInset = 4;      // window-content's spacers, left and right
+    static constexpr int kVoicesW = 41;       // the speaker column
+    static constexpr int kMoveW = 24;         // the drag-handle column
+    static constexpr int kNewDelW = 24;       // new-track / trash column
+    static constexpr int kLaneH = 64;         // default track height
     static constexpr int chromeHeight() noexcept
-    { return kTitleH + kInfoH + kNavH + kTransportH + 5 * kMargin + 2 * kPad; }
-    juce::Rectangle<int> resizeGripBounds() const;
-    /** Everything below the title bar, inset from the frame. The title bar is the
-        only thing still running edge to edge: it belongs to the frame, not to the
-        contents. */
-    juce::Rectangle<int> contentRect() const;
-    juce::Rectangle<int> infoRect() const;
-    juce::Rectangle<int> addTrackButton() const;
-    /** The block holding every lane — between the info strip and the transport. This
-        is the FRAMED box; the lanes live inside lanesInner(). */
-    juce::Rectangle<int> lanesRect() const;
-    /** Inside the lane block's frame, where the lanes are actually laid out. */
-    juce::Rectangle<int> lanesInner() const;
-    juce::Rectangle<int> laneRect (int t) const;
-    /** One cell of a track's output-channel selector: 0 = L, 1 = L+R, 2 = R. */
-    juce::Rectangle<int> outRect (int t, int which) const;
-    /** Which cell a track's routing currently reads as, or -1 for neither channel. */
-    static int outSelection (const se::Track&) noexcept;
-    juce::Rectangle<int> ctrlRect (int t, int which) const;   // 0=up 1=down 2=trash
+    { return kTitleH + kStatusH + kZoomH + kTransportH + kBottomH + 2 * kRing; }
+
+    juce::Rectangle<int> body() const;
+    juce::Rectangle<int> titleBar() const;
+    juce::Rectangle<int> statusArea() const;
+    juce::Rectangle<int> tracksArea() const;
+    juce::Rectangle<int> trackRow (int t) const;
+    juce::Rectangle<int> speakerBox (int t, bool right) const;
     juce::Rectangle<int> waveRect (int t) const;
-    /** The navigator strip: zoom in / zoom out / whole sound, then ◀ well ▶. */
-    juce::Rectangle<int> navRect() const;
-    /** One navigator button: 0 = zoom in, 1 = zoom out, 2 = whole sound,
-        3 = pan left, 4 = pan right. */
-    juce::Rectangle<int> navButton (int i) const;
-    /** The white well between the two arrows — the whole sound at a glance. */
-    juce::Rectangle<int> navWellRect() const;
-    /** Inside the well's frame, where the ticks, the loop block and the view bar
-        are actually drawn. Clicks map through the same rectangle, so what you aim
-        at is what you hit. */
-    juce::Rectangle<int> navWellInner() const;
-    void drawNavIcon (juce::Graphics&, int which, juce::Rectangle<int> button) const;
-    juce::Rectangle<int> transportBounds() const;
-    juce::Rectangle<int> transportButton (int i) const;       // 0..kNumTransportButtons-1
-    /** Draw transport symbol `which` inside `button`, in the current colour. The
-        symbols are paths, not text: ● ■ ▶ ↻ have wildly different metrics at any
-        one point size, so glyphs cannot be made to match. */
-    void drawTransportSymbol (juce::Graphics&, int which, juce::Rectangle<int> button,
-                              bool playing) const;
-    juce::Rectangle<int> closeBoxBounds() const;
+    juce::Rectangle<int> moveHandle (int t) const;
+    juce::Rectangle<int> newTrackHandle() const;
+    juce::Rectangle<int> trashRect() const;
+    juce::Rectangle<int> zoomArea() const;
+    /** 0 zoom out, 1 zoom in, 2 whole sound, 3 ◀, 4 ▶. */
+    juce::Rectangle<int> zoomButton (int i) const;
+    /** The white overview between the arrows: the whole sound at a glance. */
+    juce::Rectangle<int> overviewRect() const;
+    juce::Rectangle<int> transportArea() const;
+    juce::Rectangle<int> gripRect() const;
+    juce::Rectangle<int> closeBox() const;
+    juce::Rectangle<int> muteBox() const;
+    juce::Rectangle<int> soloBox() const;
     /** The title bar's name area — what the name is drawn in, and edited in. */
     juce::Rectangle<int> nameBounds() const;
+    int numTracks() const noexcept;
 
+    // --- drawing ---------------------------------------------------------------
+    void paintTitle (juce::Graphics&, const se::SoundDocument&, bool muted, bool soloed);
+    void paintStatus (juce::Graphics&, const se::SoundDocument&);
+    void paintTracks (juce::Graphics&, const se::SoundDocument&, bool muted);
+    void paintZoomBar (juce::Graphics&, const se::SoundDocument&);
+    void paintGrip (juce::Graphics&);
+
+    // --- the selection readout --------------------------------------------------
+    /** Bytes → the readout's unit (s / ms / samples) and back. */
+    double toUnits (size_t bytes) const;
+    size_t fromUnits (double value) const;
+    juce::String formatUnits (double value) const;
+    void configureSelectionFields();
+    void updateSelectionFields (bool force = false);
+    void commitSelectionField (int which);   // 0 start, 1 length, 2 end
+
+    // --- transport ----------------------------------------------------------------
     void togglePlayPause();
+    void updateTransportButtons();
+
     /** Select every track end to end (triple-click, ⌘A) and publish it. */
     void selectAllAudio();
     void beginNameEdit();
     void endNameEdit (bool keepChanges);
-    /** Left edge of the shared byte-time axis, and its width. Every lane's waveform
-        is drawn on it, so the selection lines up across tracks. */
+    void updateHover();
+
+    // --- the shared byte axis and the view ----------------------------------------
     int    waveOriginX() const noexcept;
     int    waveWidth() const noexcept;
     size_t byteAtX (int x, size_t maxSize) const noexcept;
     /** Where a byte lands on the axis. Zoomed in this is routinely OFF the lane, on
         either side — every caller has to clamp or skip. */
     int    xAtByte (size_t b, size_t maxSize) const noexcept;
-
-    // --- the view (zoom / pan) ---
-    /** Smallest fraction of the document worth showing: one frame per pixel column.
-        Past that there is no more detail to reveal, only emptier columns. */
+    /** Smallest fraction of the document worth showing: one frame per pixel column. */
     double minSpanFrac() const noexcept;
-    /** Pull the view back inside the document — after a zoom, a pan, a resize (the
-        floor moves with the lane width) or an edit that changed the length. */
     void   clampView() noexcept;
     void   zoomBy (double factor);
-    /** Scroll by `pages` screenfuls, signed. */
     void   panBy (double pages);
-    /** Centre the view on the point of the well the pointer is over. */
-    void   setViewCentreFromWellX (int x);
-    /** Which track a y in window coordinates falls in, clamped to the real ones. */
+    void   setViewCentreFromOverviewX (int x);
+    /** Which track a y falls in, clamped to the real ones. */
     int    trackAtY (int y, int numTracks) const noexcept;
+    /** The gap a dragged track or new track would land in: 0 = above the first. */
+    int    insertionAtY (int y, int numTracks) const noexcept;
 
     se::Engine& engine;
     uint64_t id;
@@ -229,80 +250,33 @@ private:
     // anything that (re)starts playback must clear this too.
     bool advanceEnabled = false;
 
-    // Transport: record / stop / play-pause / 2x / loop, square, centred as a
-    // group. The strip is sized from the buttons, not the other way round.
-    static constexpr int kNumTransportButtons = 5;
-    static constexpr int kBtnSize = 28;
-    static constexpr int kBtnGap = 5;
-    static constexpr int kBtnMargin = 4;
-
-    static constexpr int kTitleH = 18;
-    static constexpr int kInfoH = 28;
-    // Two different kinds of air, and they are not interchangeable:
-    //   kMargin — OUTSIDE each box. Between the window frame and the content block,
-    //             and between the stacked boxes (info / lanes / transport).
-    //   kPad    — INSIDE a box. Between a box's own border and what sits in it, so
-    //             the selector column, the waveform and the info text stop touching
-    //             the frame they are drawn in.
-    static constexpr int kMargin = 5;
-    static constexpr int kPad = 4;
-    static constexpr int kTransportH = kBtnSize + 2 * kBtnMargin;
-
-    // Navigator: three square buttons, then ◀ well ▶ taking whatever is left.
-    static constexpr int kNavH = 20;
-    static constexpr int kNavBtnW = 20;
-    static constexpr int kNavArrowW = 16;
-    static constexpr int kNavGap = 3;
-
-    static constexpr int kLaneH = 48;      // default lane height
-    // Wide enough for "L+R" — the output-channel selector is three stacked cells,
-    // not two boxes, and a label that cannot be read is not a control.
-    static constexpr int kLrW = 22;
-    static constexpr int kCtrlW = 14;
-    static constexpr int kGripW = 14;
-
-    // Border weight carries the state: plain, hovered, active (keyboard focus).
-    static constexpr int kBorderIdle = 1;
-    static constexpr int kBorderHover = 2;
-    static constexpr int kBorderActive = 4;
-
-    // Height of one track lane. This is the only thing a vertical resize changes:
-    // total height is always chromeHeight() + numTracks() * laneH.
     int laneH = kLaneH;
-
-    // Width this window asks for; the grid may render it wider. See preferredWidth().
     int desiredW = kDefaultWidth;
-
-    juce::Colour tint { 0xffbfbfbf };
+    int slot = 0;
+    juce::Colour tint { os8::colour::gray100 };   // Placeholder-gray-100 until painted
 
     // The visible slice of the document, as FRACTIONS of the longest track rather
     // than byte counts — so a cut or a paste rescales the view instead of leaving
     // it pointing off the end of a document that just got shorter.
-    double viewStartFrac = 0.0;   // fraction of the sound at the left edge
-    double viewSpanFrac  = 1.0;   // fraction of the sound visible; 1.0 = all of it
+    double viewStartFrac = 0.0;
+    double viewSpanFrac  = 1.0;
 
     // waveform peak cache (per track, one min/max per pixel column of waveWidth)
     int cachedWidth = -1;
     std::vector<size_t> cachedSizes;
     size_t cachedMax = 0;
-    // The peaks are computed for one view, so the view is part of the cache key.
-    // Without these, zooming redrew the same columns it had already cached.
     double cachedStartFrac = -1.0, cachedSpanFrac = -1.0;
     std::vector<std::vector<juce::Range<float>>> peaks;
 
     bool hovered = false;
-    // Selection, NOT keyboard focus. The two used to be the same thing — the
-    // active border was drawn from hasKeyboardFocus() — but a side panel with
-    // clickable controls steals focus, which would have blanked the very selection
-    // the panel depends on.
     bool selected = false;
-    // Audio input starts muted (StandalonePluginHolder's own default), so the record
-    // button starts grey. The canvas pushes the real state in on the 30 Hz tick.
     bool recordEnabled = false;
 
-    // last drawn playhead state, so refresh() can skip idle repaints
-    bool   lastPlaying = false;
+    // last drawn state, so refresh() can skip idle repaints
+    bool   lastPlaying = false, lastMuted = false, lastSoloed = false;
     size_t lastPlayhead = 0;
+    size_t lastSelSt = (size_t) -1, lastSelEnd = (size_t) -1;
+    int    lastUnit = -1;
 
     // title drag / corner resize
     bool draggingTitle = false;
@@ -313,13 +287,44 @@ private:
     // inline rename, over the title bar
     std::unique_ptr<juce::TextEditor> nameEditor;
 
-    // navigator well drag (scrubbing the view across the sound)
-    bool navDragging = false;
+    // zoom bar: which button is held, and overview scrubbing
+    int pressedZoomButton = -1;
+    bool overviewDragging = false;
+    // title boxes held
+    int pressedTitleBox = -1;   // 0 close, 1 mute, 2 solo
 
     // selection drag
     bool selecting = false;
     int  selAnchorTrack = 0;
     size_t selAnchorByte = 0;
+
+    // track drags: a track's handle (move / delete / ⌥ duplicate) or the new-track one
+    enum class TrackDrag { none, move, add };
+    TrackDrag trackDrag = TrackDrag::none;
+    int dragTrack = -1;
+    juce::Point<int> dragPoint;          // the pointer, local
+    bool dragDuplicate = false;
+
+    /** Selects this Window when one of its controls is clicked. A separate listener
+        on the children — listening to our own events too would deliver every click
+        on the Window twice. */
+    struct ChildClicks : juce::MouseListener
+    {
+        explicit ChildClicks (WindowComponent& o) : owner (o) {}
+        void mouseDown (const juce::MouseEvent&) override { if (owner.onSelected) owner.onSelected (owner.id); }
+        WindowComponent& owner;
+    };
+    ChildClicks childClicks { *this };
+
+    // the child controls
+    Os8TextField startField { os8::FieldSize::xSmall }, lengthField { os8::FieldSize::xSmall },
+                 endField { os8::FieldSize::xSmall };
+    Os8Dropdown unitDropdown { Os8Dropdown::Style::mini };
+    Os8Button sourceButton { "Source" };
+    Os8TransportButton recordButton { os8::icon::Id::record }, stopButton { os8::icon::Id::stop },
+                       pauseButton { os8::icon::Id::pause }, fastForwardButton { os8::icon::Id::fastForward },
+                       loopButton { os8::icon::Id::loop };
+    Os8ComboPlay playButton;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WindowComponent)
 };

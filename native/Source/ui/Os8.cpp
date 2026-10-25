@@ -179,7 +179,7 @@ int buttonHeight (ButtonKind k) noexcept
 }
 
 void paintButton (juce::Graphics& g, juce::Rectangle<int> bounds, ButtonKind kind,
-                  ButtonState state, const juce::String& text)
+                  ButtonState state, const juce::String& text, TextStyle style)
 {
     using namespace colour;
     const bool disabled = state == ButtonState::disabled;
@@ -218,9 +218,9 @@ void paintButton (juce::Graphics& g, juce::Rectangle<int> bounds, ButtonKind kin
     }
 
     g.setColour (disabled ? gray400 : (active ? white : black));
-    const float top = std::floor (((float) bounds.getHeight() - sizeOf (TextStyle::headline)) * 0.5f);
-    drawText (g, text, TextStyle::headline,
-              { (float) bounds.getX(), (float) bounds.getY() + top, (float) bounds.getWidth(), 12.0f },
+    const float top = std::floor (((float) bounds.getHeight() - sizeOf (style)) * 0.5f);
+    drawText (g, text, style,
+              { (float) bounds.getX(), (float) bounds.getY() + top, (float) bounds.getWidth(), sizeOf (style) },
               juce::Justification::horizontallyCentred);
 
     // The ring's own shadows come AFTER the face: Figma paints a frame's inner
@@ -882,26 +882,94 @@ void paintTitleBar (juce::Graphics& g, juce::Rectangle<int> bar, const juce::Str
     paintTitleStripes (g, { right0, bar.getY(), right1 - right0, kTitleBarHeight });
 }
 
-void paintTitleBarBox (juce::Graphics& g, juce::Point<int> o, bool pressed)
+void paintTitleBarBox (juce::Graphics& g, juce::Point<int> o, bool on, TitleBox kind)
 {
     using namespace colour;
     const juce::Rectangle<float> face ((float) o.x, (float) o.y, 11.0f, 11.0f);
     juce::Path shape;
     shape.addRectangle (face);
 
-    // window-button: a white glint below-right and a dark one above-left, the
-    // black outline outside the face, then the bevel inside.
+    // window-button's two drop shadows, outside the black outline: a white glint
+    // below-right and a dark one above-left, then the outline itself.
     g.setColour (white.withAlpha (0.5f));
-    g.fillRect (face.translated (1.0f, 1.0f).expanded (1.0f));
+    g.fillRect (face.expanded (1.0f).translated (1.0f, 1.0f));
     g.setColour (black.withAlpha (0.35f));
-    g.fillRect (face.translated (-1.0f, -1.0f).expanded (1.0f));
+    g.fillRect (face.expanded (1.0f).translated (-1.0f, -1.0f));
     g.setColour (black);
     g.fillRect (face.expanded (1.0f));
 
-    g.setColour (pressed ? gray400 : gray100);
+    if (kind == TitleBox::close)
+    {
+        // Sunken: light at the bottom-right, grey at the top-left.
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xfffffdfd), face.getBottomRight(),
+                                                 juce::Colour (0xffa1a1a1), face.getTopLeft(), false));
+    }
+    else
+    {
+        g.setColour (on ? gray600 : gray100);
+    }
     g.fillPath (shape);
-    innerShadow (g, shape, pressed ? -1.0f : 1.0f, pressed ? -1.0f : 1.0f, 0, white);
-    innerShadow (g, shape, pressed ? 1.0f : -1.0f, pressed ? 1.0f : -1.0f, 0, black.withAlpha (0.35f));
+
+    // Inner bevel: a 1 px light band top-left, a dark one bottom-right (measured on
+    // Figma's 1x export; the component's "spread 1" does not widen it).
+    innerShadow (g, shape,  1.0f,  1.0f, 0, white);
+    innerShadow (g, shape, -1.0f, -1.0f, 0, black.withAlpha (0.35f));
+
+    if (kind == TitleBox::mute || kind == TitleBox::solo)
+    {
+        static const juce::Path letterM = juce::Drawable::parseSVGPath (
+            "M5.26134 10H4V4H5.46436L6.98056 7.41978H7.02808L8.54428 4H10V10H8.72138V6.25934H8.65227"
+            "L7.41253 9.0989H6.57883L5.32613 6.25934H5.26134V10Z");
+        static const juce::Path letterS = []
+        {
+            auto p = juce::Drawable::parseSVGPath (
+                "M 0 4.2415 L 1.6919 4.2415 C 1.7063 4.3347 1.7459 4.4237 1.8108 4.5085 C 1.8793 4.5932 1.9712 4.6681 2.0865 4.733"
+                " C 2.2018 4.7952 2.3387 4.8446 2.4973 4.8814 C 2.6559 4.9181 2.836 4.9364 3.0378 4.9364 C 3.3153 4.9364 3.5423 4.9082 3.7189 4.8517"
+                " C 3.8991 4.7924 4.0324 4.7133 4.1189 4.6144 C 4.2054 4.5127 4.2486 4.3983 4.2486 4.2712 C 4.2486 4.0904 4.1568 3.952 3.973 3.8559"
+                " C 3.7892 3.7599 3.5171 3.6822 3.1568 3.6229 L 2.1135 3.4449 C 1.7207 3.3828 1.3766 3.2839 1.0811 3.1483 C 0.7892 3.0127 0.5604 2.8347 0.3946 2.6144"
+                " C 0.2324 2.3912 0.1514 2.1201 0.1514 1.8008 C 0.1514 1.4308 0.2721 1.1116 0.5135 0.8432 C 0.7586 0.572 1.0955 0.3644 1.5243 0.2203"
+                " C 1.9568 0.0734 2.4577 0 3.027 0 C 3.6432 0 4.1586 0.0805 4.573 0.2415 C 4.991 0.3997 5.3081 0.6088 5.5243 0.8686"
+                " C 5.7405 1.1285 5.8559 1.4082 5.8703 1.7076 L 4.227 1.7076 C 4.2054 1.5918 4.1459 1.4845 4.0486 1.3856"
+                " C 3.955 1.2867 3.8216 1.2062 3.6486 1.1441 C 3.4793 1.0819 3.2703 1.0508 3.0216 1.0508 C 2.6649 1.0508 2.391 1.113 2.2 1.2373"
+                " C 2.0126 1.3588 1.9189 1.5127 1.9189 1.6992 C 1.9189 1.8545 2.0054 1.9802 2.1784 2.0763 C 2.355 2.1723 2.5982 2.2444 2.9081 2.2924"
+                " L 3.9784 2.4661 C 4.3568 2.5226 4.6973 2.6144 5 2.7415 C 5.3063 2.8686 5.5495 3.0438 5.7297 3.267 C 5.9099 3.4901 6 3.7782 6 4.1314"
+                " C 6 4.4986 5.8847 4.8234 5.6541 5.1059 C 5.4234 5.3856 5.0829 5.6045 4.6324 5.7627 C 4.1856 5.9209 3.6306 6 2.9676 6"
+                " C 2.4486 6 2.0036 5.952 1.6324 5.8559 C 1.2613 5.7599 0.9568 5.6285 0.7189 5.4619 C 0.4811 5.2952 0.3045 5.1073 0.1892 4.8983"
+                " C 0.0739 4.6864 0.0108 4.4675 0 4.2415 Z");
+            p.applyTransform (juce::AffineTransform::translation (4.0f, 4.0f));
+            return p;
+        }();
+
+        // The letters sit in a 15 px export frame whose box starts at (2, 2).
+        g.setColour (on ? white : black);
+        g.fillPath (kind == TitleBox::mute ? letterM : letterS,
+                    juce::AffineTransform::translation (face.getX() - 2.0f, face.getY() - 2.0f));
+    }
+}
+
+void paintSmallBevelButton (juce::Graphics& g, juce::Rectangle<int> faceBounds, bool pressed)
+{
+    using namespace colour;
+    const auto face = faceBounds.toFloat();
+    const auto outer = face.expanded (1.0f);
+    juce::Path outerShape, shape;
+    outerShape.addRectangle (outer);
+    shape.addRectangle (face);
+
+    g.setColour (gray400);
+    g.drawRect (outer, 1.0f);
+    g.setColour (pressed ? gray300 : gray100);
+    g.fillPath (shape);
+    if (pressed)
+    {
+        innerShadow (g, outerShape,  2.0f,  2.0f, 0, black.withAlpha (0.25f));
+        innerShadow (g, outerShape, -1.0f, -1.0f, 0, white.withAlpha (0.5f));
+    }
+    else
+    {
+        innerShadow (g, outerShape,  2.0f,  2.0f, 0, juce::Colour (0xfffffdfd));
+        innerShadow (g, outerShape, -2.0f, -2.0f, 0, gray400);
+    }
 }
 
 } // namespace os8

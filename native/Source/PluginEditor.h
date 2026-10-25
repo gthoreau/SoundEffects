@@ -91,6 +91,10 @@ public:
         their own actions. Doing work here would run every item twice. */
     void menuItemSelected (int, int) override {}
 
+    /** Run one refresh tick now (the canvas, the mixer, the panel) — for the
+        off-screen snapshot, which has no timer running. */
+    void refreshNow() { timerCallback(); }
+
     void paint (juce::Graphics&) override;
     void resized() override;
     /** Return applies the effect that is open in the panel. Everything else is in

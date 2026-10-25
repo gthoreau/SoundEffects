@@ -160,7 +160,7 @@ enum class ButtonState { normal, applied, active, disabled };
     secondary the 20 px plain one. `applied` is the brief "Done!" state — the
     caller passes the text it wants shown. */
 void paintButton (juce::Graphics&, juce::Rectangle<int>, ButtonKind, ButtonState,
-                  const juce::String& text);
+                  const juce::String& text, TextStyle = TextStyle::headline);
 
 /** The height Figma gives each kind of button. */
 int buttonHeight (ButtonKind) noexcept;
@@ -278,6 +278,9 @@ void paintMenuFrame (juce::Graphics&, juce::Rectangle<float>);
 
 inline constexpr int kTitleBarHeight = 21;
 
+/** What an 11 x 11 title-bar box shows. */
+enum class TitleBox { close, mute, solo, plain };
+
 /** The engraved stripes of a title bar: 7 one-pixel lines, 2 px apart, starting 4 px
     down, within `area` (whose height should be the bar's, 21 px). */
 void paintTitleStripes (juce::Graphics&, juce::Rectangle<int> area);
@@ -288,8 +291,13 @@ void paintTitleStripes (juce::Graphics&, juce::Rectangle<int> area);
 void paintTitleBar (juce::Graphics&, juce::Rectangle<int> bar, const juce::String& title,
                     bool active, int leftInset, int rightInset);
 
-/** An 11 x 11 title-bar box (close box, M, S, collapse): bevelled face, 1 px black
-    stroke outside it, drawn with its face's top-left at `origin`. */
-void paintTitleBarBox (juce::Graphics&, juce::Point<int> origin, bool pressed);
+/** An 11 x 11 title-bar box ("window-button" 203:4347): bevelled face, 1 px black
+    stroke outside it, drawn with its face's top-left at `origin`. The close box has a
+    sunken gradient face; M and S carry their letter and go dark when `on`. */
+void paintTitleBarBox (juce::Graphics&, juce::Point<int> origin, bool on, TitleBox = TitleBox::plain);
+
+/** A 16 px zoom-bar button ("zoom-controls" 589:8166): the transport-button bevel at
+    a smaller size, the outside stroke grown into by the bevel. */
+void paintSmallBevelButton (juce::Graphics&, juce::Rectangle<int> face, bool pressed);
 
 } // namespace os8

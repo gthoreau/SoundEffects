@@ -29,6 +29,7 @@ public:
 
     void setAppliedText (const juce::String& t) { appliedText = t; repaint(); }
     void setKind (os8::ButtonKind k)            { kind = k; repaint(); }
+    void setTextStyle (os8::TextStyle s)        { textStyle = s; repaint(); }
     os8::ButtonKind getKind() const noexcept    { return kind; }
 
     bool isShowingApplied() const noexcept      { return applied; }
@@ -39,6 +40,7 @@ private:
     void timerCallback() override;
 
     os8::ButtonKind kind;
+    os8::TextStyle textStyle = os8::TextStyle::headline;
     juce::String appliedText { "Done!" };
     bool applied = false;
 

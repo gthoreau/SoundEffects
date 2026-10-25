@@ -42,6 +42,7 @@
 #include "ui/AppMenuBar.h"
 #include "ui/MacWindowChrome.h"
 #include "ui/Os8Gallery.h"
+#include "engine/Import.h"
 
 #include <memory>
 
@@ -709,9 +710,36 @@ private:
         if (ours == nullptr) return false;
 
         ours->setCanvasName ("Untitled Canvas");
-        ours->newWindow();
-        ours->newWindow();
+
+        // One real sound Window, as Figma's Sound-window shows one: two tracks at
+        // 22.1 kHz / 8 bits, 4.52 s long, with a selection in the first track.
+        if (auto* sfx = dynamic_cast<SoundEffectsAudioProcessor*> (processor.get()))
+        {
+            const int frames = (int) (22050.0 * 4.52);
+            std::vector<std::vector<float>> channels (2, std::vector<float> ((size_t) frames));
+            juce::Random rng (7);
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < frames; ++i)
+                {
+                    const float env = 0.2f + 0.8f * std::abs (std::sin ((float) i / 2600.0f + (float) c));
+                    channels[(size_t) c][(size_t) i] = env * (rng.nextFloat() * 2.0f - 1.0f) * 0.9f;
+                }
+            auto doc = se::makeDocumentFromFloat (channels, 22050.0, 8, "Window name");
+            const auto fs = (size_t) doc->frameSize();
+            doc->firstSelTrack = doc->lastSelTrack = 1;
+            se::setSelection (*doc, (size_t) (frames * 0.33) * fs, (size_t) (frames * 0.5) * fs);
+            sfx->engine().addWindow (std::move (doc));
+
+            // Drain the engine's queue so the Window exists, then let the editor
+            // build its component.
+            processor->prepareToPlay (44100.0, 512);
+            juce::AudioBuffer<float> buffer (2, 512);
+            juce::MidiBuffer midi;
+            processor->processBlock (buffer, midi);
+            ours->refreshNow();
+        }
         ours->setSize (1440, 900);
+        ours->refreshNow();
         bool ok = writePng (ours->createComponentSnapshot (ours->getLocalBounds(), true, 1.0f), png);
 
         const auto names = ours->getMenuBarNames();

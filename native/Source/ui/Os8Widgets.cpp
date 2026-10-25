@@ -33,7 +33,7 @@ void Os8Button::paintButton (juce::Graphics& g, bool, bool down)
                                      : ButtonState::normal;
 
     os8::paintButton (g, getLocalBounds(), kind, state,
-                      state == ButtonState::applied ? appliedText : getButtonText());
+                      state == ButtonState::applied ? appliedText : getButtonText(), textStyle);
 }
 
 // --- Os8Toggle ----------------------------------------------------------------

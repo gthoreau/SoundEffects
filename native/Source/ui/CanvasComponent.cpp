@@ -165,9 +165,18 @@ void CanvasComponent::refresh()
     if (selectedId != 0 && find (selectedId) == nullptr)
         selectWindow (0);
 
-    // Refresh each (transport state / playhead / repaint).
+    // Refresh each (transport state / playhead / repaint), and keep each one's
+    // colour and mixer slot in step: both can change from elsewhere (Window ▸ Color,
+    // the mixer). The slot is the Window's place in the mixer's order until the
+    // mixer has slots of its own (step 4).
     for (auto& w : windows)
+    {
+        const auto it = std::find (ids.begin(), ids.end(), w->windowId());
+        w->setSlotNumber ((int) (it - ids.begin()) + 1);
+        if (auto* ew = engine.windowById (w->windowId()); ew != nullptr && ew->tint >= 0)
+            w->setTint (tintFromPalette (ew->tint));
         w->refresh();
+    }
 }
 
 void CanvasComponent::invalidateWaveform (uint64_t id)
