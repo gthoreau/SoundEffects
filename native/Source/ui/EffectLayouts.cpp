@@ -14,6 +14,13 @@ Cell label (float x, float y, string t, bool small = false)
     return c;
 }
 
+Cell labelRight (float x, float y, int w, string t, bool small = false)
+{
+    Cell c = label (x, y, std::move (t), small);
+    c.w = w; c.value = 1;
+    return c;
+}
+
 Cell field (string key, float x, float y, int w, string unitsKey = {}, int flags = 0, string gate = {})
 {
     Cell c; c.kind = Kind::field; c.x = x; c.y = y; c.w = w; c.key = std::move (key);
@@ -119,7 +126,7 @@ void hoseGroup (std::vector<Row>& rows, const string& key, const string& caption
     const float endIconX = inUnits ? 163.0f : 164.0f;
     const string gate = key + ".on";
 
-    rows.push_back (row (20, { check (gate, 0, 4, caption), label (hintX, 5.5f, hint, true) }));
+    rows.push_back (row (20, { check (gate, 0, 4, caption), labelRight (hintX, 5.5f, 250 - (int) hintX, hint, true) }));
 
     const auto pair = [&] (const string& what, const string& first, const string& second, const string& l)
     {
@@ -233,7 +240,7 @@ std::map<string, Layout> build()
     m["Shelving"] = iirLayout ("Shelving");
 
     m["Flanger"] = with (setupRows(), "Flanger", {
-        row (34, { label (0, 12, "Flange percentage:"), field ("flangePercent", 112, 9, 43), label (159, 12, "%"),
+        row (34, { label (0, 12, "Flange percentage:"), field ("flangePercent", 112, 4, 43, {}, large), label (159, 12, "%"),
                    check ("feedback", 189, 11, "Feedback") }),
         gap (8),
         row (25, { label (0, 7.5f, "Delay:"), field ("delay", 44, 4.5f, 47, "delayUnits"), units ("delayUnits", 95, 4) }),
@@ -323,7 +330,7 @@ std::map<string, Layout> build()
         gap (14),
         row (20, { radio ("action", 2, 0, 4, "Shrink") }),
         row (20, { radio ("action", 1, 0, 4, "Expand") }),
-        row (28, { label (0, 4, "the selection to the closest"), label (0, 14, "zero-crossing on") }),
+        row (28, { label (0, 4, "the selection to the closest zero-crossing"), label (0, 14, "on") }),
         row (20, { radio ("side", 3, 0, 4, "Both sides") }),
         row (20, { radio ("side", 2, 0, 4, "The right") }),
         row (20, { radio ("side", 1, 0, 4, "The left") }),

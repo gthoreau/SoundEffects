@@ -141,6 +141,9 @@ public:
     /** Called with the field's text when an edit is committed. */
     std::function<void (const juce::String&)> onCommit;
 
+    /** Commit what is typed now, as losing focus would. */
+    void commitNow() { commit(); }
+
     /** Return was pressed, after the value was committed. */
     std::function<void()> onReturn;
 

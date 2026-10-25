@@ -37,6 +37,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <vector>
 
 class EffectsPanelComponent : public juce::Component,
@@ -105,6 +106,21 @@ private:
     bool runModule (const se::EffectModule& module, const se::Settings& settings);
     void updateStatus();
 
+    // --- the open tray's controls (EffectLayouts says where, the schema says what) ---
+    struct TrayPart
+    {
+        std::unique_ptr<juce::Component> comp;
+        juce::Rectangle<int> rel;              // inside the tray's content box
+    };
+    void buildTray();
+    void clearTray();
+    void refreshTray();
+    void placeTray();
+    /** Is the control gated on `key` live? An empty key always is. */
+    bool gateOn (const std::string& key) const;
+    const se::SchemaItem* schemaItem (const std::string& key) const;
+    void prefillSpanFields();
+
     const se::SoundDocument* targetDoc() const;
 
     se::Engine& engine;
@@ -120,6 +136,12 @@ private:
     const se::EffectModule* openModule = nullptr;
     se::Settings working;            // the open module's live settings
     std::unique_ptr<Os8Button> applyButton, resetButton;
+    std::vector<TrayPart> trayParts;
+    std::vector<std::function<void()>> trayRefreshers;
+    se::SettingsSchema openSchema;
+    std::set<std::string> touchedKeys;       // scope-defaulted fields the user typed over
+    bool allowExtend = false;                // answers AskDoExtend() for modules that grow
+    std::map<std::string, se::Settings> remembered;   // last-used values, per module, this session
     se::Applicability openApplicability = se::Applicability::NoWindow;
 
     // What the header's right half says: the scope Apply would eat, or — after a run —

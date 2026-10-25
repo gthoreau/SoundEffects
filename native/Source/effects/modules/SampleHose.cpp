@@ -56,6 +56,17 @@ struct HoseParam
 HoseParam readParam (const Settings& prefs, const std::string& key)
 {
     HoseParam p;
+
+    // 0.4.0: each of the five groups has an enabling checkbox in the design
+    // ("<group>.on", absent = on, so every older setting reads as before). An
+    // unchecked group sits at its factory resting value: no ramp and no variance.
+    if (! getBool (prefs, key + ".on", true))
+    {
+        const double rest = key == "pan" ? 50.0 : key == "bite" ? 0.0 : key == "period" ? 10000.0 : 100.0;
+        p.initialValue = p.finalValue = rest;
+        return p;
+    }
+
     p.initialValue    = getDouble (prefs, key + ".initialValue");
     p.initialVariance = getDouble (prefs, key + ".initialVariance");
     p.finalValue      = getDouble (prefs, key + ".finalValue");

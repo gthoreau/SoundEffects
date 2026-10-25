@@ -113,6 +113,72 @@ void paintTrayFrame (Graphics& g, Rectangle<int> r)
     g.drawRect (r, 1);
 }
 
+// --- schema item kinds ---------------------------------------------------------------
+
+bool isDuration (const se::SchemaItem* i)
+{
+    return i != nullptr && (i->type == se::ItemType::EditFieldUnitDependent
+                            || i->type == se::ItemType::EditFieldUnitDependentNoSave);
+}
+
+bool isDecimal (const se::SchemaItem* i)
+{
+    return i != nullptr && (i->type == se::ItemType::EditFieldNumDecimal
+                            || i->type == se::ItemType::EditFieldNumDecimalNoSave);
+}
+
+const char* const kUnitNames[] = { "Samples", "Bytes", "Seconds", "Milliseconds", "Meters", "Feet" };
+
+/** The field's own step and places for a unit (Os8TextField decides, once). */
+Os8TextField::Unit fieldUnit (se::Unit u)
+{
+    switch (u)
+    {
+        case se::Unit::Samples:      return Os8TextField::Unit::samples;
+        case se::Unit::Bytes:        return Os8TextField::Unit::bytes;
+        case se::Unit::Milliseconds: return Os8TextField::Unit::milliseconds;
+        case se::Unit::Seconds: case se::Unit::Meters: case se::Unit::Feet: break;
+    }
+    return Os8TextField::Unit::seconds;
+}
+
+const char* const kNotes[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+
+/** Rate presets of Resample Rate's popup: Hz, label. */
+struct RatePreset { double hz; const char* label; };
+const RatePreset kRates[] = {
+    { 8000.0, "8 kHz" }, { 11025.0, "11.025 kHz" }, { 22050.0, "22.05 kHz" },
+    { 22254.5454, "22.254 kHz - Mac" }, { 32000.0, "32 kHz" }, { 44100.0, "44.1 kHz - CD" },
+    { 48000.0, "48 kHz - DAT" }, { 96000.0, "96 kHz" },
+};
+
+/** A caption in the tray. The face's own "±" is not the glyph the design shows (Figma
+    falls back to another face for it), so it is drawn by hand: a plus over a bar, 6 px
+    square, advancing 8. */
+void drawCaption (Graphics& g, const juce::String& text, os8::TextStyle style, float x, float y)
+{
+    const auto sign = juce::String (juce::CharPointer_UTF8 ("\xc2\xb1"));
+    const int at = text.indexOf (sign);
+    const float h = os8::lineHeightOf (style);
+
+    if (at < 0)
+    {
+        os8::drawText (g, text, style, { x, y, (float) os8::widthOf (text, style) + 2.0f, h });
+        return;
+    }
+
+    const auto before = text.substring (0, at), after = text.substring (at + 1);
+    os8::drawText (g, before, style, { x, y, (float) os8::widthOf (before, style) + 2.0f, h });
+
+    const int gx = (int) std::round (x) + os8::widthOf (before, style);
+    const int gy = (int) std::round (y);
+    g.fillRect (gx + 2, gy + 0, 2, 4);     // the plus: stem and arm
+    g.fillRect (gx, gy + 2, 6, 1);
+    g.fillRect (gx, gy + 5, 6, 1);         // the bar beneath
+    os8::drawText (g, after, style, { x + (float) (os8::widthOf (before, style) + 8), y,
+                                      (float) os8::widthOf (after, style) + 2.0f, h });
+}
+
 /** Trim `text` to `width` px with "..." — the header's lines are short by design. */
 juce::String fitText (const juce::String& text, os8::TextStyle style, int width)
 {
@@ -256,6 +322,11 @@ void EffectsPanelComponent::refresh()
     }
 
     updateStatus();
+    if (openModule != nullptr)
+    {
+        prefillSpanFields();
+        refreshTray();
+    }
     content->repaint();
 }
 
@@ -389,6 +460,7 @@ void EffectsPanelComponent::layoutAll()
         }
     }
 
+    placeTray();
     content->setSize (viewport.getMaximumVisibleWidth(), std::max (y, viewport.getHeight()));
 }
 
@@ -426,8 +498,15 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     closeTray();
     openModule = module;
     resultLine.clear();
-    working = module->defaults ? module->defaults() : se::Settings{};
+
+    // Fields remember what they last held (§8) — for this session; setups (step 6)
+    // are what persists.
+    const auto kept = remembered.find (module->name);
+    working = kept != remembered.end() ? kept->second
+                                       : (module->defaults ? module->defaults() : se::Settings{});
+    openSchema = module->schema ? module->schema() : se::SettingsSchema{};
     openApplicability = runner.check (targetId, *module);
+    touchedKeys.clear();
 
     applyButton = std::make_unique<Os8Button> ("Apply", os8::ButtonKind::primary);
     applyButton->setWantsKeyboardFocus (false);
@@ -441,11 +520,18 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     resetButton->setMouseClickGrabsKeyboardFocus (false);
     resetButton->onClick = [this]
     {
-        if (openModule != nullptr) working = openModule->defaults ? openModule->defaults() : se::Settings{};
+        if (openModule == nullptr) return;
+        working = openModule->defaults ? openModule->defaults() : se::Settings{};
+        touchedKeys.clear();
+        prefillSpanFields();
+        refreshTray();
         content->repaint();
     };
     content->addAndMakeVisible (*resetButton);
 
+    buildTray();
+    prefillSpanFields();
+    refreshTray();
     layoutAll();
     content->repaint();
 }
@@ -467,6 +553,8 @@ juce::Rectangle<int> EffectsPanelComponent::groupFrame (int index) const
 
 void EffectsPanelComponent::closeTray()
 {
+    if (openModule != nullptr) remembered[openModule->name] = working;
+    clearTray();
     openModule = nullptr;
     applyButton.reset();
     resetButton.reset();
@@ -484,6 +572,11 @@ void EffectsPanelComponent::applyOpen()
         return;
     }
 
+    // Typing then pressing Apply must use what is on screen: the button does not take
+    // focus, so nothing has committed the field's text yet.
+    for (auto& p : trayParts)
+        if (auto* f = dynamic_cast<Os8TextField*> (p.comp.get())) f->commitNow();
+
     if (runModule (*openModule, working) && applyButton != nullptr)
         applyButton->flashApplied();
 }
@@ -499,7 +592,7 @@ bool EffectsPanelComponent::applyFromKeyboard()
 
 bool EffectsPanelComponent::runModule (const se::EffectModule& module, const se::Settings& settings)
 {
-    const se::EffectRunner::Outcome outcome = runner.apply (targetId, module, settings, false);
+    const se::EffectRunner::Outcome outcome = runner.apply (targetId, module, settings, allowExtend);
 
     if (! outcome.ran)
     {
@@ -550,6 +643,354 @@ void EffectsPanelComponent::resized()
 {
     viewport.setBounds (getLocalBounds());
     layoutAll();
+}
+
+
+// ============================================================================
+// the open tray's controls
+// ============================================================================
+
+bool EffectsPanelComponent::gateOn (const std::string& key) const
+{
+    if (key.empty()) return true;
+    // Sample Hose's "<group>.on" is absent from every older setting, and absent means on.
+    const bool onByDefault = key.size() > 3 && key.compare (key.size() - 3, 3, ".on") == 0;
+    return se::getBool (working, key, onByDefault);
+}
+
+const se::SchemaItem* EffectsPanelComponent::schemaItem (const std::string& key) const
+{
+    for (const auto& i : openSchema)
+        if (i.key == key && i.type != se::ItemType::Ignore) return &i;
+    return nullptr;
+}
+
+void EffectsPanelComponent::clearTray()
+{
+    trayRefreshers.clear();
+    trayParts.clear();
+}
+
+void EffectsPanelComponent::refreshTray()
+{
+    for (auto& r : trayRefreshers) r();
+    content->repaint();
+}
+
+void EffectsPanelComponent::placeTray()
+{
+    const auto origin = content->trayRect.getPosition() + juce::Point<int> (kTrayInset, kTrayInset);
+    for (auto& p : trayParts) p.comp->setBounds (p.rel.translated (origin.x, origin.y));
+}
+
+void EffectsPanelComponent::prefillSpanFields()
+{
+    if (openModule == nullptr) return;
+    const se::SoundDocument* doc = targetDoc();
+    if (doc == nullptr) return;
+
+    // The selection's length when there is one, the longest track's when there is not —
+    // the span the scope readout reports, so the field and the readout cannot disagree.
+    // An empty Window has no span to derive, so the generators that can run there seed
+    // at 1000 ms.
+    const se::Scope sc = runner.scope (targetId);
+    auto span = (int64_t) (sc.endByte - sc.startByte);
+    if (span <= 0)
+        span = (int64_t) se::unitToBytes (1000.0, se::Unit::Milliseconds, doc->rateHz, doc->bps);
+
+    for (const auto& item : openSchema)
+        if (item.scopeDefault && touchedKeys.count (item.key) == 0)
+            working[item.key] = se::Value (span);
+}
+
+void EffectsPanelComponent::buildTray()
+{
+    using fxlayout::Kind;
+    clearTray();
+
+    const auto* layout = fxlayout::layoutFor (openModule->name);
+    if (layout == nullptr) return;
+
+    bool hasExtend = false;
+    int rowY = fxlayout::kTitleH;
+
+    const auto add = [this] (std::unique_ptr<juce::Component> comp, juce::Rectangle<int> rel)
+    {
+        content->addAndMakeVisible (*comp);
+        auto* raw = comp.get();
+        trayParts.push_back ({ std::move (comp), rel });
+        return raw;
+    };
+
+    for (const auto& row : layout->rows)
+    {
+        for (const auto& c : row.cells)
+        {
+            const int x = (int) std::round (c.x);
+            const int y = rowY + (int) std::floor (c.y);
+            const std::string key = c.key, gate = c.gate;
+
+            switch (c.kind)
+            {
+                case Kind::label: case Kind::legendStart: case Kind::legendEnd:
+                    break;   // painted
+
+                case Kind::field:
+                {
+                    const auto size = (c.flags & fxlayout::large) ? os8::FieldSize::large : os8::FieldSize::small;
+                    auto field = std::make_unique<Os8TextField> (size);
+                    auto* f = add (std::move (field), { x, y, c.w, os8::metricsOf (size).height });
+                    auto* fp = static_cast<Os8TextField*> (f);
+                    const se::SchemaItem* item = schemaItem (key);
+                    const bool duration = isDuration (item);
+                    const bool decimal = isDecimal (item) || (c.flags & (fxlayout::fixed16 | fxlayout::kilo)) != 0;
+                    const std::string unitsKey = c.unitsKey;
+                    const int flags = c.flags;
+
+                    const auto unitNow = [this, unitsKey]
+                    {
+                        return unitsKey.empty() ? se::Unit::Milliseconds
+                             : (se::Unit) se::getInt (working, unitsKey, (int64_t) se::Unit::Milliseconds);
+                    };
+
+                    fp->onCommit = [this, fp, key, duration, decimal, flags, item, unitNow] (const juce::String& text)
+                    {
+                        const double v = text.getDoubleValue();
+                        const se::SoundDocument* doc = targetDoc();
+
+                        if (duration)
+                            working[key] = se::Value ((int64_t) (doc != nullptr
+                                ? se::unitToBytes (v, unitNow(), doc->rateHz, doc->bps)
+                                : (size_t) std::max (0.0, v)));
+                        else if (flags & fxlayout::fixed16)  working[key] = se::Value ((int64_t) se::doubleToFixed (v));
+                        else if (flags & fxlayout::kilo)     working[key] = se::Value (v * 1000.0);
+                        else if (decimal)                    working[key] = se::Value (v);
+                        else
+                        {
+                            // The schema's own bounds, where the original's settings() clamps.
+                            auto n = (int64_t) std::llround (v);
+                            if (item != nullptr && item->hasMin) n = std::max (n, (int64_t) item->min);
+                            if (item != nullptr && item->hasMax) n = std::min (n, (int64_t) item->max);
+                            working[key] = se::Value (n);
+                        }
+
+                        touchedKeys.insert (key);
+                        refreshTray();
+                        (void) fp;
+                    };
+                    fp->onReturn = [this] { applyFromKeyboard(); };
+
+                    trayRefreshers.push_back ([this, fp, key, duration, decimal, flags, item, gate, unitNow]
+                    {
+                        double shown = 0.0;
+                        int places = 0;
+                        double step = 1.0, lo = -1.0e9, hi = 1.0e9;
+
+                        if (duration)
+                        {
+                            const auto unit = unitNow();
+                            const se::SoundDocument* doc = targetDoc();
+                            const auto bytes = (size_t) std::max<int64_t> (0, se::getInt (working, key));
+                            shown = doc != nullptr ? se::bytesToUnit (bytes, unit, doc->rateHz, doc->bps) : (double) bytes;
+                            step = Os8TextField::stepFor (fieldUnit (unit));
+                            places = Os8TextField::decimalsFor (fieldUnit (unit));
+                            lo = 0.0;
+                        }
+                        else if (flags & fxlayout::fixed16)
+                        {
+                            shown = se::fixedToDouble (se::getInt (working, key));
+                            places = shown == std::floor (shown) ? 0 : 2;
+                            lo = 1.0;
+                        }
+                        else if (flags & fxlayout::kilo)
+                        {
+                            shown = se::getDouble (working, key) / 1000.0;
+                            places = 3; step = 0.01; lo = 0.0;
+                        }
+                        else if (decimal)
+                        {
+                            shown = se::getDouble (working, key);
+                            places = (flags & fxlayout::decimals4) ? 4 : 3;
+                            step = (flags & fxlayout::decimals4) ? 0.1 : 0.01;
+                        }
+                        else
+                        {
+                            shown = (double) se::getInt (working, key);
+                            if (item != nullptr && item->hasMin) lo = item->min;
+                            if (item != nullptr && item->hasMax) hi = item->max;
+                        }
+
+                        fp->setNumeric (step, places, lo, hi);
+                        // Re-seating the text would drop a caret or a selection the user is
+                        // using; only touch a field whose number actually moved.
+                        if (fp->getText().isEmpty() || std::abs (fp->getValue() - shown) > 0.5 * std::pow (10.0, -places))
+                            fp->setValue (shown);
+                        fp->setEnabled (gateOn (gate));
+                    });
+                    break;
+                }
+
+                case Kind::units:
+                {
+                    auto dd = std::make_unique<Os8Dropdown> (Os8Dropdown::Style::standard);
+                    juce::StringArray names;
+                    for (auto* n : kUnitNames) names.add (n);
+                    dd->setItems (names);
+                    auto* dp = static_cast<Os8Dropdown*> (add (std::move (dd), { x, y, c.w, os8::kDropdownHeight }));
+                    dp->onChange = [this, key] (int i) { working[key] = se::Value ((int64_t) i); refreshTray(); };
+                    trayRefreshers.push_back ([this, dp, key, gate]
+                    {
+                        dp->setSelectedIndex (juce::jlimit (0, 5, (int) se::getInt (working, key, (int64_t) se::Unit::Milliseconds)));
+                        dp->setEnabled (gateOn (gate));
+                    });
+                    break;
+                }
+
+                case Kind::choice: case Kind::setup: case Kind::curvePreset: case Kind::ratePreset:
+                case Kind::notePick: case Kind::octavePick:
+                {
+                    auto dd = std::make_unique<Os8Dropdown> (Os8Dropdown::Style::standard);
+                    juce::StringArray items;
+                    if (c.kind == Kind::choice)
+                        items = juce::StringArray::fromTokens (juce::String (c.text), "|", "");
+                    else if (c.kind == Kind::setup)
+                        items.add ("Custom");   // step 6 fills this with the saved setups
+                    else if (c.kind == Kind::curvePreset)
+                        items = { "Linear - 100%", "Custom" };
+                    else if (c.kind == Kind::ratePreset)
+                    {
+                        for (const auto& r : kRates) items.add (r.label);
+                        items.add ("Custom");
+                    }
+                    else if (c.kind == Kind::notePick)
+                        for (auto* n : kNotes) items.add (n);
+                    else
+                        for (int o = 0; o <= 9; ++o) items.add ("Oct." + juce::String (o));
+
+                    dd->setItems (items);
+                    auto* dp = static_cast<Os8Dropdown*> (add (std::move (dd), { x, y, c.w, os8::kDropdownHeight }));
+                    const Kind kind = c.kind;
+
+                    // Waveform Generator's pitch: the two popups name a note of A = 440 Hz equal
+                    // temperament, and picking one sets the frequency the field shows.
+                    const auto midiNow = [this, key]
+                    {
+                        const double hz = std::max (1.0, se::getDouble (working, key, 440.0));
+                        return (int) std::lround (69.0 + 12.0 * std::log2 (hz / 440.0));
+                    };
+
+                    dp->onChange = [this, kind, key, midiNow] (int i)
+                    {
+                        if (kind == Kind::choice)
+                            working[key] = se::Value ((int64_t) (i + 1));
+                        else if (kind == Kind::curvePreset && i == 0)
+                            working[key] = se::Value ((int64_t) 100);
+                        else if (kind == Kind::ratePreset && i < (int) std::size (kRates))
+                            working[key] = se::Value ((int64_t) se::doubleToFixed (kRates[i].hz));
+                        else if (kind == Kind::notePick || kind == Kind::octavePick)
+                        {
+                            const int m = midiNow();
+                            const int note = kind == Kind::notePick ? i : ((m % 12) + 12) % 12;
+                            const int oct = kind == Kind::octavePick ? i : (int) std::floor (m / 12.0) - 1;
+                            working[key] = se::Value (440.0 * std::pow (2.0, ((oct + 1) * 12 + note - 69) / 12.0));
+                        }
+                        refreshTray();
+                    };
+
+                    trayRefreshers.push_back ([this, dp, kind, key, gate, midiNow]
+                    {
+                        int sel = 0;
+                        if (kind == Kind::choice)
+                            sel = (int) se::getInt (working, key, 1) - 1;
+                        else if (kind == Kind::curvePreset)
+                            sel = se::getInt (working, key, 100) == 100 ? 0 : 1;
+                        else if (kind == Kind::ratePreset)
+                        {
+                            sel = (int) std::size (kRates);
+                            const double hz = se::fixedToDouble (se::getInt (working, key));
+                            for (int r = 0; r < (int) std::size (kRates); ++r)
+                                if (std::abs (kRates[r].hz - hz) < 0.5) sel = r;
+                        }
+                        else if (kind == Kind::notePick)
+                            sel = ((midiNow() % 12) + 12) % 12;
+                        else if (kind == Kind::octavePick)
+                            sel = juce::jlimit (0, 9, (int) std::floor (midiNow() / 12.0) - 1);
+
+                        dp->setSelectedIndex (juce::jmax (0, sel));
+                        dp->setEnabled (gateOn (gate));
+                    });
+                    break;
+                }
+
+                case Kind::check:
+                {
+                    if (key == "@extend") hasExtend = true;
+                    auto t = std::make_unique<Os8Toggle> (juce::String::fromUTF8 (c.text.c_str()), Os8Toggle::Shape::checkbox);
+                    auto* tp = static_cast<Os8Toggle*> (add (std::move (t), { x, y, 0, os8::kToggleSize }));
+                    tp->setSize (tp->preferredWidth(), os8::kToggleSize);
+                    tp->setWantsKeyboardFocus (false);
+                    tp->setMouseClickGrabsKeyboardFocus (false);
+                    tp->onClick = [this, tp, key]
+                    {
+                        if (key == "@extend") allowExtend = tp->getToggleState();
+                        else working[key] = se::Value (tp->getToggleState());
+                        refreshTray();
+                    };
+                    trayParts.back().rel.setWidth (tp->getWidth());
+                    trayRefreshers.push_back ([this, tp, key, gate]
+                    {
+                        const bool on = key == "@extend" ? allowExtend : gateOn (key);
+                        tp->setToggleState (on, juce::dontSendNotification);
+                        tp->setEnabled (gateOn (gate));
+                    });
+                    break;
+                }
+
+                case Kind::radio:
+                {
+                    auto t = std::make_unique<Os8Toggle> (juce::String::fromUTF8 (c.text.c_str()), Os8Toggle::Shape::radio);
+                    auto* tp = static_cast<Os8Toggle*> (add (std::move (t), { x, y, 0, os8::kToggleSize }));
+                    tp->setSize (tp->preferredWidth(), os8::kToggleSize);
+                    tp->setWantsKeyboardFocus (false);
+                    tp->setMouseClickGrabsKeyboardFocus (false);
+                    trayParts.back().rel.setWidth (tp->getWidth());
+                    const int value = c.value;
+                    tp->onClick = [this, key, value] { working[key] = se::Value ((int64_t) value); refreshTray(); };
+                    trayRefreshers.push_back ([this, tp, key, value, gate]
+                    {
+                        tp->setToggleState (se::getInt (working, key, 1) == value, juce::dontSendNotification);
+                        tp->setEnabled (gateOn (gate));
+                    });
+                    break;
+                }
+
+                case Kind::slider:
+                {
+                    auto sl = std::make_unique<Os8Slider> (os8::SliderKind::amplify);
+                    sl->setRange (0.0, 200.0, 1.0);
+                    sl->setMarkerValue (100.0);
+                    auto* sp = static_cast<Os8Slider*> (add (std::move (sl), { x, y, c.w, os8::kSliderHeight }));
+                    sp->setWantsKeyboardFocus (false);
+                    sp->setMouseClickGrabsKeyboardFocus (false);
+                    sp->onValueChange = [this, sp, key]
+                    {
+                        working[key] = se::Value ((int64_t) std::llround (sp->getValue()));
+                        touchedKeys.insert (key);
+                        for (auto& r : trayRefreshers) r();
+                        content->repaint();
+                    };
+                    trayRefreshers.push_back ([this, sp, key] { sp->setValue ((double) se::getInt (working, key), juce::dontSendNotification); });
+                    break;
+                }
+            }
+        }
+        rowY += row.h;
+    }
+
+    // Only Delay and Echo carry the "Allow the sound to get longer" box in the design.
+    // A module that can grow and has no box (Replicate, whose whole point is the extra
+    // copies) simply grows.
+    allowExtend = ! hasExtend;
 }
 
 // ============================================================================
@@ -637,6 +1078,44 @@ void EffectsPanelComponent::Content::paintTray (Graphics& g)
     os8::drawText (g, trayLayout.title, os8::TextStyle::smallLabel, { (float) ox, (float) oy + 4.0f, 200.0f, 10.0f });
     g.setColour (colour::gray400);
     g.fillRect (ox, oy + fxlayout::kTitleH - 1, fxlayout::kContentW, 1);
+
+    // A layout that opens with the Setup row rules it off, as the title is ruled.
+    if (! trayLayout.rows.empty() && ! trayLayout.rows.front().cells.empty()
+        && trayLayout.rows.front().cells.back().kind == fxlayout::Kind::setup)
+        g.fillRect (ox, oy + fxlayout::kTitleH + trayLayout.rows.front().h - 1, fxlayout::kContentW, 1);
+
+    // The static text and icons of each row; a row with a gated control that is off
+    // dims its captions with it.
+    int rowY = fxlayout::kTitleH;
+    for (const auto& row : trayLayout.rows)
+    {
+        bool dim = false;
+        for (const auto& c : row.cells)
+            dim = dim || (! c.gate.empty() && ! owner.gateOn (c.gate));
+
+        for (const auto& c : row.cells)
+        {
+            using fxlayout::Kind;
+            const float cy = (float) (oy + rowY) + c.y;
+            if (c.kind == Kind::label)
+            {
+                const auto style = c.small ? os8::TextStyle::xSmallLabel : os8::TextStyle::smallLabel;
+                const auto text = juce::String::fromUTF8 (c.text.c_str());
+                g.setColour (dim ? colour::gray400 : colour::black);
+                const float cx = c.value == 1 && c.w > 0 ? (float) ox + c.x + (float) c.w - (float) os8::widthOf (text, style)
+                                                         : (float) ox + c.x;
+                drawCaption (g, text, style, cx, cy);
+            }
+            else if (c.kind == Kind::legendStart || c.kind == Kind::legendEnd)
+            {
+                const auto icon = c.kind == Kind::legendStart ? os8::icon::Id::selectionStart : os8::icon::Id::selectionEnd;
+                g.setColour (dim ? colour::gray400 : colour::black);
+                g.fillPath (os8::icon::outline (icon),
+                            juce::AffineTransform::translation ((float) ox + c.x, std::floor (cy)));
+            }
+        }
+        rowY += row.h;
+    }
 }
 
 void EffectsPanelComponent::Content::paint (Graphics& g)

@@ -38,14 +38,15 @@ enum Flag
 {
     fixed16 = 1,   // the stored value is a 16.16 Fixed rate; the field shows Hz
     kilo    = 2,   // the field shows the stored value / 1000
-    decimals4 = 4  // shown with 4 places (the IIR coefficients)
+    decimals4 = 4, // shown with 4 places (the IIR coefficients)
+    large = 8      // the 26 px field (Flanger's percentage)
 };
 
 struct Cell
 {
     Kind kind = Kind::label;
     float x = 0, y = 0;
-    int w = 0;                   // field / dropdown width
+    int w = 0;                   // field / dropdown width; a label with value 1 is right-aligned in [x, x + w]
     std::string text;            // label text, or a check/radio caption
     std::string key;
     std::string unitsKey;        // fields that hold a duration: the units key
