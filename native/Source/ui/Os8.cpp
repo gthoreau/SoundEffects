@@ -691,4 +691,150 @@ void paintCanvasToggle (juce::Graphics& g, juce::Point<int> o, bool gridActive)
     g.fillPath (icon::outline (icon::Id::canvasFree), juce::AffineTransform::translation (right.getX() + 4.0f, right.getY() + 3.0f));
 }
 
+// --- transport -------------------------------------------------------------------
+
+namespace {
+
+// Figma centres each icon in its cell, which for odd sizes lands on half pixels;
+// round those to whole pixels so the pixel art stays sharp.
+juce::Point<float> centred (juce::Rectangle<int> cell, icon::Id id)
+{
+    const auto size = icon::sizeOf (id);
+    return { (float) cell.getX() + std::floor ((float) (cell.getWidth() - size.x) * 0.5f + 0.5f),
+             (float) cell.getY() + std::floor ((float) (cell.getHeight() - size.y) * 0.5f + 0.5f) };
+}
+
+void transportIcon (juce::Graphics& g, icon::Id id, juce::Point<float> at, TransportState state)
+{
+    const auto& shape = icon::outline (id);
+    if (state == TransportState::disabled)
+    {
+        // Figma leaves the disabled ping-pong icon red; every other disabled icon is
+        // #9d9d9d, and so is this one here.
+        g.setColour (colour::gray400);
+        g.fillPath (shape, juce::AffineTransform::translation (at));
+        return;
+    }
+
+    if (state == TransportState::normal)
+    {
+        g.setColour (colour::black.withAlpha (0.3f));
+        g.fillPath (shape, juce::AffineTransform::translation (at + juce::Point<float> (1.0f, 1.0f)));
+    }
+    icon::draw (g, id, at);
+}
+
+} // namespace
+
+void paintMenuFrame (juce::Graphics& g, juce::Rectangle<float> frame)
+{
+    using namespace colour;
+    juce::Path shape;
+    shape.addRectangle (frame);
+    dropShadow (g, shape, 1.0f, 1.0f, juce::Colour (0xff262626));
+    g.setColour (gray100);
+    g.fillPath (shape);
+    innerShadow (g, shape, 0.0f,  2.0f, 0, white);
+    innerShadow (g, shape, 2.0f,  0.0f, 0, white);
+    innerShadow (g, shape, 0.0f, -2.0f, 0, juce::Colour (0xff808080));
+    innerShadow (g, shape, -2.0f, 0.0f, 0, juce::Colour (0xff808080));
+    strokeInside (g, frame, 0.0f, 1.0f, black);
+}
+
+void paintTransportButton (juce::Graphics& g, juce::Point<int> o, icon::Id id, TransportState state)
+{
+    using namespace colour;
+    const juce::Rectangle<int> face (o.x, o.y, kTransportFace, kTransportFace);
+    const auto r = face.toFloat();
+    juce::Path shape;
+    shape.addRectangle (r);
+
+    // The stroke sits OUTSIDE the face, and Figma computes the inner shadows on the
+    // face PLUS that stroke: the bevel bands run over the grey outline (a 1x export
+    // shows the top-left of the stroke white, not grey).
+    const auto outer = r.expanded (1.0f);
+    juce::Path outerShape;
+    outerShape.addRectangle (outer);
+    g.setColour (state == TransportState::disabled ? gray300 : gray400);
+    g.drawRect (outer, 1.0f);
+
+    switch (state)
+    {
+        case TransportState::normal:
+            g.setColour (gray100);
+            g.fillPath (shape);
+            innerShadow (g, outerShape,  2.0f,  2.0f, 0, juce::Colour (0xfffffdfd));
+            innerShadow (g, outerShape, -2.0f, -2.0f, 0, gray400);
+            break;
+        case TransportState::active:
+            g.setColour (gray300);
+            g.fillPath (shape);
+            innerShadow (g, outerShape,  2.0f,  2.0f, 0, black.withAlpha (0.25f));
+            innerShadow (g, outerShape, -1.0f, -1.0f, 0, white.withAlpha (0.5f));
+            break;
+        case TransportState::disabled:
+            g.setColour (gray100);
+            g.fillPath (shape);
+            break;
+    }
+
+    transportIcon (g, id, centred (face, id), state);
+}
+
+void paintPlayDirectionButton (juce::Graphics& g, juce::Point<int> o, TransportState state)
+{
+    using namespace colour;
+    const juce::Rectangle<float> r ((float) o.x, (float) o.y, (float) kPlayDirectionWidth, (float) kPlayDirectionHeight);
+    juce::Path shape;
+    shape.addRoundedRectangle (r.getX(), r.getY(), r.getWidth(), r.getHeight(), 1.0f, 1.0f,
+                               false, true, false, true);
+
+    if (state == TransportState::disabled)
+    {
+        g.setColour (gray100);
+        g.fillPath (shape);
+        strokeInside (g, r, 0.0f, 1.0f, gray300);
+    }
+    else
+    {
+        const bool active = state == TransportState::active;
+        g.setColour (active ? gray500 : gray100);
+        g.fillPath (shape);
+        innerShadow (g, shape, -1.0f, -1.0f, 0, gray400);
+        innerShadow (g, shape,  1.0f,  1.0f, 0, active ? gray600 : juce::Colour (0xfffffdfd));
+    }
+
+    static const juce::Path arrow = juce::Drawable::parseSVGPath ("M2 5L2 6L1 6L1 7L0 7L0 0L1 0L1 1L2 1L2 2L3 2L3 3L4 3L4 4L3 4L3 5L2 5Z");
+    g.setColour (state == TransportState::active ? white : state == TransportState::disabled ? gray400 : black);
+    g.fillPath (arrow, juce::AffineTransform::translation (r.getX() + 2.0f, r.getY() + 10.0f));
+}
+
+void paintDirectionMenu (juce::Graphics& g, juce::Point<int> o, int current, int hover)
+{
+    const juce::Rectangle<float> frame ((float) o.x, (float) o.y, (float) kDirectionMenuWidth, (float) kDirectionMenuHeight);
+    paintMenuFrame (g, frame);
+
+    const icon::Id icons[] = { icon::Id::playBackward, icon::Id::playPingPong, icon::Id::playForward };
+    for (int i = 0; i < 3; ++i)
+    {
+        const juce::Rectangle<int> cell (o.x + i * kDirectionCellWidth, o.y, kDirectionCellWidth, kDirectionMenuHeight);
+        if (i == hover && i != current)
+        {
+            g.setColour (colour::selectedMenuItem);
+            g.fillRect (cell.reduced (0, 2).withTrimmedLeft (i == 0 ? 2 : 0).withTrimmedRight (i == 2 ? 2 : 0));
+        }
+
+        const auto at = centred (cell, icons[i]);
+        if (i == current)
+        {
+            g.setColour (colour::gray400);   // where you already are: no shadow, greyed
+            g.fillPath (icon::outline (icons[i]), juce::AffineTransform::translation (at));
+        }
+        else
+        {
+            transportIcon (g, icons[i], at, TransportState::normal);
+        }
+    }
+}
+
 } // namespace os8

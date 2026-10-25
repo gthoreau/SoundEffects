@@ -275,3 +275,57 @@ private:
     bool grid = true;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8CanvasToggle)
 };
+
+/** "Transport-button" 761:17286: one 25 px transport face (27 with its outside
+    stroke). Latching ones (Loop, Fast Forward) use setClickingTogglesState. */
+class Os8TransportButton : public juce::Button
+{
+public:
+    explicit Os8TransportButton (os8::icon::Id);
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    os8::icon::Id icon;
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8TransportButton)
+};
+
+/** "Combo-play-button" 795:16809: Play, showing the current direction, plus the
+    narrow strip beside it that opens the direction menu (795:22732) over it. */
+class Os8ComboPlay : public juce::Component
+{
+public:
+    enum class Direction { forward, backward, pingPong };
+
+    Os8ComboPlay();
+    ~Os8ComboPlay() override;
+
+    void setPlaying (bool);
+    bool isPlaying() const noexcept { return playing; }
+    void setDirection (Direction, juce::NotificationType = juce::dontSendNotification);
+    Direction getDirection() const noexcept { return direction; }
+
+    std::function<void()> onPlay;
+    std::function<void (Direction)> onDirectionChange;
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void enablementChanged() override { repaint(); }
+
+    static constexpr int kStripX = 27;   // the face is 25 + its 1 px stroke each side
+    static constexpr int kWidth = kStripX + os8::kPlayDirectionWidth;
+    static constexpr int kHeight = os8::kPlayDirectionHeight;
+
+private:
+    class DirectionMenu;
+    friend class DirectionMenu;
+
+    void openMenu();
+    void closeMenu();
+
+    Direction direction = Direction::forward;
+    bool playing = false, pressingFace = false;
+    std::unique_ptr<DirectionMenu> menu;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8ComboPlay)
+};

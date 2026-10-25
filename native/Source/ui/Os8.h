@@ -11,6 +11,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "Os8Icons.h"
+
 namespace os8 {
 
 // --- type --------------------------------------------------------------------
@@ -247,5 +249,29 @@ void paintIconButton (juce::Graphics&, juce::Rectangle<int>, IconButtonState, co
 /** The two-segment grid | free switch; `gridActive` picks the pressed half. */
 void paintCanvasToggle (juce::Graphics&, juce::Point<int> origin, bool gridActive);
 inline constexpr int kCanvasToggleWidth = 44, kCanvasToggleHeight = 20;
+
+// --- transport ("Transport-button" 761:17286, "Combo-play-button" 795:16809) --
+
+enum class TransportState { normal, active, disabled };
+inline constexpr int kTransportFace = 25;   // plus a 1 px outside stroke all round
+
+/** One 25 x 25 transport face with `face` as its top-left; the outside stroke lands
+    one pixel beyond it. The icon is centred and red: with a hard drop shadow when
+    resting, without when pressed, grey when disabled. */
+void paintTransportButton (juce::Graphics&, juce::Point<int> face, icon::Id, TransportState);
+
+/** The 8 x 27 strip beside Play that opens the direction menu (740:15137). */
+void paintPlayDirectionButton (juce::Graphics&, juce::Point<int> origin, TransportState);
+inline constexpr int kPlayDirectionWidth = 8, kPlayDirectionHeight = 27;
+
+/** The direction menu (795:22732): three 24 px cells — backward, ping-pong,
+    forward. `current` is drawn greyed (it is where you already are), `hover` (or -1)
+    in the menu highlight. */
+void paintDirectionMenu (juce::Graphics&, juce::Point<int> origin, int current, int hover);
+inline constexpr int kDirectionMenuWidth = 72, kDirectionMenuHeight = 27, kDirectionCellWidth = 24;
+
+/** The frame every Mac OS 8 menu and popup panel wears: #dddddd, 2 px light and dark
+    inner bands, a black inside stroke and a hard 1 px drop shadow. */
+void paintMenuFrame (juce::Graphics&, juce::Rectangle<float>);
 
 } // namespace os8

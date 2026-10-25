@@ -34,6 +34,9 @@ public:
     /** Sliders, icon buttons and the canvas toggle. */
     static juce::Rectangle<int> slidersArea();
 
+    /** Transport buttons, the combo play and the direction menu. */
+    static juce::Rectangle<int> transportArea();
+
 private:
     // Live controls, to be clicked: the painters above show every state at once,
     // these show the transitions between them (press, Done! flash, radio exclusion).
@@ -50,6 +53,10 @@ private:
               liveAmplify { os8::SliderKind::amplify };
     Os8IconButton liveKeyboard { os8::icon::Id::keyboard };
     Os8CanvasToggle liveCanvas;
+    Os8TransportButton liveRecord { os8::icon::Id::record }, liveStop { os8::icon::Id::stop },
+                       livePause { os8::icon::Id::pause }, liveFF { os8::icon::Id::fastForward },
+                       liveLoop { os8::icon::Id::loop };
+    Os8ComboPlay livePlay;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8Gallery)
 };

@@ -76,7 +76,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - [x] 1.3 `Sys7` → `Os8` look-and-feel: Buttons (Primary/Secondary × Default/Applied/Active/Disabled), Checkbox, Radiobutton
 - [x] 1.4 Text field (3 sizes × 4 states) with ↑/↓ ±step, ⇧ ×10 and unit-aware steps. Dropdown and mini-dropdown.
 - [x] 1.5 Sliders (Mixer-volume with VU, Mixer-pan, Amplify), Icon-button, Canvas-toggle
-- [ ] 1.6 Icon set as vector drawings, plus Transport-button, Combo-play-button and Dir-menu
+- [x] 1.6 Icon set as vector drawings, plus Transport-button, Combo-play-button and Dir-menu
 - [ ] 1.7 `AppPrefs` over ApplicationProperties (auto-apply, setups, time unit, panel visibility/collapse)
 
 ### 2. App shell and menus
@@ -153,6 +153,7 @@ Rules learned this way, all in `ui/Os8.cpp`:
 - **Frame inner shadows** are painted after the children and before the stroke.
 - **Inner-shadow order:** the first-listed effect is painted first.
 - **Blur:** Figma blur r ≈ `juce::DropShadow` radius r.
+- **An OUTSIDE stroke grows the shape that inner shadows use**: the transport faces' bevels cover their grey outline.
 - **Read `effect.spread` too:** a (0,0) shadow with spread is a ring, and an inner shadow with spread is a band (the field halo and the Highlighted white margin).
 
 ## Notes for later steps
@@ -162,6 +163,7 @@ Rules learned this way, all in `ui/Os8.cpp`:
 ## Journal
 One line per finished sub-step: date · sub-step · what was verified · commit.
 
+- 2026-10-25 · 1.6 · `paintTransportButton` (normal/active/disabled), `paintPlayDirectionButton`, `paintDirectionMenu`, shared `paintMenuFrame`; widgets `Os8TransportButton` and `Os8ComboPlay` (Play + direction strip + modal direction menu, async close); disabled transport stop = 0.00 vs Figma, normal 3.5, active 5.0 (icons at Figma's half pixels); **design slip resolved:** Figma's disabled ping-pong icon stays red, ours is #9d9d9d like every other disabled icon
 - 2026-10-25 · 1.5 · `os8::paintSlider` (volume + stereo VU + 0 dB tick, pan + deviation bar, amplify + 100 % tick), thumb, `Os8Slider` (juce::Slider), `Os8IconButton`, `Os8CanvasToggle`, `os8::multiply()` for Figma MULTIPLY layers; `Os8Icons` now holds ALL 33 Figma icons as verbatim SVG (Drawable, multi-colour) + `outline()` for recolouring; statics moved to DeletedAtShutdown singletons (no leak asserts); diffs: volume 0.17, pan 0.38, icon button 0.58, canvas toggle 12.6 (Figma's icons sit at y 3.5 → blurred; ours snap)
 - 2026-10-25 · 1.4 · `Os8TextField` (3 sizes × 4 states, select-all on focus = Highlighted, ↑/↓ ±step, ⇧ ×10, Return/blur commit, Esc revert, `stepFor/decimalsFor(Unit)`), `Os8Dropdown` standard + mini, `Os8LookAndFeel` popup menus, `Os8Icons` (pixel SVG paths); diffs vs Figma: large field 1.65, small active 3.3 (text AA only), dropdown text ½ px (Figma sits it between rows); editor baseline = painted baseline (measured); open menu not yet seen live
 - 2026-10-25 · 1.3 · `os8::paintButton/paintCheckbox/paintRadio` + `Os8Button` (Done! flash, 500 ms) and `Os8Toggle` (checkbox/radio + label); pixel-diffed against Figma 1x exports: secondary button mean 1.4/255 off text, primary 6.3 (soft ring blur), text rows identical (Figma snaps baselines to whole px; Figma paints a frame's inner shadows OVER its children); live interaction not yet drive-tested (end of step 1)

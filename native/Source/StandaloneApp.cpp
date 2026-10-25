@@ -718,7 +718,9 @@ public:
                          && Os8Gallery::writeSnapshot (sibling ("-fields@4x.png"), 4.0f,
                                                        Os8Gallery::fieldsArea().withWidth (720))
                          && Os8Gallery::writeSnapshot (sibling ("-sliders@4x.png"), 4.0f,
-                                                       Os8Gallery::slidersArea().withWidth (720));
+                                                       Os8Gallery::slidersArea().withWidth (720))
+                         && Os8Gallery::writeSnapshot (sibling ("-transport@4x.png"), 4.0f,
+                                                       Os8Gallery::transportArea().withWidth (720));
             setApplicationReturnValue (ok ? 0 : 1);
             quit();
             return;

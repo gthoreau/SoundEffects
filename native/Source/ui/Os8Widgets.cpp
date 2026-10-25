@@ -104,19 +104,7 @@ Os8LookAndFeel& Os8LookAndFeel::instance()
 void Os8LookAndFeel::drawPopupMenuBackgroundWithOptions (juce::Graphics& g, int width, int height,
                                                          const juce::PopupMenu::Options&)
 {
-    using namespace os8::colour;
-    const juce::Rectangle<float> frame (0.0f, 0.0f, (float) width - 3.0f, (float) height - 1.0f);
-    juce::Path shape;
-    shape.addRectangle (frame);
-
-    os8::dropShadow (g, shape, 1.0f, 1.0f, juce::Colour (0xff262626));
-    g.setColour (gray100);
-    g.fillPath (shape);
-    os8::innerShadow (g, shape, 0.0f,  2.0f, 0, white);
-    os8::innerShadow (g, shape, 2.0f,  0.0f, 0, white);
-    os8::innerShadow (g, shape, 0.0f, -2.0f, 0, juce::Colour (0xff808080));
-    os8::innerShadow (g, shape, -2.0f, 0.0f, 0, juce::Colour (0xff808080));
-    os8::strokeInside (g, frame, 0.0f, 1.0f, black);
+    os8::paintMenuFrame (g, { 0.0f, 0.0f, (float) width - 3.0f, (float) height - 1.0f });
 }
 
 void Os8LookAndFeel::getIdealPopupMenuItemSizeWithOptions (const juce::String& text, bool isSeparator,
@@ -539,4 +527,200 @@ void Os8CanvasToggle::paint (juce::Graphics& g)
 void Os8CanvasToggle::mouseDown (const juce::MouseEvent& e)
 {
     setGrid (e.x < os8::kCanvasToggleWidth / 2, juce::sendNotification);
+}
+
+// --- Os8TransportButton -------------------------------------------------------
+
+Os8TransportButton::Os8TransportButton (os8::icon::Id id) : juce::Button ({}), icon (id)
+{
+    setSize (os8::kTransportFace + 2, os8::kTransportFace + 2);
+}
+
+void Os8TransportButton::paintButton (juce::Graphics& g, bool, bool down)
+{
+    const auto state = ! isEnabled()              ? os8::TransportState::disabled
+                     : (down || getToggleState()) ? os8::TransportState::active
+                                                  : os8::TransportState::normal;
+    os8::paintTransportButton (g, { 1, 1 }, icon, state);
+}
+
+// --- Os8ComboPlay -------------------------------------------------------------
+
+namespace {
+// Menu cell order, left to right, as drawn: backward, ping-pong, forward.
+int cellOf (Os8ComboPlay::Direction d)
+{
+    switch (d)
+    {
+        case Os8ComboPlay::Direction::backward: return 0;
+        case Os8ComboPlay::Direction::pingPong: return 1;
+        case Os8ComboPlay::Direction::forward:  return 2;
+    }
+    return 2;
+}
+
+os8::icon::Id iconOf (Os8ComboPlay::Direction d)
+{
+    switch (d)
+    {
+        case Os8ComboPlay::Direction::backward: return os8::icon::Id::playBackward;
+        case Os8ComboPlay::Direction::pingPong: return os8::icon::Id::playPingPong;
+        case Os8ComboPlay::Direction::forward:  return os8::icon::Id::playForward;
+    }
+    return os8::icon::Id::playForward;
+}
+} // namespace
+
+/** The direction menu while it is open: placed so it ends where the play face ends,
+    covering the face and growing leftwards, as in the design. Modal and transient: a
+    click anywhere else closes it. */
+class Os8ComboPlay::DirectionMenu : public juce::Component
+{
+public:
+    explicit DirectionMenu (Os8ComboPlay& o) : owner (o)
+    {
+        setSize (os8::kDirectionMenuWidth + 1, os8::kDirectionMenuHeight + 1);   // + drop shadow
+        setWantsKeyboardFocus (true);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        os8::paintDirectionMenu (g, {}, cellOf (owner.direction), hover);
+    }
+
+    void mouseMove (const juce::MouseEvent& e) override  { setHover (cellAt (e.x)); }
+    void mouseDrag (const juce::MouseEvent& e) override  { setHover (cellAt (e.x)); }
+    void mouseExit (const juce::MouseEvent&) override    { setHover (-1); }
+
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        const int cell = cellAt (e.x);
+        if (cell < 0 || ! getLocalBounds().contains (e.getPosition())) return;
+        const Direction picked[] = { Direction::backward, Direction::pingPong, Direction::forward };
+        const auto choice = picked[cell];
+
+        // Close after this callback returns: closing deletes this component, and a
+        // component must not be deleted from inside its own mouse handler.
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<Os8ComboPlay> (&owner), choice]
+        {
+            if (safe == nullptr) return;
+            safe->closeMenu();
+            safe->setDirection (choice, juce::sendNotification);
+        });
+    }
+
+    void inputAttemptWhenModal() override { closeLater(); }
+
+    bool keyPressed (const juce::KeyPress& k) override
+    {
+        if (k.isKeyCode (juce::KeyPress::escapeKey)) { closeLater(); return true; }
+        return false;
+    }
+
+private:
+    void closeLater()
+    {
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<Os8ComboPlay> (&owner)]
+        {
+            if (safe != nullptr) safe->closeMenu();
+        });
+    }
+
+    static int cellAt (int x)
+    {
+        return juce::isPositiveAndBelow (x, os8::kDirectionMenuWidth) ? x / os8::kDirectionCellWidth : -1;
+    }
+
+    void setHover (int h)
+    {
+        if (h == hover) return;
+        hover = h;
+        repaint();
+    }
+
+    Os8ComboPlay& owner;
+    int hover = -1;
+};
+
+Os8ComboPlay::Os8ComboPlay()
+{
+    setSize (kWidth, kHeight);
+}
+
+Os8ComboPlay::~Os8ComboPlay()
+{
+    menu.reset();
+}
+
+void Os8ComboPlay::setPlaying (bool p)
+{
+    if (p == playing) return;
+    playing = p;
+    repaint();
+}
+
+void Os8ComboPlay::setDirection (Direction d, juce::NotificationType n)
+{
+    if (d == direction) return;
+    direction = d;
+    repaint();
+    if (n != juce::dontSendNotification && onDirectionChange) onDirectionChange (direction);
+}
+
+void Os8ComboPlay::paint (juce::Graphics& g)
+{
+    const bool enabled = isEnabled();
+    const auto faceState = ! enabled                    ? os8::TransportState::disabled
+                         : (playing || pressingFace)    ? os8::TransportState::active
+                                                        : os8::TransportState::normal;
+    os8::paintTransportButton (g, { 1, 1 }, iconOf (direction), faceState);
+
+    const auto stripState = ! enabled ? os8::TransportState::disabled
+                          : menu != nullptr ? os8::TransportState::active
+                                            : os8::TransportState::normal;
+    os8::paintPlayDirectionButton (g, { kStripX, 0 }, stripState);
+}
+
+void Os8ComboPlay::mouseDown (const juce::MouseEvent& e)
+{
+    if (! isEnabled()) return;
+
+    if (e.x >= kStripX)
+    {
+        openMenu();
+        return;
+    }
+
+    pressingFace = true;
+    repaint();
+}
+
+void Os8ComboPlay::mouseUp (const juce::MouseEvent& e)
+{
+    if (! pressingFace) return;
+    pressingFace = false;
+    repaint();
+    if (e.x < kStripX && getLocalBounds().contains (e.getPosition()) && onPlay) onPlay();
+}
+
+void Os8ComboPlay::openMenu()
+{
+    auto* top = getTopLevelComponent();
+    if (top == nullptr) return;
+
+    menu = std::make_unique<DirectionMenu> (*this);
+    // The menu's right edge sits on the play face's right edge (x = 26).
+    const auto anchor = top->getLocalPoint (this, juce::Point<int> (kStripX - 1 - os8::kDirectionMenuWidth, 0));
+    menu->setTopLeftPosition (anchor);
+    top->addAndMakeVisible (*menu);
+    menu->enterModalState (true);
+    repaint();
+}
+
+void Os8ComboPlay::closeMenu()
+{
+    if (menu == nullptr) return;
+    menu->exitModalState (0);
+    menu.reset();
+    repaint();
 }

@@ -55,8 +55,15 @@ Os8Gallery::Os8Gallery()
                                                             &liveRadioA, &liveRadioB, &liveDisabled,
                                                             &liveLarge, &liveSmall, &liveXSmall,
                                                             &liveUnits, &liveMini, &liveVolume, &livePan,
-                                                            &liveAmplify, &liveKeyboard, &liveCanvas })
+                                                            &liveAmplify, &liveKeyboard, &liveCanvas,
+                                                            &liveRecord, &liveStop, &livePlay, &livePause,
+                                                            &liveFF, &liveLoop })
         addAndMakeVisible (c);
+
+    liveFF.setClickingTogglesState (true);
+    liveLoop.setClickingTogglesState (true);
+    livePlay.onPlay = [this] { livePlay.setPlaying (! livePlay.isPlaying()); };
+    liveRecord.setEnabled (false);   // no source yet: the state record shows until one is set
 
     // The fader runs -inf..+6 dB on a linear 0..1 here; the tick marks 0 dB.
     liveVolume.setRange (0.0, 1.0);
@@ -71,7 +78,7 @@ Os8Gallery::Os8Gallery()
     liveAmplify.setMarkerValue (100.0);
     liveKeyboard.setClickingTogglesState (true);
 
-    setSize (920, 780);
+    setSize (920, 900);
 }
 
 void Os8Gallery::paint (juce::Graphics& g)
@@ -191,6 +198,26 @@ void Os8Gallery::paint (juce::Graphics& g)
                               os8::icon::outline (os8::icon::Id::keyboard), os8::icon::sizeOf (os8::icon::Id::keyboard));
     os8::paintCanvasToggle (g, { sa.getX() + 160, sa.getY() + 34 }, false);
     os8::paintCanvasToggle (g, { sa.getX() + 214, sa.getY() + 34 }, true);
+
+    // Every transport face in its three states, then the direction strip and menu.
+    const auto ta = transportArea();
+    sectionTitle (g, "Transport", ta.getX(), ta.getY() - 28);
+    const os8::icon::Id faces[] = { os8::icon::Id::record, os8::icon::Id::stop, os8::icon::Id::playForward,
+                                    os8::icon::Id::playBackward, os8::icon::Id::playPingPong, os8::icon::Id::pause,
+                                    os8::icon::Id::fastForward, os8::icon::Id::loop };
+    const os8::TransportState ts[] = { os8::TransportState::normal, os8::TransportState::active,
+                                       os8::TransportState::disabled };
+    for (int row = 0; row < 3; ++row)
+        for (int i = 0; i < 8; ++i)
+            os8::paintTransportButton (g, { ta.getX() + 1 + i * 30, ta.getY() + 1 + row * 30 }, faces[i], ts[row]);
+    for (int row = 0; row < 3; ++row)
+        os8::paintPlayDirectionButton (g, { ta.getX() + 245, ta.getY() + row * 30 }, ts[row]);
+    os8::paintDirectionMenu (g, { ta.getX() + 262, ta.getY() }, 2, 0);
+}
+
+juce::Rectangle<int> Os8Gallery::transportArea()
+{
+    return { kMargin, 800, 700, 90 };
 }
 
 juce::Rectangle<int> Os8Gallery::slidersArea()
@@ -232,6 +259,22 @@ void Os8Gallery::resized()
     liveAmplify.setBounds (sl.getX(), sl.getY() + 54, 141, os8::kSliderHeight);
     liveKeyboard.setBounds (sl.getX() + 160, sl.getY() + 6, 38, 20);
     liveCanvas.setTopLeftPosition (sl.getX() + 210, sl.getY() + 6);
+
+    // The sound window's transport row: record, stop, play+direction, pause, FF, loop.
+    const auto tr = transportArea().translated (360, 0);
+    int x = tr.getX() + 80;
+    for (auto* b : std::initializer_list<juce::Component*> { &liveRecord, &liveStop })
+    {
+        b->setBounds (x, tr.getY() + 8, 27, 27);
+        x += 26;
+    }
+    livePlay.setTopLeftPosition (x, tr.getY() + 8);
+    x += Os8ComboPlay::kWidth;
+    for (auto* b : std::initializer_list<juce::Component*> { &livePause, &liveFF, &liveLoop })
+    {
+        b->setBounds (x, tr.getY() + 8, 27, 27);
+        x += 26;
+    }
 }
 
 bool Os8Gallery::writeSnapshot (const juce::File& png, float scale, juce::Rectangle<int> area)
