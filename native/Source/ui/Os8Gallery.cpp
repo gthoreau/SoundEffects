@@ -30,7 +30,7 @@ void sectionTitle (juce::Graphics& g, const juce::String& text, int x, int y)
 
 Os8Gallery::Os8Gallery()
 {
-    setSize (720, 520);
+    setSize (920, 520);
 }
 
 void Os8Gallery::paint (juce::Graphics& g)
@@ -51,6 +51,25 @@ void Os8Gallery::paint (juce::Graphics& g)
         os8::drawText (g, juce::String (s.name) + "  -  Apply  Untitled Sound  22.1khz 8bits 2 tracks 4.52s",
                        s.style, box);
         y += 24;
+    }
+
+    y += 12;
+    sectionTitle (g, "Window themes", kMargin, y);
+    y += 28;
+
+    constexpr int kCols = 6, kSwatchW = 140, kSwatchH = 40, kGap = 8;
+    for (int i = 0; i < os8::kNumThemes; ++i)
+    {
+        const juce::Rectangle<int> swatch (kMargin + (i % kCols) * (kSwatchW + kGap),
+                                           y + (i / kCols) * (kSwatchH + kGap), kSwatchW, kSwatchH);
+        g.setColour (os8::themeColour (i));
+        g.fillRect (swatch);
+        g.setColour (os8::colour::black);
+        g.drawRect (swatch, 1);
+        os8::drawText (g, juce::String (i).paddedLeft ('0', 2) + "  " + os8::themeName (i),
+                       os8::TextStyle::xSmallLabel, swatch.toFloat().reduced (6.0f, 7.0f));
+        os8::drawText (g, "#" + os8::themeColour (i).toDisplayString (false),
+                       os8::TextStyle::xSmallLabel, swatch.toFloat().reduced (6.0f, 7.0f).translated (0.0f, 14.0f));
     }
 }
 

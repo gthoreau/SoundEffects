@@ -59,9 +59,9 @@ int CanvasComponent::pickTint()
     // hands its colour back — otherwise a session that opened and closed a dozen
     // sounds would run out of paint.
     //
-    // Past twelve open Windows the pool is empty by definition, so it falls back to
-    // the LEAST-worn colours: with 13 open, the repeat is a colour used once rather
-    // than one of a pair. Same rule, one level down, and it never has no answer.
+    // Past 24 open Windows (one per theme) the pool is empty by definition, so it
+    // falls back to the LEAST-worn colours: with 25 open, the repeat is a colour used
+    // once rather than one of a pair. Same rule, one level down, and it never has no answer.
     std::array<int, (size_t) kNumTints> worn {};
     for (uint64_t wid : engine.windowIds())
         if (auto* w = engine.windowById (wid))

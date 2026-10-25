@@ -72,4 +72,16 @@ void drawText (juce::Graphics& g, const juce::String& text, TextStyle s,
     glyphs.draw (g);
 }
 
+juce::Colour themeColour (int index) noexcept
+{
+    if (index < 0 || index >= kNumThemes) return colour::gray100;   // Placeholder-gray-100
+    return juce::Colour (kThemes[index].argb);
+}
+
+juce::String themeName (int index)
+{
+    if (index < 0 || index >= kNumThemes) return {};
+    return kThemes[index].name;
+}
+
 } // namespace os8

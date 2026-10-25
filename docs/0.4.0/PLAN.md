@@ -72,7 +72,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 
 ### 1. Design-system foundations
 - [x] 1.1 Embed ClassicChicago.ttf (`juce_add_binary_data`) and add `ui/Theme` text styles (14/12/11/10/9). Check crisp rendering at native sizes.
-- [ ] 1.2 `ui/Theme` colour tokens: the System colours plus the 24-theme name+hex table, replacing `kTints`. Index migration, with an engine/state test.
+- [x] 1.2 `ui/Theme` colour tokens: the System colours plus the 24-theme name+hex table, replacing `kTints`. Index migration, with an engine/state test.
 - [ ] 1.3 `Sys7` → `Os8` look-and-feel: Buttons (Primary/Secondary × Default/Applied/Active/Disabled), Checkbox, Radiobutton
 - [ ] 1.4 Text field (3 sizes × 4 states) with ↑/↓ ±step, ⇧ ×10 and unit-aware steps. Dropdown and mini-dropdown.
 - [ ] 1.5 Sliders (Mixer-volume with VU, Mixer-pan, Amplify), Icon-button, Canvas-toggle
@@ -138,15 +138,20 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - [ ] 11.2 Version 0.4.0, merge into main, tag
 
 ## Verification per sub-step
-- Tests: `cmake -S native/tests -B native/tests/build -G Ninja && cmake --build native/tests/build`, then the `check` target, `engine-tests` and `state-tests`. Run TSan/ASan for engine changes.
+- Tests: `cmake -S native/tests -B native/tests/build -G Ninja && cmake --build native/tests/build`, then **from `native/tests`** run `./build/effect-fixtures` (it reads `fixtures/` relative to the cwd and exits 2 elsewhere), `./build/engine-tests` and `./build/state-tests`. Run TSan/ASan for engine changes.
 - Standalone build: `cmake --build native/build --target SoundEffect_Standalone`.
 - UI: capture the running standalone at 1× and compare it with the Figma node capture. Drive-test the feature in the app.
 
 ## Open questions
 - (none yet)
 
+## Notes for later steps
+- **Step 4, tinted mixer strip** (`636:11566`): the strip fill is the theme colour. The slider and VU troughs keep their grey layers (#c0c0c0, #9d9d9d, #666666, #dddddd), so check their blend mode before calling them a "darker shade". A muted strip adds a `#ffffff@0.80` "content" overlay and greys its text to #9d9d9d. A selected (Active) strip shows the 4 drag-handle bars at `#000000@0.50`.
+- **The tokens live in `ui/Os8.h`, not in a separate `ui/Theme`**: the System colours, `kThemes[24]`, `themeColour()` and `themeName()`. `sys7::tintFromPalette` and `kNumTints` forward there until Sys7 is gone.
+
 ## Journal
 One line per finished sub-step: date · sub-step · what was verified · commit.
 
+- 2026-10-25 · 1.2 · the 24 named themes replace the 12 HSL tints (index N → colour N, -1 → Placeholder-gray-100); the tint pool now spans 24; state-tests round-trip index 23; gallery swatches match the Theme board
 - 2026-10-25 · 1.1 · ClassicChicago.ttf embedded (BinaryData), `ui/Os8` text styles + Figma baseline rule (0.865 em) + `drawText`/`widthOf`; JUCE advance widths ceil'd = Figma widths on 15/15 strings; `--gallery` / `--gallery-snapshot` workbench; tests green
 - 2026-10-25 · setup · plan approved, spec snapshot re-synced from Figma, branch `v0.4.0-dev` created

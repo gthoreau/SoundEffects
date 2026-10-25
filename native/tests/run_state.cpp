@@ -78,7 +78,7 @@ void buildCanvas (se::Engine& engine)
 
     auto* wb = engine.windowById (b);
     wb->x = 900.0f; wb->y = 128.0f; wb->width = 240.0f; wb->height = 180.0f;
-    wb->gridCol = 1; wb->gridRow = 0; wb->tint = 2;
+    wb->gridCol = 1; wb->gridRow = 0; wb->tint = 23;   // past the 0.3 palette's 12: the 0.4 table has 24
     wb->gain = 1.75f; wb->muted = false; wb->soloed = true;
 }
 
@@ -122,7 +122,7 @@ void checkRestored (se::Engine& engine)
     check (wa->x == 512.0f && wa->y == 640.0f && wa->width == 380.0f && wa->height == 220.0f,
            "canvas placement and size");
     check (wa->gridCol == -2 && wa->gridRow == 3, "grid cell, negative column and all");
-    check (wa->tint == 7 && wb->tint == 2, "tints");
+    check (wa->tint == 7 && wb->tint == 23, "tints");
 
     check (wa->gain.load() == 0.25f && wa->muted.load() && ! wa->soloed.load(),
            "mixer channel: gain and mute");

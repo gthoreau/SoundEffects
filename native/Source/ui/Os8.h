@@ -77,4 +77,57 @@ inline const juce::Colour gray600           { 0xff333333 };
 inline const juce::Colour black             { 0xff000000 };
 } // namespace colour
 
+// --- window themes: the Window-themes/* styles ------------------------------
+//
+// The 24 colours a Sound can wear. ONE table, in index order, because the index is
+// what a .sefx stores: a Window saved with theme N comes back in colour N, so
+// reordering this list repaints every saved canvas. Renaming or retuning an entry
+// is free. The names are user-facing (Window ▸ Color: [name]).
+//
+// The 0.3 palette had 12 unnamed pastels; a 0.3 canvas's index N simply becomes
+// colour N here, as decided with the design.
+
+struct Theme
+{
+    const char* name;
+    juce::uint32 argb;
+};
+
+inline constexpr Theme kThemes[] = {
+    { "Candy orchid",  0xffff79d5 },   // 00
+    { "Watermelon",    0xfffa808f },   // 01
+    { "Soft butter",   0xfff6e58d },   // 02
+    { "Vanilla",       0xfffff1b2 },   // 03
+    { "Seashell",      0xfffec4b9 },   // 04
+    { "Apricot",       0xfffdbe97 },   // 05
+    { "Powder blush",  0xfff2a9a6 },   // 06
+    { "Wisteria",      0xffd6b5ee },   // 07
+    { "Soft lilac",    0xffc7aadd },   // 08
+    { "Clear sky",     0xff9de0e3 },   // 09
+    { "Glacier",       0xffb8f3f4 },   // 10
+    { "Mint veil",     0xffd4f4dc },   // 11
+    { "Denim air",     0xff97c2d3 },   // 12
+    { "Rose milk",     0xfff6e5dd },   // 13
+    { "Peach voile",   0xffefceb9 },   // 14
+    { "Coral bloom",   0xffed8479 },   // 15
+    { "Nectar cream",  0xfffbc375 },   // 16
+    { "Marigold",      0xffeec33e },   // 17
+    { "Meadow dust",   0xffc8cb81 },   // 18
+    { "Citron haze",   0xffdbdd8e },   // 19
+    { "Spring sprout", 0xffc3edcb },   // 20
+    { "Garden sage",   0xff96cba0 },   // 21
+    { "Tidal glass",   0xff90d5d7 },   // 22
+    { "Lagoon mist",   0xff81dfe4 },   // 23
+};
+
+inline constexpr int kNumThemes = (int) (sizeof (kThemes) / sizeof (kThemes[0]));
+
+/** The colour of theme `index`. Out of range — including "no theme" (-1), which a
+    Window carries until it is painted — gives Placeholder-gray-100, the slot the
+    design system reserves for exactly that. */
+juce::Colour themeColour (int index) noexcept;
+
+/** The user-facing name of theme `index`, or an empty string out of range. */
+juce::String themeName (int index);
+
 } // namespace os8

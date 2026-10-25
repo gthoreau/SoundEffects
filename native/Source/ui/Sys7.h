@@ -10,6 +10,8 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "Os8.h"
+
 #include <functional>
 
 namespace sys7 {
@@ -30,12 +32,10 @@ inline const juce::Colour kPanel { 0xfff4f4f4 };
 inline constexpr int kBorderIdle = 1;
 inline constexpr int kBorderHover = 2;
 
-// The twelve pastels a Window is coated in, one per hue clock position. They live
-// here rather than on the canvas because the mixer wears them too: a channel strip
-// carries its Window's tint, so the eye pairs strip to Window without reading a
-// single name.
-inline constexpr int kNumTints = 12;
-juce::Colour tintFromPalette (int index) noexcept;
+// The Window themes now live in Os8 (24 named colours from the design system).
+// These two forward there until the panels that still speak Sys7 move over.
+inline constexpr int kNumTints = os8::kNumThemes;
+inline juce::Colour tintFromPalette (int index) noexcept { return os8::themeColour (index); }
 
 } // namespace sys7
 
