@@ -630,6 +630,15 @@ public:
             return;
         }
 
+        // The Effects panel's header, its six group frames and every effect's tray,
+        // each as a 1x PNG — the pixel diff against Figma's exports.
+        if (const int i = args.indexOf ("--effects-snapshot"); i >= 0 && i + 1 < args.size())
+        {
+            setApplicationReturnValue (writeEffectsSnapshot (juce::File (args[i + 1].unquoted())) ? 0 : 1);
+            quit();
+            return;
+        }
+
         mainWindow = std::make_unique<MainWindow> (
             getApplicationName(),
             juce::LookAndFeel::getDefaultLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId),
@@ -707,6 +716,46 @@ private:
         juce::FileOutputStream out (png);
         juce::PNGImageFormat format;
         return out.openedOk() && format.writeImageToStream (image, out);
+    }
+
+    /** See --effects-snapshot. */
+    static bool writeEffectsSnapshot (const juce::File& dir)
+    {
+        dir.createDirectory();
+        se::Engine engine;
+        engine.prepare (44100.0, 512);
+
+        // Figma's header example: "[sound-name]", slot 99, 22.1 kHz, 8 bits, 2 tracks, 4.52 s.
+        se::DocumentInit init;
+        init.name = "[sound-name]";
+        init.rateHz = 22100.0;
+        init.numTracks = 2;
+        init.bps = 8;
+        init.sizeBytes = (size_t) (4.52 * 22100.0);
+        const uint64_t id = engine.addWindow (std::make_unique<se::SoundDocument> (init));
+        engine.windowById (id)->slot = 99;
+
+        EffectsPanelComponent panel (engine);
+        panel.setSize (SidePanel::kWidth - 2, 3000);
+        panel.setTargetWindow (id);
+        panel.refresh();
+
+        bool ok = true;
+        const auto shoot = [&] (juce::Rectangle<int> r, const juce::String& name)
+        {
+            ok = writePng (panel.createComponentSnapshot (r, true, 1.0f), dir.getChildFile (name + ".png")) && ok;
+        };
+
+        shoot ({ 0, 0, panel.getWidth(), 48 }, "header");
+        for (int g = 0; g < panel.numGroups(); ++g)
+            shoot (panel.groupFrame (g), "group-" + juce::String (g + 1));
+
+        for (const auto& m : se::effectRegistry())
+        {
+            const auto r = panel.openEffectNamed (juce::String (m.name));
+            if (! r.isEmpty()) shoot (r.withWidth (panel.getWidth()), "tray-" + juce::String (m.name).replaceCharacter (' ', '-'));
+        }
+        return ok;
     }
 
     /** See --mixer-snapshot. */

@@ -83,6 +83,7 @@ target_sources(SoundEffects PRIVATE
     Source/ui/AppMenuBar.cpp
     Source/ui/SidePanel.cpp
     Source/ui/EffectsPanel.cpp
+    Source/ui/EffectLayouts.cpp
     Source/ui/KeyboardArt.cpp
     Source/ui/KeyboardPalette.cpp
     Source/ui/CanvasComponent.cpp

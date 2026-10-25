@@ -34,6 +34,10 @@ public:
 
     bool isShowingApplied() const noexcept      { return applied; }
 
+    /** Look Disabled while still taking clicks — for a button whose click explains
+        why it cannot do its job (an effect that cannot run on this Window). */
+    void setGreyed (bool g)                     { greyed = g; repaint(); }
+
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 
 private:
@@ -43,6 +47,7 @@ private:
     os8::TextStyle textStyle = os8::TextStyle::headline;
     juce::String appliedText { "Done!" };
     bool applied = false;
+    bool greyed = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8Button)
 };
@@ -135,6 +140,9 @@ public:
 
     /** Called with the field's text when an edit is committed. */
     std::function<void (const juce::String&)> onCommit;
+
+    /** Return was pressed, after the value was committed. */
+    std::function<void()> onReturn;
 
     os8::FieldState currentState() const;
 

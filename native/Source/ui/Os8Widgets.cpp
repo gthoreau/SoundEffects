@@ -27,7 +27,7 @@ void Os8Button::timerCallback()
 void Os8Button::paintButton (juce::Graphics& g, bool, bool down)
 {
     using os8::ButtonState;
-    const auto state = ! isEnabled() ? ButtonState::disabled
+    const auto state = (! isEnabled() || greyed) ? ButtonState::disabled
                      : down          ? ButtonState::active
                      : applied       ? ButtonState::applied
                                      : ButtonState::normal;
@@ -311,7 +311,13 @@ void Os8TextField::commit()
 }
 
 void Os8TextField::textEditorTextChanged (juce::TextEditor&)       { restyle(); }
-void Os8TextField::textEditorReturnKeyPressed (juce::TextEditor&)  { commit(); editor.selectAll(); restyle(); }
+void Os8TextField::textEditorReturnKeyPressed (juce::TextEditor&)
+{
+    commit();
+    editor.selectAll();
+    restyle();
+    if (onReturn) onReturn();
+}
 void Os8TextField::textEditorFocusLost (juce::TextEditor&)         { commit(); }
 void Os8TextField::globalFocusChanged (juce::Component*)           { restyle(); }
 

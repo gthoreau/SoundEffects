@@ -81,11 +81,9 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     };
     keyboard.onResult = [this] (const juce::String& message) { effects.showResult (message); };
 
-    // Two ways in, one state: the palette's toggle and the Keyboard row in the
-    // effects list. The row SHOWS rather than toggles — clicking an effect's name
-    // has never meant "put that away".
+    // The Keyboard is the palette's own toggle (and Window ▸ Keyboard): the effects
+    // panel of 0.4.0 has no row for it.
     palette.onKeyboardToggled = [this] (bool shown) { setKeyboardShown (shown); };
-    effects.onShowKeyboard = [this] { setKeyboardShown (true); };
 
     // New / Open live at the top of the mixer panel, not in any toolbar.
     mixer.onNew  = [this] { newWindow(); };
