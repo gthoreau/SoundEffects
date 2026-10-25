@@ -702,14 +702,21 @@ public:
         }
 
         // The design-system workbench (see Os8Gallery.h). The snapshot form writes
-        // 1x and 2x renders side by side — <name>.png and <name>@2x.png — and quits
-        // without touching the canvas or the audio device.
+        // <name>.png (1x), <name>@2x.png and a 4x close-up of the UI elements,
+        // <name>-ui@4x.png, then quits without touching the canvas or the audio device.
         const auto args = juce::StringArray::fromTokens (commandLine, true);
         if (const int i = args.indexOf ("--gallery-snapshot"); i >= 0 && i + 1 < args.size())
         {
             const juce::File png (args[i + 1].unquoted());
+            const auto sibling = [&png] (const char* suffix)
+            {
+                return png.getSiblingFile (png.getFileNameWithoutExtension() + suffix);
+            };
             const bool ok = Os8Gallery::writeSnapshot (png, 1.0f)
-                         && Os8Gallery::writeSnapshot (png.getSiblingFile (png.getFileNameWithoutExtension() + "@2x.png"), 2.0f);
+                         && Os8Gallery::writeSnapshot (sibling ("@2x.png"), 2.0f)
+                         && Os8Gallery::writeSnapshot (sibling ("-ui@4x.png"), 4.0f, Os8Gallery::uiElementsArea())
+                         && Os8Gallery::writeSnapshot (sibling ("-fields@4x.png"), 4.0f,
+                                                       Os8Gallery::fieldsArea().withWidth (720));
             setApplicationReturnValue (ok ? 0 : 1);
             quit();
             return;

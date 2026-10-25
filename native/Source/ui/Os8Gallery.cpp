@@ -37,11 +37,27 @@ Os8Gallery::Os8Gallery()
     liveRadioA.setToggleState (true, juce::dontSendNotification);
     liveDisabled.setEnabled (false);
 
+    liveLarge.setNumeric (1.0, 0, 0.0, 999.0);
+    liveLarge.setValue (10.0);
+    liveSmall.setNumeric (Os8TextField::stepFor (Os8TextField::Unit::percent), 0, 0.0, 200.0);
+    liveSmall.setValue (75.0);
+    liveXSmall.setNumeric (Os8TextField::stepFor (Os8TextField::Unit::seconds),
+                           Os8TextField::decimalsFor (Os8TextField::Unit::seconds), 0.0, 9999.0);
+    liveXSmall.setValue (1.456);
+
+    const juce::StringArray units { "Milliseconds", "Seconds", "Samples", "Bytes", "Meters", "Feet" };
+    liveUnits.setItems (units);
+    liveUnits.setSelectedIndex (0);
+    liveMini.setItems ({ "Milliseconds", "Seconds", "Samples" }, { "ms", "s.", "samp" });
+    liveMini.setSelectedIndex (0);
+
     for (auto* c : std::initializer_list<juce::Component*> { &liveApply, &liveCancel, &liveCheck,
-                                                            &liveRadioA, &liveRadioB, &liveDisabled })
+                                                            &liveRadioA, &liveRadioB, &liveDisabled,
+                                                            &liveLarge, &liveSmall, &liveXSmall,
+                                                            &liveUnits, &liveMini })
         addAndMakeVisible (c);
 
-    setSize (920, 560);
+    setSize (920, 680);
 }
 
 void Os8Gallery::paint (juce::Graphics& g)
@@ -110,6 +126,39 @@ void Os8Gallery::paint (juce::Graphics& g)
         os8::paintRadio (g, { (float) ui.getX() + 296.0f, (float) ui.getY() + 10.0f + (float) i * 18.0f },
                          toggles[i].on, toggles[i].enabled);
     }
+
+    // Text fields: the three sizes down, the four states across; then dropdowns.
+    const auto fa = fieldsArea();
+    sectionTitle (g, "Fields and dropdowns", fa.getX(), fa.getY() - 28);
+    const os8::FieldSize sizes[] = { os8::FieldSize::large, os8::FieldSize::small, os8::FieldSize::xSmall };
+    const os8::FieldState fieldStates[] = { os8::FieldState::normal, os8::FieldState::active,
+                                            os8::FieldState::highlighted, os8::FieldState::disabled };
+    for (int row = 0; row < 3; ++row)
+    {
+        const auto m = os8::metricsOf (sizes[row]);
+        const int w = sizes[row] == os8::FieldSize::large ? 24 : (sizes[row] == os8::FieldSize::small ? 21 : 20);
+        for (int col = 0; col < 4; ++col)
+        {
+            const juce::Rectangle<int> field (fa.getX() + 8 + col * 36, fa.getY() + 6 + row * 28, w, m.height);
+            os8::paintTextField (g, field, sizes[row], fieldStates[col]);
+            g.setColour (os8::fieldTextColour (sizes[row], fieldStates[col]));
+            os8::drawText (g, "10", m.style, { (float) (field.getX() + m.textLeft), (float) (field.getY() + m.textTop), 20.0f, 12.0f });
+        }
+    }
+
+    const os8::DropdownState dd[] = { os8::DropdownState::normal, os8::DropdownState::active, os8::DropdownState::disabled };
+    for (int i = 0; i < 3; ++i)
+    {
+        os8::paintDropdown (g, { fa.getX() + 170, fa.getY() + 6 + i * 24, 100, os8::kDropdownHeight }, dd[i], "Milliseconds");
+        os8::paintMiniDropdown (g, { fa.getX() + 290, fa.getY() + 8 + i * 24 }, dd[i]);
+        g.setColour (os8::colour::black);
+        os8::drawText (g, "ms", os8::TextStyle::xSmallLabel, { (float) fa.getX() + 313.0f, (float) (fa.getY() + 8 + i * 24) + 1.5f, 30.0f, 9.0f });
+    }
+}
+
+juce::Rectangle<int> Os8Gallery::fieldsArea()
+{
+    return { kMargin, 580, 700, 90 };
 }
 
 juce::Rectangle<int> Os8Gallery::uiElementsArea()
@@ -127,6 +176,13 @@ void Os8Gallery::resized()
     liveRadioA.setBounds (area.getX(), area.getY() + 44, liveRadioA.preferredWidth(), 20);
     liveRadioB.setBounds (area.getX(), area.getY() + 64, liveRadioB.preferredWidth(), 20);
     liveDisabled.setBounds (area.getX() + 120, area.getY() + 44, liveDisabled.preferredWidth(), 20);
+
+    const auto f = fieldsArea().translated (360, 0);
+    liveLarge.setBounds (f.getX(), f.getY() + 8, 40, 22);
+    liveSmall.setBounds (f.getX() + 56, f.getY() + 11, 30, 16);
+    liveXSmall.setBounds (f.getX() + 102, f.getY() + 12, 40, 15);
+    liveUnits.setBounds (f.getX() + 160, f.getY() + 10, 100, os8::kDropdownHeight);
+    liveMini.setBounds (f.getX() + 276, f.getY() + 12, liveMini.preferredWidth(), os8::kMiniDropdownHeight);
 }
 
 bool Os8Gallery::writeSnapshot (const juce::File& png, float scale, juce::Rectangle<int> area)

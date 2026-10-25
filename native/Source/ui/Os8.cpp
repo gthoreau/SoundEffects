@@ -1,6 +1,7 @@
 #include "Os8.h"
 
 #include "BinaryData.h"
+#include "Os8Icons.h"
 
 #include <cmath>
 
@@ -209,7 +210,7 @@ void paintButton (juce::Graphics& g, juce::Rectangle<int> bounds, ButtonKind kin
     }
 
     g.setColour (disabled ? gray400 : (active ? white : black));
-    const float top = std::floor ((float) (bounds.getHeight() - sizeOf (TextStyle::headline)) * 0.5f);
+    const float top = std::floor (((float) bounds.getHeight() - sizeOf (TextStyle::headline)) * 0.5f);
     drawText (g, text, TextStyle::headline,
               { (float) bounds.getX(), (float) bounds.getY() + top, (float) bounds.getWidth(), 12.0f },
               juce::Justification::horizontallyCentred);
@@ -335,6 +336,185 @@ void paintRadio (juce::Graphics& g, juce::Point<float> o, bool selected, bool en
 
     if (selected)
         g.fillEllipse (disc.reduced (3.0f));
+}
+
+// --- text fields ----------------------------------------------------------------
+
+FieldMetrics metricsOf (FieldSize size) noexcept
+{
+    switch (size)
+    {
+        case FieldSize::large:  return { 22, TextStyle::headline,    5, 5, 2 };
+        case FieldSize::small:  return { 16, TextStyle::smallLabel,  5, 3, 2 };
+        case FieldSize::xSmall: return { 15, TextStyle::xSmallLabel, 5, 3, 1 };
+    }
+    return { 16, TextStyle::smallLabel, 5, 3, 2 };
+}
+
+juce::Colour fieldTextColour (FieldSize size, FieldState state) noexcept
+{
+    if (state == FieldState::disabled)
+        return size == FieldSize::xSmall ? colour::black : colour::gray400;
+    if (state == FieldState::highlighted && size == FieldSize::xSmall)
+        return colour::white;
+    return colour::black;
+}
+
+void paintTextField (juce::Graphics& g, juce::Rectangle<int> bounds, FieldSize size, FieldState state)
+{
+    using namespace colour;
+    const auto r = bounds.toFloat();
+    const auto m = metricsOf (size);
+    const juce::Colour halo (0xff6666cc);
+
+    switch (state)
+    {
+        case FieldState::normal:
+        {
+            // A one-pixel sunken bevel OUTSIDE the field: grey above and left, white
+            // below and right. Drawn as Figma does, four unblurred drop shadows.
+            g.setColour (white);
+            g.fillRect (r.translated (1.0f, 0.0f));
+            g.fillRect (r.translated (0.0f, 1.0f));
+            g.setColour (juce::Colour (0xff808080));
+            g.fillRect (r.translated (-1.0f, 0.0f));
+            g.fillRect (r.translated (0.0f, -1.0f));
+            g.setColour (white);
+            g.fillRect (r);
+            // The x-small field (the sound window's selection readouts) has no
+            // frame of its own — the bevel is its edge.
+            if (size != FieldSize::xSmall)
+                strokeInside (g, r, 0.0f, 1.0f, black);
+            break;
+        }
+
+        case FieldState::active:
+        case FieldState::highlighted:
+        {
+            // As Figma draws it: on large and small fields a 1 px ring with corners
+            // (a spread-1 shadow) plus four copies shifted 2 px, so the outer pixel
+            // of each corner stays notched; on x-small, only four 1 px shifts.
+            const float w = (float) m.haloWidth;
+            g.setColour (halo);
+            if (size != FieldSize::xSmall)
+                g.fillRect (r.expanded (1.0f));
+            g.fillRect (r.translated (-w, 0.0f));
+            g.fillRect (r.translated ( w, 0.0f));
+            g.fillRect (r.translated (0.0f, -w));
+            g.fillRect (r.translated (0.0f,  w));
+
+            const bool inverse = state == FieldState::highlighted;
+            g.setColour (! inverse ? white : (size == FieldSize::xSmall ? gray600 : selectedTextField));
+            g.fillRect (r);
+
+            // Highlighted keeps a white margin inside the frame: an inner shadow with
+            // spread 3 (2 on x-small), most of which the 1 px stroke then covers.
+            if (inverse)
+            {
+                const float band = size == FieldSize::xSmall ? 2.0f : 3.0f;
+                juce::Path shape;
+                shape.addRectangle (r);
+                juce::Path inner;
+                inner.addRectangle (r.reduced (band));
+                shape.addPath (inner);
+                shape.setUsingNonZeroWinding (false);
+                g.setColour (white);
+                g.fillPath (shape);
+            }
+
+            strokeInside (g, r, 0.0f, 1.0f, black);
+            break;
+        }
+
+        case FieldState::disabled:
+        {
+            if (size == FieldSize::xSmall)
+            {
+                strokeInside (g, r, 0.0f, 1.0f, black);   // as drawn: a bare frame
+            }
+            else
+            {
+                g.setColour (gray100);
+                g.fillRect (r);
+                strokeInside (g, r, 0.0f, 1.0f, gray300);
+            }
+            break;
+        }
+    }
+}
+
+// --- dropdowns -------------------------------------------------------------------
+
+namespace {
+
+void pillFace (juce::Graphics& g, juce::Rectangle<float> r, float radius, float bevel,
+               DropdownState state, bool withStroke)
+{
+    using namespace colour;
+    const auto shape = roundedRect (r, radius);
+
+    if (state == DropdownState::disabled)
+    {
+        g.setColour (gray100);
+        g.fillPath (shape);
+        if (withStroke) strokeInside (g, r, radius, 1.0f, gray300);
+        return;
+    }
+
+    const bool active = state == DropdownState::active;
+    g.setColour (active ? gray500 : gray100);
+    g.fillPath (shape);
+    innerShadow (g, shape, -bevel, -bevel, 0, gray400);
+    innerShadow (g, shape,  bevel,  bevel, 0, active ? gray600 : juce::Colour (0xfffffdfd));
+    if (withStroke) strokeInside (g, r, radius, 1.0f, black);
+}
+
+juce::Colour inkFor (DropdownState state) noexcept
+{
+    return state == DropdownState::active   ? colour::white
+         : state == DropdownState::disabled ? colour::gray400
+                                            : colour::black;
+}
+
+} // namespace
+
+void paintDropdown (juce::Graphics& g, juce::Rectangle<int> bounds, DropdownState state,
+                    const juce::String& text)
+{
+    const auto r = bounds.toFloat();
+    pillFace (g, r, 3.0f, 2.0f, state, true);
+
+    // The arrow well: 17 x 15, one pixel in from the right, top and bottom.
+    const juce::Rectangle<float> well (r.getRight() - 18.0f, r.getY() + 1.0f, 17.0f, 15.0f);
+    pillFace (g, well, 1.0f, 1.0f, state, false);
+
+    g.setColour (inkFor (state));
+    g.fillPath (icon::dropdownDoubleArrow(),
+                juce::AffineTransform::translation (well.getX() + 5.0f, well.getY() + 3.0f));
+
+    // Figma puts the label's box at (7, 3.5); drawText rounds the baseline.
+    drawText (g, text, TextStyle::smallLabel,
+              { r.getX() + 7.0f, r.getY() + 3.5f, well.getX() - r.getX() - 9.0f, 10.0f });
+}
+
+void paintMiniDropdown (juce::Graphics& g, juce::Point<int> origin, DropdownState state)
+{
+    const juce::Rectangle<float> r ((float) origin.x, (float) origin.y,
+                                    (float) kMiniDropdownWidth, (float) kMiniDropdownHeight);
+
+    if (state == DropdownState::disabled)
+    {
+        // As drawn in Figma: the outline and arrow, no face.
+        strokeInside (g, r, 3.0f, 1.0f, colour::black);
+    }
+    else
+    {
+        pillFace (g, r, 3.0f, 2.0f, state, true);
+        pillFace (g, r.reduced (1.0f), 1.0f, 1.0f, state, false);
+    }
+
+    g.setColour (state == DropdownState::active ? colour::white : colour::black);
+    g.fillPath (icon::dropdownSingleArrow(), juce::AffineTransform::translation (r.getX() + 6.0f, r.getY() + 4.0f));
 }
 
 } // namespace os8

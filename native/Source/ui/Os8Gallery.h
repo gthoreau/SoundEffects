@@ -28,6 +28,9 @@ public:
         compare with Figma's zoomed renders. */
     static juce::Rectangle<int> uiElementsArea();
 
+    /** The fields-and-dropdowns row, below the UI elements. */
+    static juce::Rectangle<int> fieldsArea();
+
 private:
     // Live controls, to be clicked: the painters above show every state at once,
     // these show the transitions between them (press, Done! flash, radio exclusion).
@@ -37,6 +40,9 @@ private:
     Os8Toggle liveRadioA { "New Channel", Os8Toggle::Shape::radio };
     Os8Toggle liveRadioB { "New Document", Os8Toggle::Shape::radio };
     Os8Toggle liveDisabled { "Allow the sound to get longer", Os8Toggle::Shape::checkbox };
+    Os8TextField liveLarge { os8::FieldSize::large }, liveSmall { os8::FieldSize::small },
+                 liveXSmall { os8::FieldSize::xSmall };
+    Os8Dropdown liveUnits, liveMini { Os8Dropdown::Style::mini };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8Gallery)
 };

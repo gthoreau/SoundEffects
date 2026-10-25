@@ -171,4 +171,40 @@ void paintRadio (juce::Graphics&, juce::Point<float> origin, bool selected, bool
 
 inline constexpr int kToggleSize = 12;   // checkbox and radio
 
+/** Text field 327:4482. Three sizes, four looks: Default (idle), Active (being
+    edited), Highlighted (focused with its whole content selected — what a field
+    shows the moment you tab or click into it) and Disabled. */
+enum class FieldSize  { large, small, xSmall };
+enum class FieldState { normal, active, highlighted, disabled };
+
+struct FieldMetrics
+{
+    int height;          // the field's own height
+    TextStyle style;     // the type inside it
+    int textLeft;        // text box offset from the field's left edge
+    int textTop;         // ...and from its top
+    int haloWidth;       // the #6666cc focus ring, outside the field
+};
+
+FieldMetrics metricsOf (FieldSize) noexcept;
+
+/** The field's frame and fill, plus everything Figma draws OUTSIDE it: the 1 px
+    sunken bevel when idle, the focus halo when active. Callers must leave room for
+    that (or paint unclipped) — the halo is 2 px wide on large and small fields. */
+void paintTextField (juce::Graphics&, juce::Rectangle<int>, FieldSize, FieldState);
+
+/** The text colour each state uses. */
+juce::Colour fieldTextColour (FieldSize, FieldState) noexcept;
+
+/** The popup's resting look ("Dropdown" 328:5750): a bevelled pill, the label left,
+    the double arrow in its own little bevelled well at the right. */
+enum class DropdownState { normal, active, disabled };
+inline constexpr int kDropdownHeight = 17;
+void paintDropdown (juce::Graphics&, juce::Rectangle<int>, DropdownState, const juce::String& text);
+
+/** "mini-dropdown" 502:4002: the 19 x 12 button only. Its label (the unit, "ms")
+    is ordinary 9 pt text the caller sets 4 px to its right. */
+inline constexpr int kMiniDropdownWidth = 19, kMiniDropdownHeight = 12;
+void paintMiniDropdown (juce::Graphics&, juce::Point<int> origin, DropdownState);
+
 } // namespace os8
