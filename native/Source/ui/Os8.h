@@ -37,16 +37,16 @@ juce::Typeface::Ptr chicago();
 /** A ready-to-use font for one of the Figma text styles. */
 juce::Font font (TextStyle);
 
-/** The line height Figma gives every style: 98% of its size. */
+/** The line height Figma gives every style: 98% of its size, in whole pixels. */
 float lineHeightOf (TextStyle) noexcept;
 
 /** Where Figma puts the baseline, measured down from the top of a text box.
 
     Figma centres the font's natural content box (ascent + descent, 1.25 em for this
-    face) inside the line box (0.98 em). The line box is the smaller of the two, so
-    the half-leading is negative and the baseline lands 0.865 em down — not at the
-    ascent. Placing text by any other rule puts every label a pixel or two off its
-    Figma position, which is exactly the error "pixel-perfect" rules out. */
+    face) inside the line box. The line box is the smaller of the two, so the
+    half-leading is negative and the baseline lands about 0.875 em down — not at the
+    ascent. drawText() then rounds the absolute baseline to a whole pixel, as Figma
+    does. Any other rule puts labels a pixel off their Figma position. */
 float baselineOf (TextStyle) noexcept;
 
 /** Draw single-line text the way Figma lays out a text node whose box (top-left and
@@ -129,5 +129,46 @@ juce::Colour themeColour (int index) noexcept;
 
 /** The user-facing name of theme `index`, or an empty string out of range. */
 juce::String themeName (int index);
+
+// --- paint primitives ---------------------------------------------------------
+//
+// Figma effects, reproduced. Every bevel in the design system is a stack of these:
+// a fill, then inner shadows in the order Figma lists them (first listed = painted
+// first), then the stroke on top.
+
+/** A Figma inner shadow on `shape`. With `blur` 0 it is exact: the part of the
+    shape left uncovered when a copy is shifted by (dx, dy) — a hard bevel band.
+    With blur > 0 it is a Gaussian of that band (Figma's radius ≈ 2 sigma). */
+void innerShadow (juce::Graphics&, const juce::Path& shape, float dx, float dy,
+                  int blur, juce::Colour);
+
+/** A Figma drop shadow with no blur: `shape` shifted by (dx, dy), painted beneath. */
+void dropShadow (juce::Graphics&, const juce::Path& shape, float dx, float dy, juce::Colour);
+
+/** A Figma "inside" stroke of `weight` on a rounded rectangle. */
+void strokeInside (juce::Graphics&, juce::Rectangle<float>, float cornerRadius,
+                   float weight, juce::Colour);
+
+// --- the UI Elements components (page "Design System", frame 636:21143) ------
+
+enum class ButtonKind  { primary, secondary };            // Buttons 87:8
+enum class ButtonState { normal, applied, active, disabled };
+
+/** Buttons 87:8. Primary is the 25 px default button (a ring round a face);
+    secondary the 20 px plain one. `applied` is the brief "Done!" state — the
+    caller passes the text it wants shown. */
+void paintButton (juce::Graphics&, juce::Rectangle<int>, ButtonKind, ButtonState,
+                  const juce::String& text);
+
+/** The height Figma gives each kind of button. */
+int buttonHeight (ButtonKind) noexcept;
+
+/** Checkbox 87:1401 — a 12 px box with its top-left at `origin`. */
+void paintCheckbox (juce::Graphics&, juce::Point<float> origin, bool ticked, bool enabled);
+
+/** Radiobutton 292:4290 — a 12 px disc with its top-left at `origin`. */
+void paintRadio (juce::Graphics&, juce::Point<float> origin, bool selected, bool enabled);
+
+inline constexpr int kToggleSize = 12;   // checkbox and radio
 
 } // namespace os8

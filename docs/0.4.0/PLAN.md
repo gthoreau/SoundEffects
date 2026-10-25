@@ -73,7 +73,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 ### 1. Design-system foundations
 - [x] 1.1 Embed ClassicChicago.ttf (`juce_add_binary_data`) and add `ui/Theme` text styles (14/12/11/10/9). Check crisp rendering at native sizes.
 - [x] 1.2 `ui/Theme` colour tokens: the System colours plus the 24-theme name+hex table, replacing `kTints`. Index migration, with an engine/state test.
-- [ ] 1.3 `Sys7` → `Os8` look-and-feel: Buttons (Primary/Secondary × Default/Applied/Active/Disabled), Checkbox, Radiobutton
+- [x] 1.3 `Sys7` → `Os8` look-and-feel: Buttons (Primary/Secondary × Default/Applied/Active/Disabled), Checkbox, Radiobutton
 - [ ] 1.4 Text field (3 sizes × 4 states) with ↑/↓ ±step, ⇧ ×10 and unit-aware steps. Dropdown and mini-dropdown.
 - [ ] 1.5 Sliders (Mixer-volume with VU, Mixer-pan, Amplify), Icon-button, Canvas-toggle
 - [ ] 1.6 Icon set as vector drawings, plus Transport-button, Combo-play-button and Dir-menu
@@ -145,6 +145,15 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 ## Open questions
 - (none yet)
 
+## How to compare with Figma, pixel by pixel
+Use `use_figma` to export a node at 1x: `figma.base64Encode(await node.exportAsync({format:'PNG', constraint:{type:'SCALE', value:1}}))`. Decode it into the scratchpad, then diff it against `--gallery-snapshot` with a small PIL script that composites over white and prints one hex digit per pixel side by side. Figma rasterises text at fractional positions, so mask text out of the mean, or compare rows only.
+
+Rules learned this way, all in `ui/Os8.cpp`:
+- **Baseline:** offset ≈ 0.875 em inside a line box of round(0.98 em), then rounded to a whole pixel.
+- **Frame inner shadows** are painted after the children and before the stroke.
+- **Inner-shadow order:** the first-listed effect is painted first.
+- **Blur:** Figma blur r ≈ `juce::DropShadow` radius r.
+
 ## Notes for later steps
 - **Step 4, tinted mixer strip** (`636:11566`): the strip fill is the theme colour. The slider and VU troughs keep their grey layers (#c0c0c0, #9d9d9d, #666666, #dddddd), so check their blend mode before calling them a "darker shade". A muted strip adds a `#ffffff@0.80` "content" overlay and greys its text to #9d9d9d. A selected (Active) strip shows the 4 drag-handle bars at `#000000@0.50`.
 - **The tokens live in `ui/Os8.h`, not in a separate `ui/Theme`**: the System colours, `kThemes[24]`, `themeColour()` and `themeName()`. `sys7::tintFromPalette` and `kNumTints` forward there until Sys7 is gone.
@@ -152,6 +161,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 ## Journal
 One line per finished sub-step: date · sub-step · what was verified · commit.
 
+- 2026-10-25 · 1.3 · `os8::paintButton/paintCheckbox/paintRadio` + `Os8Button` (Done! flash, 500 ms) and `Os8Toggle` (checkbox/radio + label); pixel-diffed against Figma 1x exports: secondary button mean 1.4/255 off text, primary 6.3 (soft ring blur), text rows identical (Figma snaps baselines to whole px; Figma paints a frame's inner shadows OVER its children); live interaction not yet drive-tested (end of step 1)
 - 2026-10-25 · 1.2 · the 24 named themes replace the 12 HSL tints (index N → colour N, -1 → Placeholder-gray-100); the tint pool now spans 24; state-tests round-trip index 23; gallery swatches match the Theme board
 - 2026-10-25 · 1.1 · ClassicChicago.ttf embedded (BinaryData), `ui/Os8` text styles + Figma baseline rule (0.865 em) + `drawText`/`widthOf`; JUCE advance widths ceil'd = Figma widths on 15/15 strings; `--gallery` / `--gallery-snapshot` workbench; tests green
 - 2026-10-25 · setup · plan approved, spec snapshot re-synced from Figma, branch `v0.4.0-dev` created

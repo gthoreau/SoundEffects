@@ -7,7 +7,10 @@
 
 #pragma once
 
-#include <juce_gui_basics/juce_gui_basics.h>
+#include "Os8Widgets.h"
+
+#include <memory>
+#include <vector>
 
 class Os8Gallery : public juce::Component
 {
@@ -17,9 +20,23 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    /** Render the gallery off-screen at `scale` and write it as a PNG. */
-    static bool writeSnapshot (const juce::File& png, float scale);
+    /** Render the gallery (or just `area` of it) off-screen at `scale` and write
+        it as a PNG. */
+    static bool writeSnapshot (const juce::File& png, float scale, juce::Rectangle<int> area = {});
+
+    /** Where the UI Elements section sits — snapshotted on its own, magnified, to
+        compare with Figma's zoomed renders. */
+    static juce::Rectangle<int> uiElementsArea();
 
 private:
+    // Live controls, to be clicked: the painters above show every state at once,
+    // these show the transitions between them (press, Done! flash, radio exclusion).
+    Os8Button liveApply { "Apply", os8::ButtonKind::primary };
+    Os8Button liveCancel { "Cancel" };
+    Os8Toggle liveCheck { "Activate Auto-Apply", Os8Toggle::Shape::checkbox };
+    Os8Toggle liveRadioA { "New Channel", Os8Toggle::Shape::radio };
+    Os8Toggle liveRadioB { "New Document", Os8Toggle::Shape::radio };
+    Os8Toggle liveDisabled { "Allow the sound to get longer", Os8Toggle::Shape::checkbox };
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8Gallery)
 };
