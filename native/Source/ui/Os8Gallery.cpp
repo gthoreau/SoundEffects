@@ -1,6 +1,7 @@
 #include "Os8Gallery.h"
 
 #include "Os8.h"
+#include "AppPrefs.h"
 
 namespace {
 
@@ -36,6 +37,10 @@ Os8Gallery::Os8Gallery()
     liveRadioB.setRadioGroupId (1);
     liveRadioA.setToggleState (true, juce::dontSendNotification);
     liveDisabled.setEnabled (false);
+
+    // The 1-click tray's checkbox is the real preference: tick it, quit, relaunch.
+    liveCheck.setToggleState (AppPrefs::get().autoApply(), juce::dontSendNotification);
+    liveCheck.onClick = [this] { AppPrefs::get().setAutoApply (liveCheck.getToggleState()); };
 
     liveLarge.setNumeric (1.0, 0, 0.0, 999.0);
     liveLarge.setValue (10.0);

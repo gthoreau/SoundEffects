@@ -77,7 +77,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - [x] 1.4 Text field (3 sizes × 4 states) with ↑/↓ ±step, ⇧ ×10 and unit-aware steps. Dropdown and mini-dropdown.
 - [x] 1.5 Sliders (Mixer-volume with VU, Mixer-pan, Amplify), Icon-button, Canvas-toggle
 - [x] 1.6 Icon set as vector drawings, plus Transport-button, Combo-play-button and Dir-menu
-- [ ] 1.7 `AppPrefs` over ApplicationProperties (auto-apply, setups, time unit, panel visibility/collapse)
+- [x] 1.7 `AppPrefs` over ApplicationProperties (auto-apply, setups, time unit, panel visibility/collapse)
 
 ### 2. App shell and menus
 - [ ] 2.1 Standalone window: hidden native title bar, traffic lights in the app bar (ObjC++ NSWindow tweak), `[canvas-name]` label
@@ -157,12 +157,15 @@ Rules learned this way, all in `ui/Os8.cpp`:
 - **Read `effect.spread` too:** a (0,0) shadow with spread is a ring, and an inner shadow with spread is a band (the field halo and the Highlighted white margin).
 
 ## Notes for later steps
+- **Where the step-1 vocabulary lives:** `ui/Os8.{h,cpp}` holds the tokens and painters, `ui/Os8Widgets.{h,cpp}` the JUCE components (Os8Button, Os8Toggle, Os8TextField, Os8Dropdown, Os8Slider, Os8IconButton, Os8CanvasToggle, Os8TransportButton, Os8ComboPlay, Os8LookAndFeel), `ui/Os8Icons` all 33 icons, and `ui/AppPrefs` the preferences. `--gallery` shows every piece live. Nothing in the app's panels uses them yet: steps 2–5 swap Sys7 out panel by panel, then Sys7 is deleted.
+- **Os8ComboPlay's direction menu** is a modal child of the top-level component. Picking works by click, not by press-drag-release (a drag stays with the combo). That is fine for the spec, but revisit it if press-and-drag is wanted.
 - **Step 4, tinted mixer strip** (`636:11566`): the strip fill is the theme colour. **Solved in 1.5:** the slider trough is a #c0c0c0 MULTIPLY layer, and that is the "darker shade". Pass the strip's theme colour to `Os8Slider::setUnder()`. A muted strip adds a `#ffffff@0.80` "content" overlay and greys its text to #9d9d9d. A selected (Active) strip shows the 4 drag-handle bars at `#000000@0.50`.
 - **The tokens live in `ui/Os8.h`, not in a separate `ui/Theme`**: the System colours, `kThemes[24]`, `themeColour()` and `themeName()`. `sys7::tintFromPalette` and `kNumTints` forward there until Sys7 is gone.
 
 ## Journal
 One line per finished sub-step: date · sub-step · what was verified · commit.
 
+- 2026-10-25 · 1.7 + step 1 drive-test · `ui/AppPrefs` (own file `~/Library/Application Support/SoundEffects/Preferences.settings`, shared by standalone + plugin, Listener API, XML slots for setups); live in the app: Done! flash 0.5 s then back, radios exclusive, ↑↑⇧↑ took 75 → 87 with the field Highlighted + halo, units popup opens/hovers/selects, direction menu opens over Play / hovers / picking ◀ changes Play's icon, Auto-apply untick survived quit + relaunch (restored to on afterwards); existing Windows already wear the 24 themes; all tests green. **STEP 1 COMPLETE.**
 - 2026-10-25 · 1.6 · `paintTransportButton` (normal/active/disabled), `paintPlayDirectionButton`, `paintDirectionMenu`, shared `paintMenuFrame`; widgets `Os8TransportButton` and `Os8ComboPlay` (Play + direction strip + modal direction menu, async close); disabled transport stop = 0.00 vs Figma, normal 3.5, active 5.0 (icons at Figma's half pixels); **design slip resolved:** Figma's disabled ping-pong icon stays red, ours is #9d9d9d like every other disabled icon
 - 2026-10-25 · 1.5 · `os8::paintSlider` (volume + stereo VU + 0 dB tick, pan + deviation bar, amplify + 100 % tick), thumb, `Os8Slider` (juce::Slider), `Os8IconButton`, `Os8CanvasToggle`, `os8::multiply()` for Figma MULTIPLY layers; `Os8Icons` now holds ALL 33 Figma icons as verbatim SVG (Drawable, multi-colour) + `outline()` for recolouring; statics moved to DeletedAtShutdown singletons (no leak asserts); diffs: volume 0.17, pan 0.38, icon button 0.58, canvas toggle 12.6 (Figma's icons sit at y 3.5 → blurred; ours snap)
 - 2026-10-25 · 1.4 · `Os8TextField` (3 sizes × 4 states, select-all on focus = Highlighted, ↑/↓ ±step, ⇧ ×10, Return/blur commit, Esc revert, `stepFor/decimalsFor(Unit)`), `Os8Dropdown` standard + mini, `Os8LookAndFeel` popup menus, `Os8Icons` (pixel SVG paths); diffs vs Figma: large field 1.65, small active 3.3 (text AA only), dropdown text ½ px (Figma sits it between rows); editor baseline = painted baseline (measured); open menu not yet seen live

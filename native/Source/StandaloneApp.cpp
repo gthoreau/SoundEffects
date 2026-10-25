@@ -726,6 +726,14 @@ public:
             return;
         }
 
+        mainWindow = std::make_unique<MainWindow> (
+            getApplicationName(),
+            juce::LookAndFeel::getDefaultLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId),
+            appProperties.getUserSettings());
+
+        mainWindow->setVisible (true);
+
+        // After the main window, so the workbench opens in front of it.
         if (args.contains ("--gallery"))
         {
             struct GalleryWindow : juce::DocumentWindow
@@ -740,13 +748,6 @@ public:
             galleryWindow->centreWithSize (galleryWindow->getWidth(), galleryWindow->getHeight());
             galleryWindow->setVisible (true);
         }
-
-        mainWindow = std::make_unique<MainWindow> (
-            getApplicationName(),
-            juce::LookAndFeel::getDefaultLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId),
-            appProperties.getUserSettings());
-
-        mainWindow->setVisible (true);
 
         // A path in argv — launching the binary from a shell. A Finder double-click
         // does NOT arrive this way even when it starts the app: LaunchServices sends
