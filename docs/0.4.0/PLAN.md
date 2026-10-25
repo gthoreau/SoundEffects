@@ -71,7 +71,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - [x] 0.1 Decided: stay C++/JUCE (2026-10-25)
 
 ### 1. Design-system foundations
-- [ ] 1.1 Embed ClassicChicago.ttf (`juce_add_binary_data`) and add `ui/Theme` text styles (14/12/11/10/9). Check crisp rendering at native sizes.
+- [x] 1.1 Embed ClassicChicago.ttf (`juce_add_binary_data`) and add `ui/Theme` text styles (14/12/11/10/9). Check crisp rendering at native sizes.
 - [ ] 1.2 `ui/Theme` colour tokens: the System colours plus the 24-theme name+hex table, replacing `kTints`. Index migration, with an engine/state test.
 - [ ] 1.3 `Sys7` → `Os8` look-and-feel: Buttons (Primary/Secondary × Default/Applied/Active/Disabled), Checkbox, Radiobutton
 - [ ] 1.4 Text field (3 sizes × 4 states) with ↑/↓ ±step, ⇧ ×10 and unit-aware steps. Dropdown and mini-dropdown.
@@ -148,4 +148,5 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 ## Journal
 One line per finished sub-step: date · sub-step · what was verified · commit.
 
+- 2026-10-25 · 1.1 · ClassicChicago.ttf embedded (BinaryData), `ui/Os8` text styles + Figma baseline rule (0.865 em) + `drawText`/`widthOf`; JUCE advance widths ceil'd = Figma widths on 15/15 strings; `--gallery` / `--gallery-snapshot` workbench; tests green
 - 2026-10-25 · setup · plan approved, spec snapshot re-synced from Figma, branch `v0.4.0-dev` created

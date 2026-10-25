@@ -74,6 +74,8 @@ target_sources(SoundEffects PRIVATE
     Source/effects/modules/SampleHose.cpp
     Source/effects/modules/Waveform.cpp
     Source/ui/Sys7.cpp
+    Source/ui/Os8.cpp
+    Source/ui/Os8Gallery.cpp
     Source/ui/EffectsPanel.cpp
     Source/ui/KeyboardArt.cpp
     Source/ui/KeyboardPalette.cpp
@@ -81,6 +83,12 @@ target_sources(SoundEffects PRIVATE
     Source/ui/WindowComponent.cpp
     Source/ui/MixerComponent.cpp
     Source/ui/ViewPalette.cpp)
+
+# --- embedded resources -------------------------------------------------------
+# Classic Chicago ships inside the binary: the whole UI is set in it, and a
+# pixel-exact face cannot depend on what happens to be installed.
+juce_add_binary_data(SoundEffectsData SOURCES
+    Resources/fonts/ClassicChicago.ttf)
 
 target_compile_definitions(SoundEffects PUBLIC
     JUCE_WEB_BROWSER=0
@@ -150,6 +158,7 @@ if(APPLE)
 endif()
 
 target_link_libraries(SoundEffects PRIVATE
+    SoundEffectsData
     juce::juce_audio_utils
     juce::juce_dsp
     PUBLIC

@@ -36,6 +36,7 @@
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 
 #include "PluginEditor.h"
+#include "ui/Os8Gallery.h"
 
 #include <memory>
 
@@ -700,6 +701,35 @@ public:
             return;
         }
 
+        // The design-system workbench (see Os8Gallery.h). The snapshot form writes
+        // 1x and 2x renders side by side — <name>.png and <name>@2x.png — and quits
+        // without touching the canvas or the audio device.
+        const auto args = juce::StringArray::fromTokens (commandLine, true);
+        if (const int i = args.indexOf ("--gallery-snapshot"); i >= 0 && i + 1 < args.size())
+        {
+            const juce::File png (args[i + 1].unquoted());
+            const bool ok = Os8Gallery::writeSnapshot (png, 1.0f)
+                         && Os8Gallery::writeSnapshot (png.getSiblingFile (png.getFileNameWithoutExtension() + "@2x.png"), 2.0f);
+            setApplicationReturnValue (ok ? 0 : 1);
+            quit();
+            return;
+        }
+
+        if (args.contains ("--gallery"))
+        {
+            struct GalleryWindow : juce::DocumentWindow
+            {
+                GalleryWindow() : juce::DocumentWindow ("Os8 Gallery", juce::Colours::white, closeButton) {}
+                void closeButtonPressed() override { setVisible (false); }
+            };
+            galleryWindow = std::make_unique<GalleryWindow>();
+            galleryWindow->setUsingNativeTitleBar (true);
+            galleryWindow->setContentOwned (new Os8Gallery(), true);
+            galleryWindow->setResizable (true, false);
+            galleryWindow->centreWithSize (galleryWindow->getWidth(), galleryWindow->getHeight());
+            galleryWindow->setVisible (true);
+        }
+
         mainWindow = std::make_unique<MainWindow> (
             getApplicationName(),
             juce::LookAndFeel::getDefaultLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId),
@@ -717,6 +747,7 @@ public:
 
     void shutdown() override
     {
+        galleryWindow = nullptr;
         mainWindow = nullptr;
         appProperties.saveIfNeeded();
     }
@@ -789,6 +820,7 @@ private:
 
     juce::ApplicationProperties appProperties;
     std::unique_ptr<MainWindow> mainWindow;
+    std::unique_ptr<juce::DocumentWindow> galleryWindow;
 };
 
 } // namespace
