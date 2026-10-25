@@ -431,9 +431,10 @@ bool applyEngineState (Engine& engine, const EngineState& state)
         window->muted.store (w.muted, std::memory_order_relaxed);
         window->soloed.store (w.soloed, std::memory_order_relaxed);
         window->balance.store (std::clamp (w.balance, -1.0f, 1.0f), std::memory_order_relaxed);
-        window->slot = w.slot >= 0 ? w.slot : Window::kNoSlot;
+        if (w.slot >= 0) window->slot = w.slot;   // else keep the lowest free one addWindow gave it
     }
 
+    engine.normaliseSlots();
     return complete;
 }
 

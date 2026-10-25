@@ -120,6 +120,20 @@ public:
         is silencing. */
     bool     anyWindowSoloed() const noexcept;
     const std::vector<uint64_t>& windowIds() const noexcept { return order; }
+
+    // --- message thread: mixer slots ----------------------------------------
+    // Every Window sits in a numbered mixer slot (Window::slot). addWindow seats a
+    // new one in the lowest free slot; removing a Window frees its slot, leaving a
+    // gap the next new Window fills.
+    int      lowestFreeSlot() const;
+    /** The Window seated in `slot`, or 0. */
+    uint64_t windowInSlot (int slot) const noexcept;
+    /** The highest occupied slot, or Window::kNoSlot when there is no Window. */
+    int      highestSlot() const noexcept;
+    /** Seat a Window in `slot`; whoever was there takes its old slot. */
+    bool     moveToSlot (uint64_t id, int slot);
+    /** Resolve duplicate and missing slots (a damaged or a v1 file). */
+    void     normaliseSlots();
     Window*  windowById (uint64_t id) noexcept;
 
     // --- message thread: editing (RCU) --------------------------------------

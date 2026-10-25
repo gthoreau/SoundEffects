@@ -567,8 +567,10 @@ void paintSlider (juce::Graphics& g, juce::Rectangle<int> bounds, SliderKind kin
 
     // The trough is a MULTIPLY layer: #c0c0c0 with a dark band (1, 2) and a light
     // band (-1, -2) inside it, the whole layer then multiplied onto what is below —
-    // on a tinted mixer strip that is what turns the grey into a darker tint.
-    const auto base = gray300;
+    // on a tinted mixer strip that is what turns the grey into a darker tint. A
+    // muted strip (Mixer-channel, Mute=On) swaps the layer for #eeeeee and greys
+    // the outline, so the trough all but disappears into the veiled strip.
+    const auto base = look.muted ? gray000 : gray300;
     g.setColour (multiply (base, look.under));
     g.fillPath (shape);
     innerShadow (g, shape,  1.0f,  2.0f, 0, multiply (base.interpolatedWith (black, 0.3f), look.under));
@@ -586,7 +588,7 @@ void paintSlider (juce::Graphics& g, juce::Rectangle<int> bounds, SliderKind kin
     }
 
     // The trough's outline: square on the fader, a 4 px radius on the others.
-    strokeInside (g, trough, kind == SliderKind::volume ? 0.0f : 4.0f, 1.0f, black);
+    strokeInside (g, trough, kind == SliderKind::volume ? 0.0f : 4.0f, 1.0f, look.muted ? gray400 : black);
 
     if (kind == SliderKind::volume)
     {

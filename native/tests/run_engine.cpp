@@ -224,6 +224,28 @@ int main()
     wa->muted = false; wb->soloed = false; wc->gain = 1.0f;
     checkClose (renderLevel (engine), la + lb + lc, tol, "and all three come back");
 
+    // --- mixer slots ---------------------------------------------------------
+    // a, b, c were added in that order: slots 0, 1, 2.
+    check (wa->slot == 0 && wb->slot == 1 && wc->slot == 2, "slots: new Sounds take 0, 1, 2 in order");
+    check (engine.windowInSlot (1) == b && engine.windowInSlot (7) == 0, "slots: who sits where");
+
+    engine.removeWindow (b);   // frees slot 1, leaving a gap
+    check (engine.highestSlot() == 2 && engine.lowestFreeSlot() == 1, "slots: Close leaves a gap");
+    const uint64_t d = engine.addWindow (dcDocument (5, "d"));
+    check (engine.windowById (d)->slot == 1, "slots: the next new Sound fills the gap");
+
+    check (engine.moveToSlot (a, 6) && wa->slot == 6 && engine.lowestFreeSlot() == 0,
+           "slots: moving to an empty slot frees the old one");
+    check (engine.moveToSlot (c, 6) && wc->slot == 6 && wa->slot == 2,
+           "slots: moving onto an occupied slot swaps the two");
+
+    wa->slot = 1;              // a duplicate of d's, and c unseated: what a damaged file gives
+    wc->slot = se::Window::kNoSlot;
+    engine.normaliseSlots();   // order a, c, d: a keeps 1, then c and d take 0 and 2
+    check (wa->slot == 1 && wc->slot == 0 && engine.windowById (d)->slot == 2,
+           "slots: normalising keeps the first claimant and reseats the rest lowest-first");
+    engine.collectRetired();
+
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());
     return failures == 0 ? 0 : 1;

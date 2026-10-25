@@ -29,6 +29,7 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
 
     addAndMakeVisible (canvas);
     addAndMakeVisible (mixerPanel);
+    mixerPanel.setTitleRule (true);
     addAndMakeVisible (effectsPanel);
 
     // Each panel shades to its title bar from the box in that bar, and stays so.

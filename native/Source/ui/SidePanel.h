@@ -20,6 +20,10 @@ public:
     SidePanel (const juce::String& title, juce::Component& content);
 
     void setCollapsed (bool, juce::NotificationType = juce::sendNotification);
+
+    /** A black rule on the title bar's last row: the top edge of the content's own
+        outside stroke (the Mixer's New/Open bar), which Figma paints over the bar. */
+    void setTitleRule (bool r) { titleRule = r; repaint(); }
     bool isCollapsed() const noexcept { return collapsed; }
 
     /** The collapse box was used; the editor re-lays the columns. */
@@ -42,6 +46,7 @@ private:
     juce::String title;
     juce::Component& content;
     bool collapsed = false;
+    bool titleRule = false;
     bool pressingBox = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SidePanel)

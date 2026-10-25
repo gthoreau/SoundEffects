@@ -52,6 +52,9 @@ void SidePanel::paint (juce::Graphics& g)
     g.fillRect (box.getX() + 2, box.getY() + 3, kBoxSize - 4, 1);
     g.fillRect (box.getX() + 2, box.getY() + 7, kBoxSize - 4, 1);
 
+    if (titleRule && ! collapsed)
+        g.fillRect (bar.withTop (bar.getBottom() - 1));   // black, from the box glyph above
+
     g.setColour (black);
     g.drawRect (getLocalBounds(), 1);
 }

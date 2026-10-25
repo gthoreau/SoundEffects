@@ -228,7 +228,7 @@ struct SliderLook
     float centreX = -1.0f;     // pan only: where the deviation bar starts
     float levelLeft = 0.0f;    // volume only: VU bars, 0..1 of the trough width
     float levelRight = 0.0f;
-    bool muted = false;        // volume only: the VU greys out
+    bool muted = false;        // a muted strip: pale trough, grey outline and VU
     juce::Colour under = colour::white;   // what the multiplied trough sits on
 };
 

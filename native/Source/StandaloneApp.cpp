@@ -620,6 +620,16 @@ public:
             return;
         }
 
+        // The mixer strip in every state of Mixer-channel 509:9257 and the five strips
+        // of the tinted example 636:11566, plus the panel's top, as 1x PNGs in a
+        // directory — the pixel diff against Figma's exports. No canvas, no audio.
+        if (const int i = args.indexOf ("--mixer-snapshot"); i >= 0 && i + 1 < args.size())
+        {
+            setApplicationReturnValue (writeMixerSnapshot (juce::File (args[i + 1].unquoted())) ? 0 : 1);
+            quit();
+            return;
+        }
+
         mainWindow = std::make_unique<MainWindow> (
             getApplicationName(),
             juce::LookAndFeel::getDefaultLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId),
@@ -697,6 +707,89 @@ private:
         juce::FileOutputStream out (png);
         juce::PNGImageFormat format;
         return out.openedOk() && format.writeImageToStream (image, out);
+    }
+
+    /** See --mixer-snapshot. */
+    static bool writeMixerSnapshot (const juce::File& dir)
+    {
+        dir.createDirectory();
+        se::Engine engine;
+        engine.prepare (44100.0, 512);
+
+        // The design's frozen levels: VU bars 63 and 68 px long, the fader thumb at
+        // x 74, the balance centred.
+        const auto ampForBar = [] (int px)
+        {
+            const float pos = ((float) px - 5.5f) / 132.0f;
+            return se::Engine::dbToGain (MixerStrip::posToDb (pos));
+        };
+        const auto addSound = [&] (const char* name, int tint, int slot, bool muted)
+        {
+            se::DocumentInit init;
+            init.name = name;
+            init.numTracks = 1;
+            init.bps = 8;
+            init.sizeBytes = 16;
+            const uint64_t id = engine.addWindow (std::make_unique<se::SoundDocument> (init));
+            auto* w = engine.windowById (id);
+            w->tint = tint;
+            w->slot = slot;
+            w->muted = muted;
+            w->gain = se::Engine::dbToGain (MixerStrip::posToDb (74.0f / 132.0f));
+            w->meterLeft = ampForBar (63);
+            w->meterRight = ampForBar (68);
+            return id;
+        };
+        const auto shoot = [] (juce::Component& c, const juce::File& png)
+        {
+            return writePng (c.createComponentSnapshot (c.getLocalBounds(), true, 1.0f), png);
+        };
+
+        bool ok = true;
+        struct Variant { const char* file; bool hover, active, muted; };
+        const Variant variants[] = {
+            { "default-off", false, false, false }, { "hover-off", true, false, false },
+            { "active-off",  false, true,  false }, { "default-on", false, false, true },
+            { "hover-on",    true,  false, true  }, { "active-on",  false, true,  true },
+        };
+        for (const auto& v : variants)
+        {
+            MixerStrip strip (engine, addSound ("Untitled Sound", -1, 98, v.muted));
+            strip.setSelected (v.active);
+            strip.setForcedHover (v.hover);
+            strip.setSize (MixerStrip::kWidth, v.active ? MixerStrip::kActiveHeight : MixerStrip::kHeight);
+            strip.refreshState (false);
+            ok = shoot (strip, dir.getChildFile (juce::String ("strip-") + v.file + ".png")) && ok;
+        }
+
+        for (auto id : std::vector<uint64_t> (engine.windowIds())) engine.removeWindow (id);
+        engine.collectRetired();
+
+        // 636:11566: Drums (Seashell), Vocals 01 (Glacier), Buzzing Sounds (Soft
+        // butter, selected), Frantic Percs (Soft lilac, muted), Screaming racoons.
+        const uint64_t ex[] = {
+            addSound ("Drums", 4, 0, false), addSound ("Vocals 01", 10, 1, false),
+            addSound ("Buzzing Sounds", 2, 2, false), addSound ("Frantic Percs", 8, 3, true),
+            addSound ("Screaming racoons", 0, 4, false),
+        };
+        for (int k = 0; k < 5; ++k)
+        {
+            MixerStrip strip (engine, ex[k]);
+            strip.setSelected (k == 2);
+            strip.setSize (MixerStrip::kWidth, k == 2 ? MixerStrip::kActiveHeight : MixerStrip::kHeight);
+            strip.refreshState (false);
+            ok = shoot (strip, dir.getChildFile ("example-" + juce::String (k + 1) + ".png")) && ok;
+        }
+
+        MixerComponent mixer (engine);
+        SidePanel panel ("Mixer", mixer);
+        panel.setTitleRule (true);
+        panel.setSize (SidePanel::kWidth, 320);
+        mixer.refresh();
+        mixer.setSelectedWindow (ex[2]);
+        mixer.refresh();
+        ok = shoot (panel, dir.getChildFile ("panel.png")) && ok;
+        return ok;
     }
 
     /** See --app-snapshot. Menus are drawn through the same LookAndFeel calls a

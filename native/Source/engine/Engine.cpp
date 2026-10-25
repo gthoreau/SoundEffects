@@ -50,6 +50,7 @@ uint64_t Engine::addWindow (std::unique_ptr<SoundDocument> doc)
     w->audioDoc = new SoundDocument (doc->clone());     // audio-side copy
     w->transport = std::make_unique<Transport> (deviceRate);
     w->uiDoc = std::move (doc);                          // UI-side authoritative
+    w->slot = lowestFreeSlot();                          // a new Sound takes the lowest free slot
 
     Command c; c.kind = Command::Kind::AddWindow; c.id = id; c.window = w;
     if (! post (c)) { delete w; --nextId; return 0; }
@@ -70,6 +71,62 @@ bool Engine::removeWindow (uint64_t id)
     registry.erase (it);
     order.erase (std::remove (order.begin(), order.end(), id), order.end());
     return true;
+}
+
+// --- mixer slots ----------------------------------------------------------------
+
+int Engine::lowestFreeSlot() const
+{
+    std::vector<bool> taken (registry.size() + 1, false);
+    for (const auto& kv : registry)
+        if (const int s = kv.second->slot; s >= 0 && s < (int) taken.size())
+            taken[(size_t) s] = true;
+    return (int) (std::find (taken.begin(), taken.end(), false) - taken.begin());
+}
+
+uint64_t Engine::windowInSlot (int slot) const noexcept
+{
+    for (const auto& kv : registry)
+        if (kv.second->slot == slot) return kv.first;
+    return 0;
+}
+
+int Engine::highestSlot() const noexcept
+{
+    int top = Window::kNoSlot;
+    for (const auto& kv : registry) top = std::max (top, kv.second->slot);
+    return top;
+}
+
+bool Engine::moveToSlot (uint64_t id, int slot)
+{
+    auto* w = windowById (id);
+    if (w == nullptr || slot < 0) return false;
+    if (w->slot == slot) return true;
+
+    // An occupied target trades places: the two strips swap slots.
+    if (const uint64_t other = windowInSlot (slot); other != 0)
+        windowById (other)->slot = w->slot;
+    w->slot = slot;
+    return true;
+}
+
+void Engine::normaliseSlots()
+{
+    // First come, first served, in creation order: a Window keeps its slot unless
+    // an earlier one already holds it; the losers and the unseated take the lowest
+    // free slots, in order.
+    std::vector<int> seen;
+    std::vector<Window*> unseated;
+    for (uint64_t id : order)
+    {
+        auto* w = registry.at (id);
+        if (w->slot < 0 || std::find (seen.begin(), seen.end(), w->slot) != seen.end())
+            unseated.push_back (w);
+        else
+            seen.push_back (w->slot);
+    }
+    for (auto* w : unseated) { w->slot = Window::kNoSlot; w->slot = lowestFreeSlot(); }
 }
 
 bool Engine::anyWindowSoloed() const noexcept
