@@ -36,7 +36,13 @@ enum : juce::CommandID
 
     // Window
     changeName = 0x5f00, toggleSidePanels, toggleKeyboard, toggleGrid, zoom100, zoomToFit,
+
+    // Window: the sound list. Keys 1..9, 0 focus mixer slots 1..10 (and their Window).
+    focusSlot1 = 0x5f20, focusSlot10 = focusSlot1 + 9,
 };
+
+/** The slot a focusSlot command focuses, 0-based, or -1 for any other command. */
+inline int slotOf (juce::CommandID id) { return id >= focusSlot1 && id <= focusSlot10 ? (int) (id - focusSlot1) : -1; }
 
 /** One row of the table. */
 struct Spec

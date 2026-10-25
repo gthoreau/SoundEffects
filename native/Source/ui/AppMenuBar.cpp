@@ -83,7 +83,11 @@ void Os8AppMenuLookAndFeel::getIdealPopupMenuItemSizeWithOptions (const juce::St
     const bool hasIcon = label.startsWith ("Color:")
                       || (spec != nullptr && (spec->id == cmd::record || spec->id == cmd::stop || spec->id == cmd::play
                                               || spec->id == cmd::pause || spec->id == cmd::loop || spec->id == cmd::fastForward));
-    const auto shortcut = spec != nullptr && ! spec->keys.empty() ? cmd::describe (spec->keys.front()) : juce::String();
+    auto shortcut = spec != nullptr && ! spec->keys.empty() ? cmd::describe (spec->keys.front()) : juce::String();
+    // A row that shows its own text for a command (the sound list's slot keys):
+    // JUCE's rendering of a bare digit is the design's.
+    if (spec == nullptr && text.contains ("   "))
+        shortcut = text.fromFirstOccurrenceOf ("   ", false, false).trim();
 
     idealWidth = (hasIcon ? kIconLabelX : kLabelX) + os8::widthOf (label, os8::TextStyle::menuItem)
                + (shortcut.isEmpty() ? 0 : kShortcutGap + os8::widthOf (shortcut, os8::TextStyle::menuItem))

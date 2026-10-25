@@ -183,6 +183,13 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
     const bool typing = singleKey && isTyping();
 
     bool active = false;
+    if (const int slot = cmd::slotOf (id); slot >= 0)
+    {
+        const auto sid = processorRef.engine().windowInSlot (slot);
+        r.setTicked (sid != 0 && sid == canvas.selectedWindowId());
+        r.setActive (sid != 0 && ! typing);
+        return;
+    }
     switch (id)
     {
         case cmd::newSound: case cmd::openSound: active = true; break;
@@ -241,6 +248,16 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
     auto* w = targetWindow();
     const auto act = [w] (WindowComponent::Action a) { return w != nullptr && w->perform (a); };
     auto* engineWindow = processorRef.engine().windowById (canvas.selectedWindowId());
+
+    // Keys 1..0: focus the sound in that mixer slot — its Window on the canvas,
+    // which selects its strip in the mixer too.
+    if (const int slot = cmd::slotOf (info.commandID); slot >= 0)
+    {
+        const auto sid = processorRef.engine().windowInSlot (slot);
+        if (sid == 0) return false;
+        canvas.focusWindow (sid);
+        return true;
+    }
 
     switch (info.commandID)
     {
@@ -421,10 +438,19 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::windowMenu()
     m.addCommandItem (&commandManager, cmd::changeName);
     m.addSeparator();
 
-    // Every sound on the canvas; picking one brings it into focus.
-    for (auto id : engine.windowIds())
-        m.addItem (juce::PopupMenu::Item (nameOf (id)).setTicked (id == selected)
-                       .setAction ([this, id] { canvas.focusWindow (id); }));
+    // Every sound, in mixer-slot order; picking one brings it into focus. Slots 1-10
+    // are the focusSlot commands, so their rows carry the 1..0 key in the shortcut
+    // column; a sound further down is a plain row.
+    for (int slot = 0; slot <= engine.highestSlot(); ++slot)
+    {
+        const auto id = engine.windowInSlot (slot);
+        if (id == 0) continue;
+        if (slot < 10)
+            m.addCommandItem (&commandManager, cmd::focusSlot1 + slot, nameOf (id));
+        else
+            m.addItem (juce::PopupMenu::Item (nameOf (id)).setTicked (id == selected)
+                           .setAction ([this, id] { canvas.focusWindow (id); }));
+    }
     if (! engine.windowIds().empty()) m.addSeparator();
 
     m.addCommandItem (&commandManager, cmd::toggleSidePanels);

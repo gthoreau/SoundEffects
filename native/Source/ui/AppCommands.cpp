@@ -79,6 +79,19 @@ const std::vector<Spec>& table()
         { toggleGrid,        "Free Canvas",          "Window", { key ('G') } },
         { zoom100,           "Zoom 100%",            "Window", { key ('0', kCmd) } },
         { zoomToFit,         "Zoom to Fit",          "Window", { key ('1', kCmd) } },
+
+        // The sound list's shortcut column: the menu shows each sound's own name
+        // on these rows, not the names here.
+        { focusSlot1,        "Sound in Slot 1",      "Window", { key ('1') } },
+        { focusSlot1 + 1,    "Sound in Slot 2",      "Window", { key ('2') } },
+        { focusSlot1 + 2,    "Sound in Slot 3",      "Window", { key ('3') } },
+        { focusSlot1 + 3,    "Sound in Slot 4",      "Window", { key ('4') } },
+        { focusSlot1 + 4,    "Sound in Slot 5",      "Window", { key ('5') } },
+        { focusSlot1 + 5,    "Sound in Slot 6",      "Window", { key ('6') } },
+        { focusSlot1 + 6,    "Sound in Slot 7",      "Window", { key ('7') } },
+        { focusSlot1 + 7,    "Sound in Slot 8",      "Window", { key ('8') } },
+        { focusSlot1 + 8,    "Sound in Slot 9",      "Window", { key ('9') } },
+        { focusSlot10,       "Sound in Slot 10",     "Window", { key ('0') } },
     };
     return rows;
 }
