@@ -785,6 +785,148 @@ void recordTests()
         check (at (*d, 1, 100) == 40, "canvas record: the main mix, without the Window recorded into");
     }
 
+    // --- 9.4: record into a selection ---------------------------------------
+    // One selected track: the incoming stereo is summed to mono (averaged), and with
+    // Loop off the take is a punch-in/out that ends by itself at the selection's end.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto doc = blankSound (1, kRate);
+        doc->tracks[0].data.assign (2000, 0);                    // 1000 frames of silence
+        doc->selSt = 200; doc->selEnd = 600; doc->firstSelTrack = doc->lastSelTrack = 1;   // frames 100..299
+        const uint64_t w = e.addWindow (std::move (doc));
+        se::Recorder rec (e);
+        int finished = 0;
+        rec.onFinished = [&] (uint64_t) { ++finished; };
+        se::RecordSetup s; s.source.kind = se::AudioSourceKind::external; s.source.stereo = true; s.incomingStereo = true;
+        check (rec.start (w, s), "selection: starts over one track");
+        check (rec.targetTracks().size() == 1 && rec.targetTracks()[0] == 0, "selection: the selected track is the target");
+        settleRec (e, rec, { 0.5f, 0.25f });
+        const auto* d = e.editDoc (w);
+        check (finished == 1 && rec.state() == se::Recorder::State::idle, "punch: the take ends by itself at the selection's end");
+        check (d->tracks[0].data.size() == 2000, "punch: the track keeps its length");
+        check (at (*d, 0, 99) == 0 && at (*d, 0, 300) == 0, "punch: nothing outside the selection");
+        check (at (*d, 0, 100) == 12288 && at (*d, 0, 299) == 12288, "punch: inside it, left + right summed to mono (0.375)");
+        check (! e.captureRunning(), "punch: the audio thread stopped capturing");
+        check (e.windowById (w)->transport->uiState() == se::TransportState::stopped, "punch: the transport is stopped");
+    }
+
+    // Two selected tracks: left on the upper, right on the lower, whatever their speaker toggles say.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto doc = blankSound (3, kRate);
+        for (auto& t : doc->tracks) t.data.assign (800, 0);
+        doc->tracks[1].outLeft = false; doc->tracks[1].outRight = true;     // upper selected track: right speaker only
+        doc->tracks[2].outLeft = true;  doc->tracks[2].outRight = false;
+        doc->selSt = 100; doc->selEnd = 300; doc->firstSelTrack = 2; doc->lastSelTrack = 3;
+        const uint64_t w = e.addWindow (std::move (doc));
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.stereo = true; s.incomingStereo = true;
+        check (rec.start (w, s) && rec.targetTracks().size() == 2, "selection over 2 tracks: starts");
+        settleRec (e, rec, { 0.25f, -0.5f });
+        const auto* d = e.editDoc (w);
+        check (at (*d, 1, 60) == 8192 && at (*d, 2, 60) == -16384, "2 tracks: incoming left on the upper track, right on the lower");
+        check (at (*d, 0, 60) == 0 && at (*d, 1, 40) == 0 && at (*d, 2, 160) == 0, "2 tracks: the other tracks and times untouched");
+    }
+
+    // Loop on: continuous recording round and round inside the selection, over what was there.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto doc = blankSound (1, kRate);
+        doc->tracks[0].data.assign (1000, 0);
+        doc->selSt = 100; doc->selEnd = 300; doc->firstSelTrack = doc->lastSelTrack = 1;   // 100 frames: 50..149
+        const uint64_t w = e.addWindow (std::move (doc));
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false; s.loop = true;
+        rec.start (w, s);
+        pump (e, rec, 2, { 0.25f });       // frames 0..127 of the pass
+        pump (e, rec, 1, { 0.5f });        // frames 128..191
+        for (int i = 0; i < 6; ++i) pump (e, rec, 1, { 0.5f });
+        // 9 blocks = 576 frames: the pass is far past the span, and still going.
+        check (rec.state() == se::Recorder::State::recording, "loop: keeps recording past the selection's length");
+        rec.stop();
+        settleRec (e, rec, { 0.5f });
+        const auto* d = e.editDoc (w);
+        // Every position was last written with 0.5 (the final blocks are 0.5).
+        check (at (*d, 0, 50) == 16384 && at (*d, 0, 100) == 16384 && at (*d, 0, 149) == 16384, "loop: round and round, the last pass wins");
+        check (at (*d, 0, 49) == 0 && at (*d, 0, 150) == 0, "loop: never outside the selection");
+        check (d->tracks[0].data.size() == 1000, "loop: the track keeps its length");
+    }
+
+    // Loop on, a short pass: positions the pass has not wrapped over keep the earlier take.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto doc = blankSound (1, kRate);
+        doc->tracks[0].data.assign (1000, 0);
+        doc->selSt = 0; doc->selEnd = 200; doc->firstSelTrack = doc->lastSelTrack = 1;   // 100 frames
+        const uint64_t w = e.addWindow (std::move (doc));
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false; s.loop = true;
+        rec.start (w, s);
+        pump (e, rec, 2, { 0.25f });        // k 0..127
+        pump (e, rec, 1, { 0.5f });         // k 128..191
+        rec.stop();
+        settleRec (e, rec, { 0.5f });
+        const auto* d = e.editDoc (w);
+        // Position p was last written by k = p + 100 (if < 192) else p.
+        check (at (*d, 0, 10) == 8192, "loop wrap: p < 28 was last written at k = p + 100 < 128 (0.25)");
+        check (at (*d, 0, 50) == 16384, "loop wrap: 28 <= p < 92 at k = p + 100 >= 128 (0.5)");
+        check (at (*d, 0, 95) == 8192, "loop wrap: p >= 92 only by the first pass (0.25)");
+    }
+
+    // A track shorter than the selection's end is padded with silence to make room.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto doc = blankSound (1, kRate, 8);
+        doc->tracks[0].data.assign (100, 0x80);                 // 8 bit: 0x80 is silence
+        doc->selSt = 50; doc->selEnd = 150; doc->firstSelTrack = doc->lastSelTrack = 1;
+        const uint64_t w = e.addWindow (std::move (doc));
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false;
+        rec.start (w, s);
+        settleRec (e, rec, { 0.25f });
+        const auto* d = e.editDoc (w);
+        check (d->tracks[0].data.size() == 150, "short track: padded up to the selection's end");
+        check (at (*d, 0, 120) == 32 && at (*d, 0, 40) == 0, "short track: recorded where it was padded, untouched before");
+    }
+
+    // The others play while a selection records: only the track being written is silent.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto doc = dcDocument (10, "x");                         // track 1 (8-bit DC 10)
+        doc->addTrack(); doc->addTrack();
+        for (int t = 1; t < 3; ++t)
+        {
+            doc->tracks[(size_t) t].data.assign (512, 0x80);
+            const int lvl = t == 1 ? 20 : 40;
+            for (size_t i = 0; i < 512; ++i) se::setSample (doc->tracks[(size_t) t].data.data(), i, lvl, 8);
+        }
+        doc->selSt = 10; doc->selEnd = 50; doc->firstSelTrack = doc->lastSelTrack = 2;
+        const uint64_t w = e.addWindow (std::move (doc));
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false;
+        rec.start (w, s);
+        std::vector<float> ol, orr;
+        renderWithInput (e, { 0.25f }, ol, orr);
+        checkClose (ol[2], (10.0f + 40.0f) / 128.0f, 1.0e-4f, "punch: tracks 1 and 3 play, the track being written (2) does not");
+        settleRec (e, rec, { 0.25f });
+    }
+
+    // With Loop on and only the written track selected, nothing else sounds in the loop.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto doc = dcDocument (20, "y");
+        doc->selSt = 10; doc->selEnd = 50; doc->firstSelTrack = doc->lastSelTrack = 1;
+        const uint64_t w = e.addWindow (std::move (doc));
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false; s.loop = true;
+        rec.start (w, s);
+        std::vector<float> ol, orr;
+        renderWithInput (e, { 0.25f }, ol, orr);
+        checkClose (ol[2], 0.0f, 1.0e-6f, "loop: the selected track is the one written, so the loop is silent");
+        rec.stop();
+        settleRec (e, rec, { 0.25f });
+    }
+
     // Selection / 3+ tracks: not allowed.
     {
         se::Engine e; e.prepare (kRate, kBlock);
