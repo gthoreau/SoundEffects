@@ -42,8 +42,7 @@ enum Flag
     fixed16 = 1,   // the stored value is a 16.16 Fixed rate; the field shows Hz
     kilo    = 2,   // the field shows the stored value / 1000
     decimals4 = 4, // shown with 4 places (the IIR coefficients)
-    large = 8,     // the 26 px field (Flanger's percentage)
-    twice = 16     // the field shows twice the stored value, 0..200 (Sample Hose's Pan)
+    large = 8      // the 26 px field (Flanger's percentage)
 };
 
 struct Cell
