@@ -439,8 +439,8 @@ void Os8Dropdown::showMenu()
     menu.setLookAndFeel (&Os8LookAndFeel::instance());
     for (int i = 0; i < items.size(); ++i)
     {
-        menu.addItem (i + 1, items[i], i != disabledItem, i == selected);
-        if (i == separatorAfter) menu.addSeparator();
+        menu.addItem (i + 1, items[i], ! disabledItems.contains (i), i == selected);
+        if (separatorsAfter.contains (i)) menu.addSeparator();
     }
 
     menuOpen = true;

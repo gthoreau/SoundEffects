@@ -213,8 +213,11 @@ public:
 
     /** One item that shows what the value is but cannot be picked ("Custom"), and a
         rule under an item; -1 for none. */
-    void setDisabledItem (int index) noexcept    { disabledItem = index; }
-    void setSeparatorAfter (int index) noexcept  { separatorAfter = index; }
+    void setDisabledItem (int index)             { setDisabledItems (index >= 0 ? juce::Array<int> { index } : juce::Array<int>()); }
+    void setSeparatorAfter (int index)           { setSeparatorsAfter (index >= 0 ? juce::Array<int> { index } : juce::Array<int>()); }
+    /** The same for several items (the Setup popup has two rules). */
+    void setDisabledItems (const juce::Array<int>& indices)   { disabledItems = indices; }
+    void setSeparatorsAfter (const juce::Array<int>& indices) { separatorsAfter = indices; }
 
     std::function<void (int)> onChange;
 
@@ -233,7 +236,7 @@ private:
     Style style;
     juce::StringArray items, shortLabels;
     int selected = -1;
-    int disabledItem = -1, separatorAfter = -1;
+    juce::Array<int> disabledItems, separatorsAfter;
     bool menuOpen = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8Dropdown)

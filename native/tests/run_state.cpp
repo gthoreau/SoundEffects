@@ -8,6 +8,7 @@
 //
 // JUCE-free, like everything else under Source/engine/.
 
+#include "effects/Setups.h"
 #include "engine/Engine.h"
 #include "engine/EngineState.h"
 #include "engine/SampleFormat.h"
@@ -273,6 +274,66 @@ int main()
                         survived = false;
         }
         check (survived, "4000 damaged blobs: refused or sane, never in between");
+    }
+
+    // --- effect setups (step 6): a duration is a time, not a byte count ---------------
+    // 0.9.2 saved durations as bytes, so a setup changed speed with the sound's rate and
+    // depth. Here it is kept in seconds and comes back as the nearest whole sample.
+    {
+        se::SetupKeys keys;
+        keys.keys = { "flangePercent", "delay", "delayUnits", "rate.on", "a" };
+        keys.durations = { "delay" };
+
+        se::Settings working { { "flangePercent", se::Value ((int64_t) 70) },
+                               { "delay", se::Value ((int64_t) 245) },          // 8-bit, 22254.5454 Hz
+                               { "delayUnits", se::Value ((int64_t) se::Unit::Milliseconds) },
+                               { "a", se::Value (0.4) },
+                               { "unsaved", se::Value ((int64_t) 9) } };
+        const se::Setup setup { "Test", se::captureSetup (working, keys, se::kRate22K, 8) };
+
+        check (setup.values.count ("unsaved") == 0, "setup: only the module's saveable keys");
+        check (setup.values.count ("rate.on") == 1 && setup.values.at ("rate.on").asBool(),
+               "setup: an absent '.on' box is saved as on");
+        check (std::abs (setup.values.at ("delay").asDouble() - 245.0 / se::kRate22K) < 1e-12,
+               "setup: a duration is saved in seconds");
+        check (se::setupMatches (setup, working, keys, se::kRate22K, 8), "setup: matches the values it came from");
+
+        se::Settings other;
+        se::applySetup (setup, other, keys, 44100.0, 16);
+        check (other.at ("delay").asInt() == 2 * std::llround (245.0 / se::kRate22K * 44100.0),
+               "setup: recalled at 44.1 kHz 16-bit, the same time in whole frames");
+        check (other.at ("flangePercent").asInt() == 70 && other.at ("a").asDouble() == 0.4,
+               "setup: other values recalled as they were");
+        check (se::setupMatches (setup, other, keys, 44100.0, 16), "setup: and it matches there");
+
+        // Every rate the app offers: seconds -> bytes -> seconds -> bytes is stable.
+        bool stable = true;
+        for (double rate : { 8000.0, 11025.0, 22050.0, se::kRate22K, 32000.0, 44100.0, 48000.0, 96000.0 })
+            for (int bps : { 8, 16, 24 })
+                for (int64_t frames : { 0, 1, 45, 245, 22255, 105710, 4410000 })
+                {
+                    const int64_t bytes = frames * se::frameSizeFor (bps);
+                    stable = stable && se::setupBytes (se::setupSeconds (bytes, rate, bps), rate, bps) == bytes;
+                }
+        check (stable, "setup: durations round-trip to the same byte count at every rate and depth");
+
+        other["flangePercent"] = se::Value ((int64_t) 71);
+        check (! se::setupMatches (setup, other, keys, 44100.0, 16), "setup: an edited value is Custom again");
+        other["flangePercent"] = se::Value ((int64_t) 70);
+        other["delay"] = se::Value (other.at ("delay").asInt() + 2);
+        check (! se::setupMatches (setup, other, keys, 44100.0, 16), "setup: so is a duration one sample off");
+
+        const auto flanger = se::factorySetups ("Flanger");
+        check (flanger.size() == 9 && flanger.front().name == "Plain Flange - Fast"
+                   && flanger.back().name == "Distorto - Low",
+               "setup: Flanger ships its nine 0.9.2 setups, in their order");
+        se::Settings f;
+        se::applySetup (flanger[1], f, { { "period" }, { "period" } }, se::kRate22K, 8);
+        check (f.at ("period").asInt() == 22255, "setup: Plain Flange - Medium's period is 22255 bytes at 22 kHz 8-bit");
+        check (se::factorySetups ("Low Pass IIR").size() == 3 && se::factorySetups ("High Pass IIR")[2].name == "Lower"
+                   && se::factorySetups ("High Pass IIR")[2].values.at ("b").asDouble() == 0.7,
+               "setup: the IIR filters ship Medium / Low / Lower");
+        check (se::factorySetups ("Echo").empty(), "setup: the other modules ship none");
     }
 
     std::printf ("\n%s\n", failures == 0 ? "state: all checks passed"

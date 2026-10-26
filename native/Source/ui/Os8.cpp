@@ -500,9 +500,17 @@ void paintDropdown (juce::Graphics& g, juce::Rectangle<int> bounds, DropdownStat
     g.fillPath (icon::outline (icon::Id::dropdownDoubleArrow),
                 juce::AffineTransform::translation (well.getX() + 5.0f, well.getY() + 3.0f));
 
-    // Figma puts the label's box at (7, 3.5); drawText rounds the baseline.
-    drawText (g, text, TextStyle::smallLabel,
-              { r.getX() + 7.0f, r.getY() + 3.5f, well.getX() - r.getX() - 9.0f, 10.0f });
+    // Figma puts the label's box at (7, 3.5); drawText rounds the baseline. A label
+    // longer than the face (a setup's name) is cut short with "..." before the well.
+    const float room = well.getX() - r.getX() - 9.0f;
+    auto shown = text;
+    if ((float) widthOf (shown, TextStyle::smallLabel) > room)
+    {
+        while (shown.isNotEmpty() && (float) widthOf (shown + "...", TextStyle::smallLabel) > room)
+            shown = shown.dropLastCharacters (1);
+        shown = shown.trimEnd() + "...";
+    }
+    drawText (g, shown, TextStyle::smallLabel, { r.getX() + 7.0f, r.getY() + 3.5f, room, 10.0f });
 }
 
 void paintMiniDropdown (juce::Graphics& g, juce::Point<int> origin, DropdownState state)

@@ -188,6 +188,20 @@ juce::String fitText (const juce::String& text, os8::TextStyle style, int width)
     return t + "...";
 }
 
+// --- setups --------------------------------------------------------------------------
+
+/** Where a module's setups live in AppPrefs: one list per module, by signature. */
+juce::String setupsPrefKey (const se::EffectModule& m)
+{
+    return "setups." + juce::String (m.signature);
+}
+
+/** A number written so that reading it back gives the same double. */
+juce::String exactly (double v)
+{
+    return juce::String::formatted ("%.17g", v);
+}
+
 } // namespace
 
 // ============================================================================
@@ -265,6 +279,14 @@ const se::SoundDocument* EffectsPanelComponent::targetDoc() const
 
 void EffectsPanelComponent::appPrefChanged (const juce::String& key)
 {
+    // Setups saved or deleted somewhere else (another panel, the plugin's editor).
+    if (openModule != nullptr && openHasSetups && key == setupsPrefKey (*openModule))
+    {
+        loadSetups();
+        refreshTray();
+        return;
+    }
+
     if (key != AppPrefs::autoApplyKey) return;
     for (auto& g : groups)
         if (g->autoApply != nullptr)
@@ -549,6 +571,38 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
         openLayout = fxlayout::Layout { module->name, {} };
     openApplicability = runner.check (targetId, *module);
     touchedKeys = presetKeys;
+
+    // What a setup of this module holds: every saveable key the schema binds and the
+    // tray shows (with each duration's units), the way the original saved every item
+    // but the NoSave ones. Only the trays the design gives a Setup row have setups —
+    // the same ten modules that asked the 0.9.2 host for its popup.
+    setupKeys = {};
+    openHasSetups = false;
+    preferredSetup = -1;
+    {
+        std::set<std::string> seen;
+        const auto addKey = [this, &seen] (const std::string& key)
+        {
+            if (key.empty() || key.front() == '@') return;
+            const se::SchemaItem* item = schemaItem (key);
+            if (item != nullptr && se::isNoSave (*item)) return;
+            if (! seen.insert (key).second) return;
+            setupKeys.keys.push_back (key);
+            if (isDuration (item)) setupKeys.durations.insert (key);
+        };
+        for (const auto& item : openSchema)
+            if (se::isBound (item) && item.type != se::ItemType::Ignore && item.type != se::ItemType::Button)
+                addKey (item.key);
+        for (const auto& row : openLayout.rows)
+            for (const auto& c : row.cells)
+            {
+                openHasSetups = openHasSetups || c.kind == fxlayout::Kind::setup;
+                addKey (c.key);
+                addKey (c.unitsKey);
+                addKey (c.gate);
+            }
+    }
+    loadSetups();
 
     applyButton = std::make_unique<Os8Button> ("Apply", os8::ButtonKind::primary);
     applyButton->setWantsKeyboardFocus (false);
@@ -928,15 +982,26 @@ void EffectsPanelComponent::buildTray()
                     break;
                 }
 
-                case Kind::choice: case Kind::setup: case Kind::curvePreset: case Kind::ratePreset:
+                case Kind::setup:
+                {
+                    auto dd = std::make_unique<Os8Dropdown> (Os8Dropdown::Style::standard);
+                    auto* dp = static_cast<Os8Dropdown*> (add (std::move (dd), { x, y, c.w, os8::kDropdownHeight }));
+                    dp->onChange = [this] (int i) { setupMenuPicked (i); };
+                    trayRefreshers.push_back ([this, dp, gate]
+                    {
+                        refreshSetupMenu (*dp);
+                        dp->setEnabled (gateOn (gate));
+                    });
+                    break;
+                }
+
+                case Kind::choice: case Kind::curvePreset: case Kind::ratePreset:
                 case Kind::notePick: case Kind::octavePick:
                 {
                     auto dd = std::make_unique<Os8Dropdown> (Os8Dropdown::Style::standard);
                     juce::StringArray items;
                     if (c.kind == Kind::choice)
                         items = juce::StringArray::fromTokens (juce::String (c.text), "|", "");
-                    else if (c.kind == Kind::setup)
-                        items.add ("Custom");   // step 6 fills this with the saved setups
                     else if (c.kind == Kind::curvePreset)
                         items = { "Custom", "Expo - 0%", "Linear - 100%", "Log - 200%" };
                     else if (c.kind == Kind::ratePreset)
@@ -1077,6 +1142,214 @@ void EffectsPanelComponent::buildTray()
     // A module that can grow and has no box (Replicate, whose whole point is the extra
     // copies) simply grows.
     allowExtend = ! hasExtend;
+}
+
+// ============================================================================
+// the Setup: popup
+// ============================================================================
+//
+// As 0.9.2 drew it (disassembly/Setups.md): while the values are none of the saved
+// setups the popup reads "Custom" and Delete is greyed; once they are setup k it reads
+// k's name, and Delete deletes k. Which one it shows is worked out from the values
+// themselves, so choosing a setup shows its name, and editing any field so that it no
+// longer matches shows "Custom" again.
+
+std::pair<double, int> EffectsPanelComponent::targetFormat() const
+{
+    const se::SoundDocument* doc = targetDoc();
+    return doc != nullptr ? std::pair<double, int> { doc->rateHz, doc->bps } : std::pair<double, int> { 44100.0, 16 };
+}
+
+int EffectsPanelComponent::currentSetup() const
+{
+    if (! openHasSetups) return kSetupCustom;
+    const auto [rate, bps] = targetFormat();
+    const auto matches = [&] (int i)
+    {
+        return juce::isPositiveAndBelow (i, (int) openSetups.size())
+            && se::setupMatches (openSetups[(size_t) i], working, setupKeys, rate, bps);
+    };
+
+    // Two setups can hold the same values; the one just chosen or saved is the answer.
+    if (matches (preferredSetup)) return preferredSetup;
+    for (int i = 0; i < (int) openSetups.size(); ++i)
+        if (matches (i)) return i;
+    return kSetupCustom;
+}
+
+void EffectsPanelComponent::loadSetups()
+{
+    openSetups.clear();
+    if (openModule == nullptr || ! openHasSetups) return;
+
+    // Nothing stored yet: the module starts with what 0.9.2 shipped in its file.
+    const auto xml = AppPrefs::get().getXml (setupsPrefKey (*openModule));
+    if (xml == nullptr)
+    {
+        // Trimmed to what a setup of this tray holds, as if saved from it.
+        openSetups = se::factorySetups (openModule->name);
+        for (auto& setup : openSetups)
+            for (auto it = setup.values.begin(); it != setup.values.end();)
+                it = std::find (setupKeys.keys.begin(), setupKeys.keys.end(), it->first) == setupKeys.keys.end()
+                   ? setup.values.erase (it) : std::next (it);
+        return;
+    }
+
+    for (auto* e : xml->getChildWithTagNameIterator ("setup"))
+    {
+        se::Setup setup;
+        setup.name = e->getStringAttribute ("name").toStdString();
+        for (auto* v : e->getChildWithTagNameIterator ("value"))
+        {
+            const auto key = v->getStringAttribute ("key").toStdString();
+            if (key.empty()) continue;
+            if (v->hasAttribute ("seconds"))   setup.values[key] = se::Value (v->getDoubleAttribute ("seconds"));
+            else if (v->hasAttribute ("real")) setup.values[key] = se::Value (v->getDoubleAttribute ("real"));
+            else if (v->hasAttribute ("int"))  setup.values[key] = se::Value ((int64_t) v->getStringAttribute ("int").getLargeIntValue());
+            else if (v->hasAttribute ("text")) setup.values[key] = se::Value (v->getStringAttribute ("text").toStdString());
+        }
+        openSetups.push_back (std::move (setup));
+    }
+}
+
+void EffectsPanelComponent::storeSetups()
+{
+    if (openModule == nullptr) return;
+
+    // Keyed by setting name, so a setup outlives a change in the tray's layout. A
+    // duration is written in seconds, which is what it holds.
+    juce::XmlElement xml ("setups");
+    xml.setAttribute ("module", juce::String (openModule->name));
+    for (const auto& setup : openSetups)
+    {
+        auto* e = xml.createNewChildElement ("setup");
+        e->setAttribute ("name", juce::String::fromUTF8 (setup.name.c_str()));
+        for (const auto& [key, v] : setup.values)
+        {
+            auto* ve = e->createNewChildElement ("value");
+            ve->setAttribute ("key", juce::String (key));
+            if (setupKeys.durations.count (key) != 0)  ve->setAttribute ("seconds", exactly (v.asDouble()));
+            else if (v.kind == se::Value::Kind::Real)  ve->setAttribute ("real", exactly (v.d));
+            else if (v.kind == se::Value::Kind::Str)   ve->setAttribute ("text", juce::String::fromUTF8 (v.s.c_str()));
+            else                                       ve->setAttribute ("int", juce::String (v.i));
+        }
+    }
+    AppPrefs::get().setXml (setupsPrefKey (*openModule), xml);
+}
+
+void EffectsPanelComponent::refreshSetupMenu (Os8Dropdown& dd)
+{
+    const int current = currentSetup();
+    const int n = (int) openSetups.size();
+
+    juce::StringArray items;
+    juce::Array<int> disabled, rules;
+    setupMenuItems.clear();
+
+    if (current == kSetupCustom)
+    {
+        // It says what the values are; it is not something to pick.
+        items.add ("Custom");
+        setupMenuItems.push_back (kSetupCustom);
+        disabled.add (0);
+        rules.add (0);
+    }
+    for (int i = 0; i < n; ++i)
+    {
+        items.add (juce::String::fromUTF8 (openSetups[(size_t) i].name.c_str()));
+        setupMenuItems.push_back (i);
+    }
+    rules.addIfNotAlreadyThere (items.size() - 1);
+
+    items.add ("Save setup as...");
+    setupMenuItems.push_back (kSetupSave);
+    items.add ("Delete setup...");
+    setupMenuItems.push_back (kSetupDelete);
+    if (current == kSetupCustom) disabled.add (items.size() - 1);
+
+    dd.setItems (items);
+    dd.setDisabledItems (disabled);
+    dd.setSeparatorsAfter (rules);
+    dd.setSelectedIndex (current == kSetupCustom ? 0 : current, juce::dontSendNotification);
+}
+
+void EffectsPanelComponent::setupMenuPicked (int item)
+{
+    if (! juce::isPositiveAndBelow (item, (int) setupMenuItems.size())) return;
+
+    // A number typed and not yet committed would land on top of whatever happens next.
+    for (auto& p : trayParts)
+        if (auto* f = dynamic_cast<Os8TextField*> (p.comp.get())) f->commitNow();
+
+    const int action = setupMenuItems[(size_t) item];
+    if (action >= 0)                  chooseSetup (action);
+    else if (action == kSetupSave)    saveSetupAs();
+    else if (action == kSetupDelete)  deleteSetup (currentSetup());
+
+    // The popup goes back to saying what the values are (an action item is never kept).
+    refreshTray();
+}
+
+void EffectsPanelComponent::chooseSetup (int index)
+{
+    if (! juce::isPositiveAndBelow (index, (int) openSetups.size())) return;
+    const auto [rate, bps] = targetFormat();
+    const auto& setup = openSetups[(size_t) index];
+    se::applySetup (setup, working, setupKeys, rate, bps);
+    for (const auto& [key, v] : setup.values) touchedKeys.insert (key);   // the scope prefill leaves them be
+    preferredSetup = index;
+
+    reformatFields = true;
+    refreshTray();
+    reformatFields = false;
+}
+
+void EffectsPanelComponent::saveSetupAs()
+{
+    if (openModule == nullptr) return;
+    const auto [rate, bps] = targetFormat();
+    se::Setup setup;
+    setup.values = se::captureSetup (working, setupKeys, rate, bps);
+    const auto* module = openModule;
+
+    auto* aw = new juce::AlertWindow ("Save setup as", "Save the new setting as...", juce::MessageBoxIconType::NoIcon, this);
+    aw->addTextEditor ("name", {});
+    aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    aw->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    aw->enterModalState (true, juce::ModalCallbackFunction::create (
+        [safe = juce::Component::SafePointer<EffectsPanelComponent> (this), aw, module, setup] (int result) mutable
+        {
+            if (safe == nullptr || result != 1 || safe->openModule != module) return;
+            setup.name = aw->getTextEditorContents ("name").toStdString();
+            safe->openSetups.push_back (std::move (setup));
+            safe->preferredSetup = (int) safe->openSetups.size() - 1;
+            safe->storeSetups();
+            safe->refreshTray();
+        }), true);
+}
+
+void EffectsPanelComponent::deleteSetup (int index)
+{
+    if (openModule == nullptr || ! juce::isPositiveAndBelow (index, (int) openSetups.size())) return;
+    const auto* module = openModule;
+    const auto name = openSetups[(size_t) index].name;
+
+    auto* aw = new juce::AlertWindow ("Delete setup",
+                                      juce::String::fromUTF8 (("Are you sure you want to delete the setup \"" + name + "\"?").c_str()),
+                                      juce::MessageBoxIconType::WarningIcon, this);
+    aw->addButton ("Delete", 1);
+    aw->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::returnKey), juce::KeyPress (juce::KeyPress::escapeKey));
+    aw->enterModalState (true, juce::ModalCallbackFunction::create (
+        [safe = juce::Component::SafePointer<EffectsPanelComponent> (this), module, index, name] (int result)
+        {
+            if (safe == nullptr || result != 1 || safe->openModule != module) return;
+            if (! juce::isPositiveAndBelow (index, (int) safe->openSetups.size())
+                || safe->openSetups[(size_t) index].name != name) return;
+            safe->openSetups.erase (safe->openSetups.begin() + index);
+            safe->preferredSetup = -1;
+            safe->storeSetups();
+            safe->refreshTray();
+        }), true);
 }
 
 // ============================================================================

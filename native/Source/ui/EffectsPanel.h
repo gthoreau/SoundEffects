@@ -33,6 +33,7 @@
 #include "effects/EffectRunner.h"
 #include "effects/Module.h"
 #include "effects/Registry.h"
+#include "effects/Setups.h"
 #include "engine/Engine.h"
 
 #include <functional>
@@ -123,6 +124,19 @@ private:
     const se::SchemaItem* schemaItem (const std::string& key) const;
     void prefillSpanFields();
 
+    // --- the Setup: popup (disassembly/Setups.md) ---
+    /** The target's rate and sample size, or the presets' 44.1 kHz 16-bit without one. */
+    std::pair<double, int> targetFormat() const;
+    /** Which saved setup `working` is, or -1 for "Custom". */
+    int currentSetup() const;
+    void loadSetups();
+    void storeSetups();
+    void refreshSetupMenu (Os8Dropdown&);
+    void setupMenuPicked (int item);
+    void chooseSetup (int index);
+    void saveSetupAs();
+    void deleteSetup (int index);
+
     const se::SoundDocument* targetDoc() const;
 
     se::Engine& engine;
@@ -149,6 +163,12 @@ private:
     bool reformatFields = false;             // a commit is settling: re-seat every field's text
     bool allowExtend = false;                // answers AskDoExtend() for modules that grow
     std::map<std::string, se::Settings> remembered;   // last-used values, per module, this session
+    std::vector<se::Setup> openSetups;       // the open module's saved setups (empty: it has none)
+    se::SetupKeys setupKeys;                 // what one of them holds
+    bool openHasSetups = false;              // the design gives this tray a Setup row
+    int preferredSetup = -1;                 // the one last chosen or saved, should another match too
+    std::vector<int> setupMenuItems;         // what each popup item does: a setup's index, or one of below
+    static constexpr int kSetupCustom = -1, kSetupSave = -2, kSetupDelete = -3;
     se::Applicability openApplicability = se::Applicability::NoWindow;
 
     // What the header's right half says: the scope Apply would eat, or — after a run —
