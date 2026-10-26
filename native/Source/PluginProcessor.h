@@ -9,6 +9,7 @@
 
 #include "engine/Engine.h"
 #include "engine/EngineState.h"
+#include "engine/Recorder.h"
 
 #include <mutex>
 
@@ -48,6 +49,8 @@ public:
 
     /** The engine the editor draws and edits. */
     se::Engine& engine() noexcept { return engineImpl; }
+    /** The recorder: owned here so a take outlives the editor window being closed. */
+    se::Recorder& recorder() noexcept { return recorderImpl; }
 
 private:
     void timerCallback() override;   // message thread: reclaim retired Windows
@@ -64,6 +67,7 @@ private:
     se::EngineState   pendingState;
 
     se::Engine engineImpl;
+    se::Recorder recorderImpl { engineImpl };
     juce::AudioBuffer<float> inputCopy;   // the input channels, aside from the output
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoundEffectsAudioProcessor)

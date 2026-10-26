@@ -15,7 +15,7 @@ SoundEffectsAudioProcessor::SoundEffectsAudioProcessor()
     engineImpl.addWindow (std::make_unique<se::SoundDocument> (init));
 
     // Reclaim Windows the audio thread retires (deletes happen here, msg thread).
-    startTimerHz (5);
+    startTimerHz (30);   // retired Windows, and the recorder drains the capture ring
 }
 
 SoundEffectsAudioProcessor::~SoundEffectsAudioProcessor()
@@ -79,6 +79,7 @@ void SoundEffectsAudioProcessor::handleAsyncUpdate()
 void SoundEffectsAudioProcessor::timerCallback()
 {
     engineImpl.collectRetired();
+    recorderImpl.service();
 }
 
 void SoundEffectsAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)

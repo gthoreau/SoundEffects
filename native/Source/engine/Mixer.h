@@ -39,6 +39,7 @@ struct MixOptions
     int  volume = VOLUME_FULL;   // 0..7
     const TrackMonitor* monitor = nullptr;
     bool forceMono = false;      // a backend that mixes stereo down to mono
+    uint64_t excludeMask = 0;    // tracks (bit t = track t, 0-based) that do not sound: the ones being recorded into
 };
 
 /** Which way a Window reads its tracks. Per Window, not per track: every track

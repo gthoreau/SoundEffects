@@ -92,6 +92,18 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     // A Window's record button is greyed — recording is not implemented — and
     // clicking it asks for the audio device settings instead. Only the standalone
     // app can serve that, so it forwards to a hook the app installs.
+    // Recording: the processor owns the recorder (a take outlives the editor); the
+    // Window asks it, and the canvas redraws what it writes.
+    canvas.setRecording (&p.recorder(), [this] (uint64_t window, se::RecordSetup& s) { return recordSetupFor (window, s); });
+    p.recorder().onChanged = [this] (uint64_t window)
+    {
+        if (auto* wc = canvas.windowComponentFor (window)) wc->invalidateWaveform();
+    };
+    p.recorder().onFinished = [this] (uint64_t window)
+    {
+        if (auto* wc = canvas.windowComponentFor (window)) wc->invalidateWaveform();
+    };
+
     canvas.onAudioSettingsRequested = [this] { if (onShowAudioSettings) onShowAudioSettings(); };
 
     // The palette and the canvas are two faces of one state: the palette asks, the
@@ -213,6 +225,7 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::crop:          active = can (WindowComponent::Action::crop); break;
         case cmd::insertSilence: active = can (WindowComponent::Action::insertSilence); break;
 
+        case cmd::record:        active = can (WindowComponent::Action::record); break;
         case cmd::stop:          active = w != nullptr; break;
         case cmd::play:          active = w != nullptr && ! w->isPlaying(); break;
         case cmd::pause:         active = w != nullptr && w->isPlaying(); break;
@@ -227,15 +240,15 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
             r.setTicked (engineWindow != nullptr && engineWindow->soloed.load (std::memory_order_relaxed));
             break;
         case cmd::playForward:
-            active = w != nullptr; r.setTicked (w != nullptr && w->direction() == se::PlayDirection::forward);
+            active = can (WindowComponent::Action::playForward); r.setTicked (w != nullptr && w->direction() == se::PlayDirection::forward);
             break;
         case cmd::playBackward:
-            active = w != nullptr; r.setTicked (w != nullptr && w->direction() == se::PlayDirection::backward);
+            active = can (WindowComponent::Action::playBackward); r.setTicked (w != nullptr && w->direction() == se::PlayDirection::backward);
             break;
         case cmd::playPingPong:
-            active = w != nullptr; r.setTicked (w != nullptr && w->direction() == se::PlayDirection::pingPong);
+            active = can (WindowComponent::Action::playPingPong); r.setTicked (w != nullptr && w->direction() == se::PlayDirection::pingPong);
             break;
-        case cmd::cycleDirection: active = w != nullptr; break;
+        case cmd::cycleDirection: active = can (WindowComponent::Action::cycleDirection); break;
 
         case cmd::changeName:    active = w != nullptr; break;
         case cmd::toggleSidePanels:
@@ -307,6 +320,7 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         // both are the same toggle the transport button uses.
         case cmd::play: case cmd::pause:
                                  return act (WindowComponent::Action::playPause);
+        case cmd::record:        return act (WindowComponent::Action::record);
         case cmd::stop:          return act (WindowComponent::Action::stop);
         case cmd::loop:          return act (WindowComponent::Action::toggleLoop);
         case cmd::fastForward:   return act (WindowComponent::Action::toggleAdvance);
@@ -515,6 +529,20 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::windowMenu()
 SoundEffectsAudioProcessorEditor::~SoundEffectsAudioProcessorEditor()
 {
     stopTimer();
+    processorRef.recorder().onChanged = nullptr;     // the take (if any) carries on without a UI
+    processorRef.recorder().onFinished = nullptr;
+}
+
+bool SoundEffectsAudioProcessorEditor::recordSetupFor (uint64_t, se::RecordSetup& s)
+{
+    // 9.3: the default source, the first input pair, Raw. 9.5 puts the Select Audio
+    // Source popup's choice here, per Window.
+    s.source.kind = se::AudioSourceKind::external;
+    s.source.firstChannel = 0;
+    s.source.stereo = true;
+    s.incomingStereo = true;
+    s.mode = se::ConvertMode::raw;
+    return true;
 }
 
 void SoundEffectsAudioProcessorEditor::timerCallback()

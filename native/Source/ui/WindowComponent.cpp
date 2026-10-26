@@ -63,8 +63,10 @@ WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
                       : d == Os8ComboPlay::Direction::pingPong ? se::PlayDirection::pingPong
                                                                : se::PlayDirection::forward);
     };
+    recordButton.onClick = [this] { perform (Action::record); };
     pauseButton.onClick = [this]
     {
+        if (isRecording()) { togglePlayPause(); return; }   // pauses / resumes the take
         auto* w = engineWindow();
         if (w != nullptr && w->transport->uiState() != se::TransportState::stopped)
             engine.pause (id);   // playing <-> paused
@@ -72,9 +74,6 @@ WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
     };
     fastForwardButton.onClick = [this] { perform (Action::toggleAdvance); };
     loopButton.onClick = [this] { perform (Action::toggleLoop); };
-    // Recording lands in step 9; until then the button is shown, and greyed.
-    recordButton.setEnabled (false);
-
     updateTransportButtons();
 }
 
@@ -957,19 +956,40 @@ void WindowComponent::appPrefChanged (const juce::String& key)
 void WindowComponent::updateTransportButtons()
 {
     auto* w = engineWindow();
-    const auto state = w != nullptr ? w->transport->uiState() : se::TransportState::stopped;
+    auto state = w != nullptr ? w->transport->uiState() : se::TransportState::stopped;
+
+    // A take is the transport's state here, whatever the engine's transport is
+    // doing underneath (a take into new tracks of an empty Sound has nothing to
+    // play, so its transport is stopped): recording = playing, paused = paused.
+    const bool taking = isRecording();
+    const bool takePaused = taking && recorder->state() == se::Recorder::State::paused;
+    if (taking) state = takePaused ? se::TransportState::paused : se::TransportState::playing;
+
     playButton.setPlaying (state == se::TransportState::playing);
     // The icon follows the Window's direction, whoever changed it (menu, D, the strip).
     const auto dir = direction();
     playButton.setDirection (dir == se::PlayDirection::backward ? Os8ComboPlay::Direction::backward
                              : dir == se::PlayDirection::pingPong ? Os8ComboPlay::Direction::pingPong
                                                                   : Os8ComboPlay::Direction::forward);
+    playButton.setDirectionMenuEnabled (! taking);   // recording forces Forward
     pauseButton.setToggleState (state == se::TransportState::paused, juce::dontSendNotification);
     pauseButton.setEnabled (state != se::TransportState::stopped);
     stopButton.setEnabled (state != se::TransportState::stopped);
     fastForwardButton.setToggleState (advanceEnabled, juce::dontSendNotification);
+    fastForwardButton.setEnabled (! taking);
     loopButton.setToggleState (loopEnabled, juce::dontSendNotification);
-    recordButton.setEnabled (false);   // until recording exists (step 9)
+
+    // Record: lit while recording, flashing while the take is paused, otherwise
+    // available whenever a take could start.
+    bool recLit = taking && ! takePaused;
+    if (takePaused) recLit = (juce::Time::getMillisecondCounter() / 450) % 2 == 0;
+    recordButton.setEnabled (taking || canPerform (Action::record));
+    recordButton.setToggleState (recLit, juce::dontSendNotification);
+}
+
+bool WindowComponent::isRecording() const
+{
+    return recorder != nullptr && recorder->active() && recorder->window() == id;
 }
 
 // --- interaction ------------------------------------------------------------
@@ -1241,6 +1261,15 @@ void WindowComponent::selectAllAudio()
 
 void WindowComponent::togglePlayPause()
 {
+    if (isRecording())
+    {
+        // Pause holds the take (Record flashes); Play / Pause again carries on.
+        if (recorder->state() == se::Recorder::State::recording)   recorder->pause();
+        else if (recorder->state() == se::Recorder::State::paused) recorder->resume();
+        updateTransportButtons();
+        repaint();
+        return;
+    }
     auto* w = engineWindow();
     const auto state = w != nullptr ? w->transport->uiState() : se::TransportState::stopped;
 
@@ -1344,6 +1373,7 @@ void WindowComponent::setDirection (se::PlayDirection d)
 
 bool WindowComponent::isPlaying() const
 {
+    if (isRecording()) return recorder->state() == se::Recorder::State::recording;
     auto* w = engine.windowById (id);
     return w != nullptr && w->transport->uiState() == se::TransportState::playing;
 }
@@ -1369,9 +1399,18 @@ bool WindowComponent::canPerform (Action a) const
         case Action::selectSilence:     return d->maxTrackSize() > 0 && d->selSt == d->selEnd;   // needs a caret
         case Action::shiftSound: case Action::selectExactly: case Action::selectPeak:
             return d->maxTrackSize() > 0;   // "can only be applied to an existing sound"
-        case Action::playPause: case Action::stop: case Action::toggleLoop:
+        case Action::record:
+            // The source is live, nobody else is recording, and the selection covers
+            // at most two tracks. Recording is a take already running here: Pause
+            // and Stop hold it, and Record carries on a paused one.
+            if (recorder == nullptr) return false;
+            if (isRecording()) return recorder->state() == se::Recorder::State::paused;
+            return recordEnabled && ! recorder->active() && se::Recorder::canRecord (*d);
         case Action::playForward: case Action::playBackward: case Action::playPingPong: case Action::cycleDirection:
-        case Action::toggleAdvance: case Action::selectAll: case Action::rename:
+        case Action::toggleAdvance:
+            return ! isRecording();   // recording forces Forward, plays at normal speed
+        case Action::playPause: case Action::stop: case Action::toggleLoop:
+        case Action::selectAll: case Action::rename:
         case Action::leaveSilence:
             return true;
     }
@@ -1386,7 +1425,21 @@ bool WindowComponent::perform (Action a)
     switch (a)
     {
         case Action::playPause: togglePlayPause(); return true;
-        case Action::stop:      engine.stop (id); advanceEnabled = false; updateTransportButtons(); repaint(); return true;
+        case Action::stop:
+            if (isRecording()) recorder->stop();
+            else               engine.stop (id);
+            advanceEnabled = false; updateTransportButtons(); repaint(); return true;
+        case Action::record:
+        {
+            if (isRecording()) { recorder->resume(); updateTransportButtons(); return true; }
+            se::RecordSetup s;
+            if (! recordSetupFor || ! recordSetupFor (id, s)) return false;
+            s.loop = loopEnabled;
+            const bool ok = recorder->start (id, s);
+            advanceEnabled = false;
+            updateTransportButtons(); invalidateWaveform();
+            return ok;
+        }
         case Action::playForward:  setDirection (se::PlayDirection::forward);  return true;
         case Action::playBackward: setDirection (se::PlayDirection::backward); return true;
         case Action::playPingPong: setDirection (se::PlayDirection::pingPong); return true;

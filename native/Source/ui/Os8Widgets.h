@@ -342,6 +342,9 @@ public:
     bool isPlaying() const noexcept { return playing; }
     void setDirection (Direction, juce::NotificationType = juce::dontSendNotification);
     Direction getDirection() const noexcept { return direction; }
+    /** The direction strip alone: recording forces Forward, so while it runs the
+        strip is drawn Disabled and does not open its menu. The face stays live. */
+    void setDirectionMenuEnabled (bool);
 
     std::function<void()> onPlay;
     std::function<void (Direction)> onDirectionChange;
@@ -363,7 +366,7 @@ private:
     void closeMenu();
 
     Direction direction = Direction::forward;
-    bool playing = false, pressingFace = false;
+    bool playing = false, pressingFace = false, stripEnabled = true;
     std::unique_ptr<DirectionMenu> menu;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8ComboPlay)

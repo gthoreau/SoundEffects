@@ -9,6 +9,7 @@
 #include "engine/Edit.h"
 #include "engine/Engine.h"
 #include "engine/RecordConvert.h"
+#include "engine/Recorder.h"
 #include "engine/Resample.h"
 #include "engine/SampleFormat.h"
 
@@ -632,6 +633,229 @@ void convertTests()
     }
 }
 
+// --- recording into a Sound (9.3 / 9.4) -----------------------------------------
+// The Recorder drives a take on top of the Engine's capture: the test plays the
+// audio thread by rendering blocks (with a constant input) and the message thread
+// by calling service() between them.
+
+void renderWithInput (se::Engine& e, std::initializer_list<float> levels, std::vector<float>& outL, std::vector<float>& outR);
+
+constexpr int kRecBps = 16;
+
+std::unique_ptr<se::SoundDocument> blankSound (int tracks, double rate, int bps = kRecBps)
+{
+    se::DocumentInit init; init.name = "rec"; init.numTracks = tracks; init.bps = bps; init.rateHz = rate; init.sizeBytes = 0;
+    return std::make_unique<se::SoundDocument> (init);
+}
+
+void pump (se::Engine& e, se::Recorder& r, int blocks, std::initializer_list<float> in)
+{
+    std::vector<float> ol, orr;
+    for (int i = 0; i < blocks; ++i) { renderWithInput (e, in, ol, orr); r.service(); }
+}
+
+/** Run until the recorder is idle (or `paused`), as the timer would. */
+void settleRec (se::Engine& e, se::Recorder& r, std::initializer_list<float> in, se::Recorder::State want = se::Recorder::State::idle)
+{
+    for (int i = 0; i < 400 && r.state() != want; ++i) pump (e, r, 1, in);
+}
+
+int32_t at (const se::SoundDocument& d, int track, size_t frame)
+{
+    const size_t fs = (size_t) d.frameSize();
+    return se::getSample (d.tracks[(size_t) track].data.data(), frame * fs, d.bps);
+}
+
+void recordTests()
+{
+    const int32_t quarter = 8192, half = 16384;   // 0.25 / 0.5 at 16 bit
+
+    // Mono source into a blank Sound: the empty track is used, nothing is added.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t w = e.addWindow (blankSound (1, kRate));
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.kind = se::AudioSourceKind::external; s.source.firstChannel = 0; s.source.stereo = false; s.incomingStereo = false;
+        check (rec.start (w, s), "record: starts in a blank Sound");
+        check (rec.state() == se::Recorder::State::recording, "record: recording");
+        pump (e, rec, 10, { 0.25f });
+        rec.stop();
+        settleRec (e, rec, { 0.25f });
+        const auto* d = e.editDoc (w);
+        check (d->numTracks() == 1, "record mono: a blank track is used, no track added");
+        check (d->tracks[0].data.size() == (size_t) (10 * kBlock) * 2, "record mono: every captured frame is written (rate and depth conform 1:1)");
+        check (at (*d, 0, 0) == quarter && at (*d, 0, 639) == quarter, "record mono: the samples are the input at 16 bit");
+        check (rec.state() == se::Recorder::State::idle, "record: idle after Stop");
+        check (! e.captureRunning(), "record: the audio thread has stopped capturing");
+    }
+
+    // Stereo source: two new tracks after the existing ones, routed to L and R; the
+    // existing track plays on, the new ones stay silent while they are written.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t w = e.addWindow (dcDocument (20, "w"));   // 8-bit, 512 frames of DC, rate == device rate
+        auto* win = e.windowById (w);
+        const float level = (float) 20 / 128.0f;
+        e.setDirection (w, se::PlayDirection::backward);
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.kind = se::AudioSourceKind::external; s.source.firstChannel = 0; s.source.stereo = true; s.incomingStereo = true;
+        check (rec.start (w, s), "record stereo: starts");
+        check (e.direction (w) == se::PlayDirection::forward, "record: forces Forward");
+        std::vector<float> ol, orr;
+        renderWithInput (e, { 0.25f, -0.5f }, ol, orr);
+        rec.service();
+        renderWithInput (e, { 0.25f, -0.5f }, ol, orr);
+        checkClose (ol[kBlock - 1], level, 1.0e-4f, "record: the tracks already there keep playing (and only they)");
+        pump (e, rec, 6, { 0.25f, -0.5f });
+        rec.stop();
+        settleRec (e, rec, { 0.25f, -0.5f });
+        const auto* d = e.editDoc (w);
+        check (d->numTracks() == 3, "record stereo: two new tracks after the existing one");
+        check (d->tracks[1].outLeft && ! d->tracks[1].outRight && ! d->tracks[2].outLeft && d->tracks[2].outRight,
+               "record stereo: the new tracks are routed to the left and right outputs");
+        check (at (*d, 1, 100) == 32 && at (*d, 2, 100) == -64, "record stereo: left on the first, right on the second");
+        check (d->tracks[0].data.size() == 512, "record: the existing track is untouched");
+        (void) win;
+    }
+
+    // Pause, then Record again, appends to the same tracks.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t w = e.addWindow (blankSound (1, kRate));
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.kind = se::AudioSourceKind::external; s.source.stereo = false; s.incomingStereo = false;
+        rec.start (w, s);
+        pump (e, rec, 5, { 0.25f });
+        rec.pause();
+        settleRec (e, rec, { 0.25f }, se::Recorder::State::paused);
+        check (rec.state() == se::Recorder::State::paused, "pause: the take is paused");
+        check (! e.captureRunning(), "pause: capture stopped");
+        const size_t after5 = e.editDoc (w)->tracks[0].data.size();
+        check (after5 == (size_t) (5 * kBlock) * 2, "pause: what was captured so far is in the track");
+        pump (e, rec, 4, { 0.9f });   // time passes while paused: nothing is captured
+        check (e.editDoc (w)->tracks[0].data.size() == after5, "pause: nothing is recorded while paused");
+        rec.resume();
+        check (rec.state() == se::Recorder::State::recording, "resume: recording again");
+        pump (e, rec, 5, { 0.5f });
+        rec.stop();
+        settleRec (e, rec, { 0.5f });
+        const auto* d = e.editDoc (w);
+        check (d->numTracks() == 1 && d->tracks[0].data.size() == (size_t) (10 * kBlock) * 2, "resume: the new audio is appended to the same track");
+        check (at (*d, 0, 5 * kBlock - 1) == quarter && at (*d, 0, 5 * kBlock) == half, "resume: no gap and no overlap at the seam");
+        // A new take after Stop makes new tracks.
+        rec.start (w, s);
+        pump (e, rec, 2, { 0.25f });
+        rec.stop();
+        settleRec (e, rec, { 0.25f });
+        check (e.editDoc (w)->numTracks() == 2, "a take after Stop goes into a new track");
+    }
+
+    // Rate and depth conform to the Sound's own: a Sound at half the device rate, 8 bit.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t w = e.addWindow (blankSound (1, kRate / 2.0, 8));
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false;
+        rec.start (w, s);
+        pump (e, rec, 10, { 0.25f });
+        rec.stop();
+        settleRec (e, rec, { 0.25f });
+        const auto* d = e.editDoc (w);
+        check (d->tracks[0].data.size() == (size_t) (5 * kBlock), "conform: half the rate, half the frames (8 bit = 1 byte)");
+        check (at (*d, 0, 10) == 32, "conform: 0.25 at 8 bit");
+    }
+
+    // Recording the main mix into a Window leaves that Window out of it.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t a = e.addWindow (dcDocument (40, "a"));
+        auto wdoc = dcDocument (10, "w");
+        const uint64_t w = e.addWindow (std::move (wdoc));
+        se::PlayOptions loopAll; loopAll.loop = true;
+        e.play (a, loopAll);
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.kind = se::AudioSourceKind::canvas; s.incomingStereo = true;
+        rec.start (w, s);
+        pump (e, rec, 4, {});
+        rec.stop();
+        settleRec (e, rec, {});
+        const auto* d = e.editDoc (w);
+        // Window `a` alone: 8-bit DC 40 is 40/128 = 0.3125, which is 40 again at the Sound's 8 bits.
+        check (d->numTracks() == 3, "canvas record: two tracks added to the Window");
+        check (at (*d, 1, 100) == 40, "canvas record: the main mix, without the Window recorded into");
+    }
+
+    // Selection / 3+ tracks: not allowed.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto doc = blankSound (3, kRate);
+        for (auto& t : doc->tracks) t.data.assign (200, 0);
+        doc->selSt = 20; doc->selEnd = 100; doc->firstSelTrack = 1; doc->lastSelTrack = 3;
+        check (! se::Recorder::canRecord (*doc), "3 selected tracks: not allowed");
+        doc->lastSelTrack = 2;
+        check (se::Recorder::canRecord (*doc), "2 selected tracks: allowed");
+        doc->selSt = doc->selEnd = 0; doc->lastSelTrack = 3;
+        check (se::Recorder::canRecord (*doc), "no selection: always allowed (new tracks)");
+    }
+}
+
+// A Recorder driven from the message thread while the audio thread renders: takes
+// started, paused, resumed and stopped back to back, each with its ring drained,
+// conversion and document writes, under TSan.
+void recordConcurrencyTests()
+{
+    se::Engine e;
+    e.prepare (kRate, kBlock);
+    const uint64_t w = e.addWindow (dcDocument (30, "w"));
+    const uint64_t other = e.addWindow (dcDocument (10, "o"));
+    se::PlayOptions loopAll; loopAll.loop = true;
+    e.play (other, loopAll);
+
+    std::atomic<bool> done { false };
+    std::atomic<bool> sane { true };
+    std::thread audio ([&]
+    {
+        std::vector<float> in0 ((size_t) kBlock, 0.25f), in1 ((size_t) kBlock, -0.25f), l ((size_t) kBlock), r ((size_t) kBlock);
+        const float* ins[2] = { in0.data(), in1.data() };
+        while (! done.load())
+        {
+            e.render (l.data(), r.data(), kBlock, ins, 2);
+            for (int i = 0; i < kBlock; ++i)
+                if (! std::isfinite (l[(size_t) i]) || std::fabs (l[(size_t) i]) > 1.0f) sane = false;
+            std::this_thread::sleep_for (std::chrono::microseconds (100));   // a device does not run flat out
+        }
+    });
+
+    se::Recorder rec (e);
+    size_t takes = 0;
+    for (int i = 0; i < 400; ++i)
+    {
+        se::RecordSetup s;
+        s.source.kind = (i % 3 == 0) ? se::AudioSourceKind::canvas : se::AudioSourceKind::external;
+        s.incomingStereo = (i % 2) == 0;
+        s.mode = (i % 4 == 0) ? se::ConvertMode::clean : se::ConvertMode::raw;
+        if (rec.start (w, s)) ++takes;
+        for (int k = 0; k < 6; ++k) { rec.service(); std::this_thread::sleep_for (std::chrono::microseconds (150)); }
+        if (i % 3 == 1)
+        {
+            rec.pause();
+            for (int k = 0; k < 40 && rec.state() != se::Recorder::State::paused; ++k) { rec.service(); std::this_thread::sleep_for (std::chrono::microseconds (150)); }
+            rec.resume();
+            for (int k = 0; k < 4; ++k) { rec.service(); std::this_thread::sleep_for (std::chrono::microseconds (150)); }
+        }
+        rec.stop();
+        for (int k = 0; k < 80 && rec.state() != se::Recorder::State::idle; ++k) { rec.service(); std::this_thread::sleep_for (std::chrono::microseconds (150)); }
+        if (rec.state() != se::Recorder::State::idle) sane = false;
+        e.collectRetired();
+        // Keep the Sound from growing without bound across the run.
+        if (auto* d = e.editDoc (w)) { while (d->numTracks() > 2) d->delTrack (d->numTracks()); e.commitEdit (w); }
+    }
+    done = true;
+    audio.join();
+    check (sane.load(), "record stress: output stays finite and every take ends");
+    check (takes > 100, "record stress: takes started and ended under the audio thread");
+}
+
 // --- audio input / capture (9.1) ----------------------------------------------
 // The audio thread captures a source into the ring; the message thread (here: the
 // test) pops it. Sources: a device channel / pair, the Canvas main mix (minus the
@@ -1104,7 +1328,9 @@ int main()
     concurrencyTests();
     captureTests();
     convertTests();
+    recordTests();
     captureConcurrencyTests();
+    recordConcurrencyTests();
 
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());

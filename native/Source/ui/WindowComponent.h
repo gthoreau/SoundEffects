@@ -29,6 +29,7 @@
 
 #include "engine/Edit.h"
 #include "engine/Engine.h"
+#include "engine/Recorder.h"
 #include "AppPrefs.h"
 #include "EditPopups.h"
 #include "Os8Widgets.h"
@@ -87,6 +88,13 @@ public:
         that, and without this the window keeps drawing the old waveform. */
     void invalidateWaveform();
 
+    /** The recorder the editor owns, and how a take is set up for this Window (its
+        audio source and conversion). Null in a build with no recording. */
+    se::Recorder* recorder = nullptr;
+    std::function<bool (uint64_t window, se::RecordSetup&)> recordSetupFor;
+    /** A take is running or paused in THIS Window. */
+    bool isRecording() const;
+
     /** Shared clipboard slot (owned by the canvas). */
     std::unique_ptr<se::SoundDocument>* clipboard = nullptr;
 
@@ -103,6 +111,7 @@ public:
         extendToBeginning, extendToEnd, extendAbove, extendBelow,
         selectExactly, selectPeak,  // popups too
         selectSilence, setLoop, selectLoop,
+        record,     // start a take, or carry on with a paused one
         rename
     };
     /** Do it; false when it does not apply right now (nothing to paste, say). */

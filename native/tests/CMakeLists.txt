@@ -71,6 +71,7 @@ target_include_directories(effect-fixtures PRIVATE ${ENGINE_DIR} ${CMAKE_CURRENT
 add_executable(engine-tests
     run_engine.cpp
     ${ENGINE_DIR}/engine/Engine.cpp
+    ${ENGINE_DIR}/engine/Recorder.cpp
     ${ENGINE_DIR}/engine/Transport.cpp
     ${ENGINE_DIR}/engine/Mixer.cpp
     ${ENGINE_SOURCES})

@@ -690,7 +690,7 @@ void Os8ComboPlay::paint (juce::Graphics& g)
                                                         : os8::TransportState::normal;
     os8::paintTransportButton (g, { 1, 1 }, iconOf (direction), faceState);
 
-    const auto stripState = ! enabled ? os8::TransportState::disabled
+    const auto stripState = ! enabled || ! stripEnabled ? os8::TransportState::disabled
                           : menu != nullptr ? os8::TransportState::active
                                             : os8::TransportState::normal;
     os8::paintPlayDirectionButton (g, { kStripX, 0 }, stripState);
@@ -702,7 +702,7 @@ void Os8ComboPlay::mouseDown (const juce::MouseEvent& e)
 
     if (e.x >= kStripX)
     {
-        openMenu();
+        if (stripEnabled) openMenu();
         return;
     }
 
@@ -716,6 +716,14 @@ void Os8ComboPlay::mouseUp (const juce::MouseEvent& e)
     pressingFace = false;
     repaint();
     if (e.x < kStripX && getLocalBounds().contains (e.getPosition()) && onPlay) onPlay();
+}
+
+void Os8ComboPlay::setDirectionMenuEnabled (bool on)
+{
+    if (stripEnabled == on) return;
+    stripEnabled = on;
+    if (! on) closeMenu();
+    repaint();
 }
 
 void Os8ComboPlay::openMenu()

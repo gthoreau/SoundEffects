@@ -179,6 +179,16 @@ public:
     bool setDirection (uint64_t id, PlayDirection d);
     PlayDirection direction (uint64_t id) noexcept;
 
+    // --- message thread: recording ------------------------------------------
+    // Record is also a Play: the transport plays what is already there (the tracks
+    // in `excludeMask` stay silent, they are being written) and the capture starts
+    // in the very same block, so the two stay in step. Recording forces Forward.
+    // The Recorder (Recorder.h) is the one that drives these.
+    bool recordStart  (uint64_t id, const CaptureSetup& setup, const PlayOptions& play, uint64_t excludeMask);
+    bool recordPause  (uint64_t id);
+    bool recordResume (uint64_t id, const PlayOptions& play, uint64_t excludeMask);
+    bool recordStop   (uint64_t id);
+
     /** Free Windows/documents the audio thread has retired. Msg thread, periodic. */
     void collectRetired();
 
@@ -230,7 +240,8 @@ private:
         enum class Kind : uint8_t { AddWindow, RemoveWindow, Transport, SwapDoc,
                                     CaptureStart, CaptureStop } kind {};
         enum class Tx   : uint8_t { Play, Stop, Pause, Advance, NormalSpeed, Seek,
-                                    RateScale, Direction } tx {};
+                                    RateScale, Direction, RecordStart, RecordPause,
+                                    RecordResume, RecordStop } tx {};
         uint64_t        id = 0;
         Window*         window = nullptr;   // AddWindow: ownership transfers to audio
         SoundDocument*  doc = nullptr;      // SwapDoc: ownership transfers to audio
@@ -238,6 +249,7 @@ private:
         size_t          seekBytes = 0;
         PlayDirection   direction = PlayDirection::forward;
         CaptureSetup    capture {};
+        uint64_t        excludeMask = 0;
     };
 
     bool post (const Command& c) noexcept { return incoming.push (c); }

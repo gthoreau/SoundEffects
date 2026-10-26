@@ -143,6 +143,7 @@ StereoFrame mixFrameAt (const SoundDocument& doc, double pos,
     for (int t = 0; t < doc.numTracks(); ++t)
     {
         if (opts.monitor != nullptr && ! isAudible (*opts.monitor, t)) continue;
+        if (t < 64 && ((opts.excludeMask >> t) & 1u) != 0) continue;
 
         const Track& track = doc.tracks[static_cast<size_t> (t)];
         const TrackRead tr = trackRead (doc, t, pos, ctx);

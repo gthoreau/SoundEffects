@@ -131,6 +131,8 @@ void CanvasComponent::refresh()
         if (find (id) != nullptr) continue;
         auto wc = std::make_unique<WindowComponent> (engine, id);
         wc->clipboard = &clipboard;
+        wc->recorder = recorder;
+        wc->recordSetupFor = recordSetupFor;
         wc->onClose = [this] (uint64_t wid) { engine.removeWindow (wid); };
         wc->onGeometryChanged = [this] { if (mosaicEnabled) layoutGrid(); };
         auto* raw = wc.get();
@@ -183,6 +185,13 @@ void CanvasComponent::invalidateWaveform (uint64_t id)
     for (auto& w : windows)
         if (id == 0 || w->windowId() == id)
             w->invalidateWaveform();
+}
+
+void CanvasComponent::setRecording (se::Recorder* r, std::function<bool (uint64_t, se::RecordSetup&)> setupFor)
+{
+    recorder = r;
+    recordSetupFor = std::move (setupFor);
+    for (auto& w : windows) { w->recorder = recorder; w->recordSetupFor = recordSetupFor; }
 }
 
 void CanvasComponent::setRecordEnabled (bool enabled)

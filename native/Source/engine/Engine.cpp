@@ -185,6 +185,21 @@ bool Engine::setDirection (uint64_t id, PlayDirection d)
     w->direction.store (static_cast<uint8_t> (d), std::memory_order_relaxed);
     return true;
 }
+bool Engine::recordStart (uint64_t id, const CaptureSetup& setup, const PlayOptions& play, uint64_t mask)
+{
+    Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::RecordStart; c.id=id;
+    c.capture=setup; c.play=play; c.excludeMask=mask;
+    if (! post (c)) return false;
+    if (auto* w = windowById (id)) w->direction.store (static_cast<uint8_t> (PlayDirection::forward), std::memory_order_relaxed);
+    return true;
+}
+bool Engine::recordPause (uint64_t id)
+{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::RecordPause; c.id=id; return post (c); }
+bool Engine::recordResume (uint64_t id, const PlayOptions& play, uint64_t mask)
+{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::RecordResume; c.id=id; c.play=play; c.excludeMask=mask; return post (c); }
+bool Engine::recordStop (uint64_t id)
+{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::RecordStop; c.id=id; return post (c); }
+
 PlayDirection Engine::direction (uint64_t id) noexcept
 {
     auto* w = windowById (id);
@@ -233,6 +248,34 @@ void Engine::applyTransport (Window& w, const Command& c) noexcept
         case Command::Tx::Seek:        w.transport->seek (d, c.seekBytes); break;
         case Command::Tx::RateScale:   w.transport->setRateScale (c.play.rateScale); break;
         case Command::Tx::Direction:   w.transport->setDirection (c.direction, d); break;
+
+        case Command::Tx::RecordStart:
+            // Capture and play begin in this very block; recording is always Forward.
+            cap = c.capture;
+            capActive = true;
+            capRunning.store (true, std::memory_order_release);
+            w.transport->excludeMask = c.excludeMask;
+            w.transport->setDirection (PlayDirection::forward, d);
+            w.transport->play (d, c.play);
+            break;
+        case Command::Tx::RecordPause:
+            capActive = false;
+            capRunning.store (false, std::memory_order_release);
+            if (w.transport->state() == TransportState::playing) w.transport->pause();
+            break;
+        case Command::Tx::RecordResume:
+            capActive = true;
+            capRunning.store (true, std::memory_order_release);
+            w.transport->excludeMask = c.excludeMask;
+            if (w.transport->state() == TransportState::paused) w.transport->pause();
+            else if (w.transport->state() == TransportState::stopped) w.transport->play (d, c.play);
+            break;
+        case Command::Tx::RecordStop:
+            capActive = false;
+            capRunning.store (false, std::memory_order_release);
+            w.transport->stop();
+            w.transport->excludeMask = 0;
+            break;
     }
 }
 

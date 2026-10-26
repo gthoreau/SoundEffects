@@ -106,6 +106,8 @@ public:
 
 private:
     void timerCallback() override;
+    /** How a take is set up for a Window: its audio source and conversion. */
+    bool recordSetupFor (uint64_t window, se::RecordSetup& s);
     /** The Window the menus act on: the canvas's selected one. */
     WindowComponent* targetWindow() const { return canvas.selectedWindowComponent(); }
     /** Is the user typing into a text field? Single-key shortcuts stand down then. */

@@ -280,6 +280,7 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
     mix.volume    = masterVolume;
     mix.monitor   = &monitor;
     mix.forceMono = forceMono;
+    mix.excludeMask = excludeMask;
 
     int written = 0;
     for (int i = 0; i < frames; ++i)

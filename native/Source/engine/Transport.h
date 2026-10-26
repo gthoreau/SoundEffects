@@ -127,6 +127,9 @@ public:
     TrackMonitor monitor;
     PlayFrom playFrom = PlayFrom::beginning;
     bool supportsStereo = true;        // false collapses L/R routing to a mono sum
+    /** Tracks that stay silent while they are being recorded into (bit t = track t,
+        0-based). Audio thread, set by the record commands. */
+    uint64_t excludeMask = 0;
 
     /** Fill left/right (planar, deviceRate) with up to `frames` frames from `doc`. */
     int render (const SoundDocument& doc, float* left, float* right, int frames) noexcept;

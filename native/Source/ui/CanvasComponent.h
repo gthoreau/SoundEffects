@@ -86,6 +86,7 @@ public:
     uint64_t selectedWindowId() const noexcept { return selectedId; }
     /** The selected Window's component — what the application menus act on. */
     WindowComponent* selectedWindowComponent() const { return find (selectedId); }
+    WindowComponent* windowComponentFor (uint64_t id) const { return find (id); }
     void selectWindow (uint64_t id);
 
     /** Select a Window AND put it in front of you: raised above its neighbours (the
@@ -107,6 +108,10 @@ public:
     /** Is audio input live? Drives every Window's record button, and every Window
         made from here on. Cheap to call repeatedly — it returns early unchanged. */
     void setRecordEnabled (bool enabled);
+
+    /** The editor's recorder, and how a take is set up for a Window. Handed to every
+        Window now and to every one made later. */
+    void setRecording (se::Recorder* recorder, std::function<bool (uint64_t, se::RecordSetup&)> setupFor);
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -172,6 +177,8 @@ private:
     se::Engine& engine;
     World world;
     std::vector<std::unique_ptr<WindowComponent>> windows;
+    se::Recorder* recorder = nullptr;
+    std::function<bool (uint64_t, se::RecordSetup&)> recordSetupFor;
     std::unique_ptr<se::SoundDocument> clipboard;   // shared across windows (⌘X/C/V)
     int cascade = 0;
 
