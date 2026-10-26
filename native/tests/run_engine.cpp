@@ -8,6 +8,8 @@
 
 #include "engine/Edit.h"
 #include "engine/Engine.h"
+#include "engine/RecordConvert.h"
+#include "engine/Resample.h"
 #include "engine/SampleFormat.h"
 
 #include <atomic>
@@ -471,6 +473,164 @@ void directionEngineTests()
 }
 
 } // namespace
+
+// --- recording conversion (9.2) -------------------------------------------------
+// Raw is the 0.9.2 resamplers' arithmetic on a stream; Clean is band-limited with
+// dither. Both are streams, so the block size must not matter.
+
+std::vector<float> sineWave (double freq, double rate, size_t n, float amp = 0.5f)
+{
+    std::vector<float> v (n);
+    for (size_t i = 0; i < n; ++i) v[i] = amp * (float) std::sin (2.0 * 3.14159265358979323846 * freq * (double) i / rate);
+    return v;
+}
+
+struct Converted { std::vector<int32_t> l, r; };
+
+Converted convertAll (se::RecordConverter& c, const std::vector<float>& x, size_t chunk)
+{
+    Converted out;
+    for (size_t at = 0; at < x.size(); at += chunk)
+    {
+        const size_t n = std::min (chunk, x.size() - at);
+        c.process (x.data() + at, x.data() + at, n, out.l, out.r);
+    }
+    c.flush (out.l, out.r);
+    return out;
+}
+
+double rms (const std::vector<int32_t>& v, double scale, size_t from, size_t to)
+{
+    double s = 0.0;
+    for (size_t i = from; i < to; ++i) s += (double) v[i] * v[i];
+    return std::sqrt (s / (double) (to - from)) / scale;
+}
+
+void convertTests()
+{
+    // Raw, same rate and depth: every sample is floor(x * 2^(bps-1)), no more.
+    {
+        const auto x = sineWave (440.0, 44100.0, 1000);
+        se::RecordConverter c (44100.0, 44100.0, 16, se::ConvertMode::raw);
+        const auto o = convertAll (c, x, 1000);
+        bool same = o.l.size() == x.size();
+        for (size_t i = 0; same && i < x.size(); ++i)
+            same = o.l[i] == (int32_t) std::floor ((double) x[i] * 32768.0) && o.r[i] == o.l[i];
+        check (same, "raw 1:1 at 16 bit: floor(x * 32768), both sides");
+    }
+
+    // Raw reproduces the 0.9.2 resamplers (zero-order hold, then truncation), index
+    // for index: build a 16-bit Sound from the same floats, resample it with the
+    // old code, and compare.
+    for (double outRate : { 22254.5454, 11025.0, 48000.0, 96000.0 })
+    {
+        const double inRate = 44100.0;
+        const auto x = sineWave (1000.0, inRate, 4410, 0.9f);
+        for (int bps : { 16, 8, 12 })
+        {
+            se::DocumentInit init; init.rateHz = inRate; init.bps = 16; init.numTracks = 1; init.sizeBytes = x.size() * 2;
+            se::SoundDocument doc (init);
+            for (size_t i = 0; i < x.size(); ++i)
+                se::setSample (doc.tracks[0].data.data(), i * 2, (int32_t) std::floor ((double) x[i] * 32768.0), 16);
+            se::resampleSoundRate (doc, outRate);
+            if (bps != 16) se::resampleSoundBits (doc, bps);
+
+            se::RecordConverter c (inRate, outRate, bps, se::ConvertMode::raw);
+            const auto o = convertAll (c, x, 333);
+
+            // Compare what the Sound would hold: the old code's own bytes vs ours via setSample.
+            const size_t fs = (size_t) se::frameSizeFor (bps);
+            const size_t n = std::min (o.l.size(), doc.tracks[0].data.size() / fs);
+            // The old code ACCUMULATES its step, so where k * ratio lands exactly on a
+            // whole input frame it can come out one frame early; ours multiplies. Allow
+            // those boundary frames (under 1 %: only where the ratio lands on whole frames), and the length to differ by one.
+            size_t differ = 0;
+            for (size_t i = 0; i < n; ++i)
+            {
+                std::vector<uint8_t> mine (fs);
+                se::setSample (mine.data(), 0, o.l[i], bps);
+                for (size_t b = 0; b < fs; ++b)
+                    if (mine[b] != doc.tracks[0].data[i * fs + b]) { ++differ; break; }
+            }
+            const size_t oldN = doc.tracks[0].data.size() / fs;
+            const bool same = n > 0 && differ * 100 <= n && (o.l.size() == oldN || o.l.size() == oldN + 1);
+            if (! same) std::printf ("   n=%zu differ=%zu mine=%zu old=%zu\n", n, differ, o.l.size(), oldN);
+            check (same, "raw == resampleSoundRate + resampleSoundBits: " + std::to_string ((int) outRate) + " Hz, " + std::to_string (bps) + " bit");
+        }
+    }
+
+    // Raw keeps its aliasing: a 15 kHz tone down to 22.05 kHz folds to 7.05 kHz at full level.
+    {
+        const auto x = sineWave (15000.0, 48000.0, 48000, 0.5f);
+        se::RecordConverter c (48000.0, 22050.0, 16, se::ConvertMode::raw);
+        const auto o = convertAll (c, x, 1024);
+        const double level = rms (o.l, 32768.0, 100, o.l.size() - 100);
+        check (level > 0.3, "raw: a tone above the new Nyquist aliases at full level");
+    }
+
+    // Clean: the same tone is gone, a tone below it passes, at either direction of conversion.
+    {
+        const auto hi = sineWave (15000.0, 48000.0, 48000, 0.5f);
+        se::RecordConverter c (48000.0, 22050.0, 16, se::ConvertMode::clean);
+        const auto o = convertAll (c, hi, 1024);
+        const double level = rms (o.l, 32768.0, 200, o.l.size() - 200);
+        check (level < 0.003, "clean: a tone above the new Nyquist is rejected (> 40 dB down)");
+
+        const auto lo = sineWave (1000.0, 48000.0, 48000, 0.5f);
+        se::RecordConverter c2 (48000.0, 22050.0, 16, se::ConvertMode::clean);
+        const auto p = convertAll (c2, lo, 1024);
+        checkClose ((float) rms (p.l, 32768.0, 200, p.l.size() - 200), 0.5f / std::sqrt (2.0f), 0.004f, "clean: a 1 kHz tone passes at its level");
+
+        // Aligned in time: a rising zero crossing of the input lands on the same instant.
+        size_t zc = 0;
+        for (size_t i = 200; i + 1 < p.l.size(); ++i) if (p.l[i] <= 0 && p.l[i + 1] > 0) { zc = i; break; }
+        const double t = (double) zc / 22050.0;                  // seconds
+        const double cycles = t * 1000.0;
+        checkClose ((float) (cycles - std::round (cycles)), 0.0f, 0.03f, "clean: no time shift (zero crossings on the input's grid)");
+
+        // Up: 22.05 kHz -> 48 kHz keeps the tone, the length scales.
+        const auto src = sineWave (2000.0, 22050.0, 22050, 0.5f);
+        se::RecordConverter up (22050.0, 48000.0, 16, se::ConvertMode::clean);
+        const auto u = convertAll (up, src, 777);
+        check (u.l.size() == se::RecordConverter::outputLength (22050, 22050.0, 48000.0), "clean up: length = input * ratio");
+        checkClose ((float) rms (u.l, 32768.0, 300, u.l.size() - 300), 0.5f / std::sqrt (2.0f), 0.004f, "clean up: the tone passes at its level");
+    }
+
+    // The block size must not change a thing, dither included (it follows the output sample).
+    for (auto mode : { se::ConvertMode::raw, se::ConvertMode::clean })
+    {
+        const auto x = sineWave (3000.0, 44100.0, 5000, 0.7f);
+        se::RecordConverter a (44100.0, 22050.0, 12, mode, 7), b (44100.0, 22050.0, 12, mode, 7);
+        const auto oa = convertAll (a, x, 5000), ob = convertAll (b, x, 37);
+        check (oa.l == ob.l && oa.r == ob.r, mode == se::ConvertMode::raw ? "raw: block size does not matter" : "clean: block size does not matter");
+    }
+
+    // Dither: silence stays silent in Raw; in Clean it is +-1 LSB of triangular noise, centred.
+    {
+        std::vector<float> z (20000, 0.0f);
+        se::RecordConverter raw (44100.0, 44100.0, 8, se::ConvertMode::raw), cln (44100.0, 44100.0, 8, se::ConvertMode::clean);
+        const auto r = convertAll (raw, z, 4096), c = convertAll (cln, z, 4096);
+        bool zeros = true; for (auto v : r.l) if (v != 0) zeros = false;
+        check (zeros, "raw: silence stays exactly zero (no dither)");
+        double sum = 0.0; int big = 0, nonzero = 0;
+        for (auto v : c.l) { sum += v; if (std::abs (v) > 1) ++big; if (v != 0) ++nonzero; }
+        check (big == 0 && nonzero > 2000, "clean 8 bit: silence becomes +-1 LSB dither");
+        checkClose ((float) (sum / (double) c.l.size()), 0.0f, 0.03f, "clean: the dither is centred");
+        check (c.l != c.r, "clean: the two sides get independent dither");
+    }
+
+    // Depth edges: full scale clamps, left-aligned in the frame.
+    {
+        std::vector<float> x { 1.0f, -1.0f, 2.0f, -3.0f };
+        se::RecordConverter c (44100.0, 44100.0, 12, se::ConvertMode::raw);
+        const auto o = convertAll (c, x, 4);
+        check (o.l[0] == 2047 * 16 && o.l[1] == -2048 * 16 && o.l[2] == 2047 * 16 && o.l[3] == -2048 * 16,
+               "12 bit: clamps at full scale and sits left-aligned in two bytes");
+        se::RecordConverter c8 (44100.0, 44100.0, 8, se::ConvertMode::raw);
+        const auto p = convertAll (c8, x, 4);
+        check (p.l[0] == 127 && p.l[1] == -128, "8 bit: signed, clamped");
+    }
+}
 
 // --- audio input / capture (9.1) ----------------------------------------------
 // The audio thread captures a source into the ring; the message thread (here: the
@@ -943,6 +1103,7 @@ int main()
     switchingTests();
     concurrencyTests();
     captureTests();
+    convertTests();
     captureConcurrencyTests();
 
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"

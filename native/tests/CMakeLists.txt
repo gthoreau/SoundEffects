@@ -24,7 +24,8 @@ set(ENGINE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../Source)
 set(ENGINE_SOURCES
     ${ENGINE_DIR}/engine/SoundDocument.cpp
     ${ENGINE_DIR}/engine/Edit.cpp
-    ${ENGINE_DIR}/engine/Resample.cpp)
+    ${ENGINE_DIR}/engine/Resample.cpp
+    ${ENGINE_DIR}/engine/RecordConvert.cpp)
 
 # The effects runtime, plus one file per ported module. Modules are added here as
 # the porting waves land — this list and Registry.cpp are the two places a new

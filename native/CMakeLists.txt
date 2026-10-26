@@ -42,6 +42,7 @@ target_sources(SoundEffects PRIVATE
     Source/engine/Import.cpp
     Source/engine/Edit.cpp
     Source/engine/Resample.cpp
+    Source/engine/RecordConvert.cpp
     # The effects runtime + one file per ported module. Kept in the plugin build
     # even before the panel uses it, so the app target and native/tests (which is
     # where the golden vectors run) cannot drift apart.
