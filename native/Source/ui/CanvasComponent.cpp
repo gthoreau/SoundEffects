@@ -505,6 +505,25 @@ void CanvasComponent::setZoom (float newZoom)
     zoomAround (newZoom, getLocalBounds().getCentre().toFloat());
 }
 
+void CanvasComponent::zoomToFit (int clearBottom)
+{
+    juce::Rectangle<int> all;
+    for (auto& w : windows)
+        all = all.isEmpty() ? w->getBounds() : all.getUnion (w->getBounds());
+    if (all.isEmpty()) { resetView(); return; }
+
+    const auto inset = (float) kOriginInset;
+    auto view = getLocalBounds().toFloat();
+    view.removeFromBottom ((float) std::max (0, clearBottom));
+    view = view.reduced (inset);
+    if (view.getWidth() <= 0.0f || view.getHeight() <= 0.0f) return;
+
+    zoom = std::clamp (std::min (view.getWidth() / (float) all.getWidth(),
+                                 view.getHeight() / (float) all.getHeight()), kMinZoom, 1.0f);
+    setPan ({ view.getX() - (float) all.getX() * zoom, view.getY() - (float) all.getY() * zoom });
+    if (onViewChanged) onViewChanged();
+}
+
 void CanvasComponent::resetView()
 {
     zoom = 1.0f;

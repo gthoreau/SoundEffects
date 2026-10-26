@@ -68,6 +68,12 @@ public:
         looking at is what you meant to keep. */
     void  setZoom (float newZoom);
 
+    /** Window ▸ Zoom to Fit: zoom out until every Window is in view (never in past
+        100 %), the lot parked at the viewport's top-left inset as the grid places it.
+        `clearBottom` is how much of the viewport's bottom the floating palettes hide. */
+    void  zoomToFit (int clearBottom = 0);
+    bool  hasWindows() const noexcept { return ! windows.empty(); }
+
     static constexpr float kMinZoom = 0.2f;
     static constexpr float kMaxZoom = 4.0f;
 

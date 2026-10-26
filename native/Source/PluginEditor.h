@@ -90,6 +90,9 @@ public:
     /** Nothing: command items are dispatched by the manager, and dynamic items carry
         their own actions. Doing work here would run every item twice. */
     void menuItemSelected (int, int) override {}
+    /** A menu closed: hand keyboard focus back to the canvas, which loses it to the
+        popup menu, so the shortcuts keep working without another click. */
+    void menuBarActivated (bool isActive) override;
 
     /** Run one refresh tick now (the canvas, the mixer, the panel) — for the
         off-screen snapshot, which has no timer running. */

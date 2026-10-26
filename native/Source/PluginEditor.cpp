@@ -242,6 +242,7 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
             r.shortName = canvas.isMosaicMode() ? "Free Canvas" : "Grid Canvas";
             break;
         case cmd::zoom100:       active = true; break;
+        case cmd::zoomToFit:     active = canvas.hasWindows(); break;
 
         // Undo is always inactive (that's the joke). Everything else here is a
         // command whose feature lands in a later step: listed, greyed.
@@ -316,6 +317,10 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         case cmd::toggleKeyboard: setKeyboardShown (! keyboard.isVisible()); return true;
         case cmd::toggleGrid:     canvas.setMosaicMode (! canvas.isMosaicMode()); return true;
         case cmd::zoom100:        canvas.setZoom (1.0f); return true;
+        case cmd::zoomToFit:
+            // The palettes float over the canvas's foot: keep what they hide out of the fit.
+            canvas.zoomToFit (canvas.getBottom() - std::min (palette.getY(), keyboard.isVisible() ? keyboard.getY() : palette.getY()));
+            return true;
         default: break;
     }
     return false;
@@ -404,6 +409,18 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::getMenuForIndex (int index, co
         default: break;
     }
     return m;
+}
+
+void SoundEffectsAudioProcessorEditor::menuBarActivated (bool isActive)
+{
+    if (isActive) return;
+    // After the item has run: a popup it opened (Shift Sound…) keeps the focus it took.
+    juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this)]
+    {
+        if (safe == nullptr || juce::Component::getCurrentlyFocusedComponent() != nullptr
+            || juce::ModalComponentManager::getInstance()->getNumModalComponents() > 0) return;
+        safe->canvas.grabKeyboardFocus();
+    });
 }
 
 juce::PopupMenu SoundEffectsAudioProcessorEditor::windowMenu()
