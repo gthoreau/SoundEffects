@@ -12,6 +12,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <initializer_list>
 #include <string>
 #include <vector>
 
@@ -65,6 +66,283 @@ void renderBlocks (se::Engine& engine, int blocks)
 {
     std::vector<float> l ((size_t) kBlock, 0.0f), r ((size_t) kBlock, 0.0f);
     for (int i = 0; i < blocks; ++i) engine.render (l.data(), r.data(), kBlock);
+}
+
+// --- playback direction ------------------------------------------------------
+// Driven straight through a Transport at the document's own rate (one frame of
+// output per frame of audio), over a ramp so the sample READS BACK as its index.
+
+constexpr int kRamp = 100;
+
+/** One ramp track per entry of `lens` (8-bit, sample i holds i - 50); track 0 is
+    routed left only, track 1 right only, so each can be read apart. */
+std::unique_ptr<se::SoundDocument> rampDocument (std::initializer_list<size_t> lens)
+{
+    se::DocumentInit init;
+    init.numTracks = (int) lens.size();
+    init.bps = 8;
+    init.rateHz = kRate;
+    init.sizeBytes = 1;
+    auto doc = std::make_unique<se::SoundDocument> (init);
+    int t = 0;
+    for (size_t len : lens)
+    {
+        auto& tr = doc->tracks[(size_t) t];
+        tr.data.assign (len, 0);
+        for (size_t i = 0; i < len; ++i) se::setSample (tr.data.data(), i, (int) i - 50, 8);
+        tr.outLeft  = t == 0 || lens.size() == 1;
+        tr.outRight = t == 1 || lens.size() == 1;
+        ++t;
+    }
+    return doc;
+}
+
+int indexOf (float v) { return (int) std::lround (v * 128.0f) + 50; }
+
+/** Render `frames` frames and return the frame index each sample came from
+    (-1 where the track was silent, which a ramp at index 50 would not hide:
+    index 50 reads 0.0, so silence is told apart by the rendered count instead). */
+struct Rendered { std::vector<int> left, right; std::vector<float> rawL; int frames = 0; };
+Rendered renderTransport (se::Transport& tr, const se::SoundDocument& doc, int frames)
+{
+    std::vector<float> l ((size_t) frames, 0.0f), r ((size_t) frames, 0.0f);
+    Rendered out;
+    out.frames = tr.render (doc, l.data(), r.data(), frames);
+    out.rawL = l;
+    for (int i = 0; i < out.frames; ++i) { out.left.push_back (indexOf (l[(size_t) i])); out.right.push_back (indexOf (r[(size_t) i])); }
+    return out;
+}
+
+bool isSequence (const std::vector<int>& got, const std::vector<int>& want)
+{
+    return got == want;
+}
+
+/** Expected indices: `n` frames of a span [lo, lo+S), starting at span index `from`,
+    heading by `dir` (+1/-1), wrapping (loop) or reflecting (pingpong). */
+std::vector<int> walk (int lo, int S, int from, int heading, bool pingPong, int n)
+{
+    std::vector<int> v; int i = from;
+    for (int k = 0; k < n; ++k)
+    {
+        v.push_back (lo + i);
+        i += heading;
+        if (pingPong) { if (i >= S) { i = S - 1; heading = -1; } else if (i < 0) { i = 0; heading = 1; } }
+        else          { if (i >= S) i = 0; else if (i < 0) i = S - 1; }
+    }
+    return v;
+}
+
+void directionTests()
+{
+    using se::PlayDirection;
+    se::PlayOptions loop; loop.loop = true;
+
+    // Forward is what it always was.
+    {
+        auto doc = rampDocument ({ kRamp });
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        check (isSequence (renderTransport (tr, *doc, 250).left, walk (0, kRamp, 0, 1, false, 250)),
+               "direction: forward loops 0..99 as always");
+    }
+    // Backward and ping-pong, looping the whole sound.
+    for (int pp = 0; pp < 2; ++pp)
+    {
+        auto doc = rampDocument ({ kRamp });
+        se::Transport tr (kRate);
+        tr.setDirection (pp ? PlayDirection::pingPong : PlayDirection::backward, *doc);   // stopped: kept
+        tr.play (*doc, loop);
+        const auto want = pp ? walk (0, kRamp, 0, 1, true, 450) : walk (0, kRamp, kRamp - 1, -1, false, 250);
+        check (isSequence (renderTransport (tr, *doc, (int) want.size()).left, want),
+               pp ? "direction: ping-pong runs up, bounces, runs down, bounces" : "direction: backward loops 99..0");
+    }
+    // Tracks of different lengths each keep their own length and phase.
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        se::Transport tr (kRate);
+        tr.setDirection (PlayDirection::backward, *doc);
+        tr.play (*doc, loop);
+        const auto o = renderTransport (tr, *doc, 300);
+        check (isSequence (o.left, walk (0, 100, 99, -1, false, 300)) && isSequence (o.right, walk (0, 60, 59, -1, false, 300)),
+               "direction: backward, two tracks of 100 and 60 loop over their own lengths");
+    }
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        se::Transport tr (kRate);
+        tr.setDirection (PlayDirection::pingPong, *doc);
+        tr.play (*doc, loop);
+        const auto o = renderTransport (tr, *doc, 400);
+        check (isSequence (o.left, walk (0, 100, 0, 1, true, 400)) && isSequence (o.right, walk (0, 60, 0, 1, true, 400)),
+               "direction: ping-pong, two tracks each bounce at their own ends");
+    }
+    // A selection loop, in each direction.
+    for (int d = 0; d < 3; ++d)
+    {
+        auto doc = rampDocument ({ kRamp });
+        doc->selSt = 20; doc->selEnd = 40;
+        se::Transport tr (kRate);
+        tr.setDirection ((PlayDirection) d, *doc);
+        tr.play (*doc, loop);
+        const auto want = d == 0 ? walk (20, 20, 0, 1, false, 70) : d == 1 ? walk (20, 20, 19, -1, false, 70)
+                                                                           : walk (20, 20, 0, 1, true, 70);
+        check (isSequence (renderTransport (tr, *doc, 70).left, want),
+               d == 0 ? "direction: selection loop, forward" : d == 1 ? "direction: selection loop, backward"
+                                                                      : "direction: selection loop, ping-pong");
+    }
+    // Play once: through the span, in the direction, then stop.
+    {
+        auto doc = rampDocument ({ kRamp });
+        se::Transport tr (kRate);
+        tr.setDirection (PlayDirection::backward, *doc);
+        tr.play (*doc, {});
+        const auto o = renderTransport (tr, *doc, 300);
+        check (o.frames == kRamp && isSequence (o.left, walk (0, kRamp, kRamp - 1, -1, false, kRamp)) && tr.state() == se::TransportState::stopped,
+               "direction: once backward plays 99..0 then stops");
+    }
+    {
+        auto doc = rampDocument ({ kRamp });
+        se::Transport tr (kRate);
+        tr.setDirection (PlayDirection::pingPong, *doc);
+        tr.play (*doc, {});
+        const auto o = renderTransport (tr, *doc, 500);
+        check (o.frames == 2 * kRamp && isSequence (o.left, walk (0, kRamp, 0, 1, true, 2 * kRamp)) && tr.state() == se::TransportState::stopped,
+               "direction: once ping-pong is one round trip, then stops");
+    }
+    {
+        auto doc = rampDocument ({ kRamp });
+        doc->selSt = 30; doc->selEnd = 50;
+        se::Transport tr (kRate);
+        tr.setDirection (PlayDirection::backward, *doc);
+        tr.play (*doc, {});
+        const auto o = renderTransport (tr, *doc, 100);
+        check (o.frames == 20 && isSequence (o.left, walk (30, 20, 19, -1, false, 20)),
+               "direction: once backward over a selection plays just it, reversed");
+    }
+
+    // Switching while it rolls: nothing jumps. The playhead of every track carries
+    // on from where it was, and what is left of the step is crossfaded.
+    const auto maxStep = [] (const std::vector<float>& a, const std::vector<float>& b)
+    {
+        // Over the 2 ms the crossfade lasts; the loop's own wrap is not what is asked about.
+        float worst = 0.0f, prev = a.empty() ? 0.0f : a.back();
+        for (size_t i = 0; i < b.size() && i < 30; ++i) { worst = std::max (worst, std::fabs (b[i] - prev)); prev = b[i]; }
+        return worst * 128.0f;   // in sample units
+    };
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        const auto before = renderTransport (tr, *doc, 37);            // pos 37: next reads 37 and 37
+        size_t p0 = 0, p1 = 0;
+        tr.setDirection (PlayDirection::backward, *doc);
+        check (tr.uiTrackPosition (0, p0) && tr.uiTrackPosition (1, p1) && p0 == 37 && p1 == 37,
+               "switch: forward -> backward, every track stays on the frame it was on");
+        const auto after = renderTransport (tr, *doc, 120);
+        check (maxStep (before.rawL, after.rawL) < 2.5f, "switch: no step in the signal (micro-crossfade)");
+        // Once the 2 ms crossfade is over, it is plainly walking down from 37 (wrapping).
+        const int skip = 60;
+        const auto want = walk (0, 100, 37, -1, false, 120);
+        check (std::vector<int> (after.left.begin() + skip, after.left.end()) == std::vector<int> (want.begin() + skip, want.end()),
+               "switch: backward carries on from 37 downward");
+
+        tr.setDirection (PlayDirection::pingPong, *doc);   // heading down: keeps heading down, bounces at 0
+        const size_t pos1 = 37 + 120;                     // track 0: 37 - 120 mod 100 -> index 17 after the wrap
+        (void) pos1;
+        const auto a2 = renderTransport (tr, *doc, 160);
+        const auto w2 = walk (0, 100, 17, -1, true, 160);   // heading down from 17, bounce at 0, then up
+        check (std::vector<int> (a2.left.begin() + skip, a2.left.end()) == std::vector<int> (w2.begin() + skip, w2.end()),
+               "switch: backward -> ping-pong keeps heading the same way, then bounces");
+
+        tr.setDirection (PlayDirection::forward, *doc);
+        const auto a3 = renderTransport (tr, *doc, 40);
+        check (maxStep (a2.rawL, a3.rawL) < 2.5f, "switch: ping-pong -> forward, no step either");
+    }
+    // Rolling a play-once: a direction change finishes the pass the other way.
+    {
+        auto doc = rampDocument ({ kRamp });
+        se::Transport tr (kRate);
+        tr.play (*doc, {});
+        renderTransport (tr, *doc, 60);
+        tr.setDirection (PlayDirection::backward, *doc);
+        const auto o = renderTransport (tr, *doc, 200);
+        check (o.frames == 61 && o.left.back() == 0 && tr.state() == se::TransportState::stopped,
+               "switch: play-once forward -> backward turns round and runs back to the start");
+    }
+
+    // The loop is live: Set Loop and the selection re-aim it while it plays.
+    {
+        auto doc = rampDocument ({ kRamp });
+        doc->selSt = 20; doc->selEnd = 40;
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        renderTransport (tr, *doc, 25);                       // inside: reading frame 25 next
+        doc->selSt = 10; doc->selEnd = 90;                    // new range holds the playhead
+        const auto a = renderTransport (tr, *doc, 100);       // 2 ms of crossfade, then the new loop alone
+        const auto wantA = walk (10, 80, 15, 1, false, 100);
+        check (a.left.front() == 25 && std::vector<int> (a.left.begin() + 60, a.left.end()) == std::vector<int> (wantA.begin() + 60, wantA.end()),
+               "live loop: a new range around the playhead does not move it");
+        check (tr.uiPlaySt() == 10 && tr.uiPlayEnd() == 90, "live loop: the published region follows");
+
+        doc->selSt = 60; doc->selEnd = 70;                    // elsewhere: restart at its start
+        const auto b = renderTransport (tr, *doc, 120);
+        check (std::vector<int> (b.left.begin() + 60, b.left.end()) == walk (60, 10, (60 + 60 - 60) % 10, 1, false, 60),
+               "live loop: a range elsewhere takes over (after the crossfade) from its start");
+
+        doc->selSt = doc->selEnd = 5;                         // a caret: the whole sound loops
+        renderTransport (tr, *doc, 3);
+        size_t p = 0;
+        check (tr.uiLoopMode() == se::LoopMode::all && tr.uiTrackPosition (0, p),
+               "live loop: no selection any more, the whole sound loops");
+    }
+    {
+        auto doc = rampDocument ({ kRamp });
+        doc->selSt = 20; doc->selEnd = 40;
+        se::PlayOptions region; region.loop = true; region.useLoopRegion = true;
+        se::Transport tr (kRate);
+        tr.play (*doc, region);                                // no region yet: the selection
+        renderTransport (tr, *doc, 5);
+        doc->loopSt = 30; doc->loopEnd = 50;                   // Set Loop: the region wins
+        renderTransport (tr, *doc, 100);                       // outside 20..40's reading point? re-aimed either way
+        check (tr.uiPlaySt() == 30 && tr.uiPlayEnd() == 50, "live loop: Set Loop while it plays re-aims the loop at the region");
+        size_t p = 0;
+        check (tr.uiTrackPosition (0, p) && p >= 30 && p < 50, "live loop: and the playhead is inside the region");
+    }
+    // The Keyboard's re-pitch of a rolling transport still works with a direction.
+    {
+        auto doc = rampDocument ({ kRamp });
+        se::Transport tr (kRate);
+        tr.setDirection (PlayDirection::backward, *doc);
+        tr.play (*doc, loop);
+        tr.setRateScale (2.0);
+        const auto o = renderTransport (tr, *doc, 10);
+        check (o.left[0] == 99 && o.left[1] == 97 && o.left[2] == 95, "direction: a re-pitched backward loop steps by two");
+        tr.advance (*doc);
+        check (true, "direction: advance accepted");
+    }
+}
+
+// The Engine's own bridge: the command, and the Window's copy for the UI.
+void directionEngineTests()
+{
+    using se::PlayDirection;
+    se::Engine engine;
+    engine.prepare (kRate, kBlock);
+    const uint64_t id = engine.addWindow (rampDocument ({ kRamp }));
+    check (engine.direction (id) == PlayDirection::forward, "engine: a new Window plays forward");
+    engine.setDirection (id, PlayDirection::backward);
+    check (engine.direction (id) == PlayDirection::backward, "engine: setDirection is visible to the UI at once");
+    se::PlayOptions loop; loop.loop = true;
+    engine.play (id, loop);
+    std::vector<float> l ((size_t) kBlock, 0.0f), r ((size_t) kBlock, 0.0f);
+    engine.render (l.data(), r.data(), kBlock);
+    check (indexOf (l[0]) == 99 && indexOf (l[1]) == 98, "engine: the command reaches the audio thread, ahead of play");
+    engine.setDirection (id, PlayDirection::forward);
+    engine.render (l.data(), r.data(), kBlock);
+    auto* w = engine.windowById (id);
+    size_t p = 0;
+    check (w->transport->uiDirection() == PlayDirection::forward && w->transport->uiTrackPosition (0, p),
+           "engine: a direction change while rolling reaches the transport");
 }
 
 } // namespace
@@ -286,6 +564,9 @@ int main()
         check (se::selectLoop (d) && d.selSt == 2 && d.selEnd == 5 && d.firstSelTrack == 1 && d.lastSelTrack == 3,
                "select loop: the loop region, every track");
     }
+
+    directionTests();
+    directionEngineTests();
 
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());

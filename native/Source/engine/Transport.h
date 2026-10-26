@@ -9,12 +9,20 @@
 // (doc.rateHz * rateScale * advanceScale) / deviceRate bytes per output frame.
 // Loop semantics (the "exquisite mess"): with no selection the whole sound loops
 // (tracks drift out of phase); with a selection, only the selected span loops.
+//
+// Direction (0.4.0): forward, backward or ping-pong, a property of the Window. The
+// transport's `pos` is still one monotonic clock; each track reads through its own
+// phase (PlayContext::phase) over its own span, so a direction change, or a loop
+// range that is moved while it plays, only re-anchors those phases — the playhead
+// of every track carries on from where it is — and a ~2 ms crossfade from the old
+// mapping hides whatever step is left.
 
 #pragma once
 
 #include "Mixer.h"
 #include "SoundDocument.h"
 
+#include <array>
 #include <atomic>
 
 namespace se {
@@ -46,6 +54,18 @@ public:
     void normalSpeed() noexcept { advanceScale = 1.0; }
 
     /**
+     * Change the direction. Stopped: it is kept for the next play(). Rolling or
+     * paused: every track keeps the frame it is on and carries on from there in the
+     * new direction (see anchor()), under a micro-crossfade.
+     */
+    void setDirection (PlayDirection d, const SoundDocument& doc) noexcept;
+    PlayDirection direction() const noexcept { return dir; }
+    PlayDirection uiDirection() const noexcept
+    {
+        return static_cast<PlayDirection> (uiDirCode.load (std::memory_order_relaxed));
+    }
+
+    /**
      * Change the rate multiplier of a transport that is ALREADY ROLLING.
      *
      * This is how the Keyboard pitches a Window that is already playing without
@@ -63,7 +83,7 @@ public:
     TransportState state() const noexcept { return currentState; }
 
     // --- UI snapshot: safe to read from the message thread while audio runs ---
-    /** Monotonic transport byte position; the UI maps it per track (pos % len). */
+    /** Monotonic transport byte position (the shared clock; see uiTrackPosition()). */
     size_t uiPlayhead() const noexcept { return uiPos.load (std::memory_order_relaxed); }
     TransportState uiState() const noexcept
     {
@@ -76,18 +96,32 @@ public:
 
     /**
      * The byte range this transport is ACTUALLY playing, and the 1-based track
-     * range it plays it in — both frozen at play(), both empty while stopped.
+     * range it plays it in — both empty while stopped.
      *
-     * NOT the document's selection, and the difference matters: a running loop is
-     * never re-aimed. Select somewhere else while it plays and the old region
-     * keeps looping until you stop and play again. Anything drawing the loop — the
-     * navigator's block, the playhead — has to read THIS, or it will show a region
-     * the ear is not hearing.
+     * A running loop follows the document: move the selection (or Set Loop) while
+     * it plays and the loop is re-aimed at the next block (see render()), so this
+     * changes with it. Anything drawing the loop — the navigator's block — reads
+     * THIS rather than the selection, so it shows what the ear is hearing.
      */
     size_t uiPlaySt()  const noexcept { return uiRegionSt.load (std::memory_order_relaxed); }
     size_t uiPlayEnd() const noexcept { return uiRegionEnd.load (std::memory_order_relaxed); }
     int uiFirstPlayTrack() const noexcept { return uiRegionFirst.load (std::memory_order_relaxed); }
     int uiLastPlayTrack()  const noexcept { return uiRegionLast.load (std::memory_order_relaxed); }
+
+    /**
+     * Where track `t` (0-based) is reading, in bytes, as of the last block; false
+     * while it is silent (stopped, out of the loop's tracks, or past its own end).
+     * Safe from the message thread. The playhead of a track is drawn from this: with
+     * a direction, the track's position is no longer a function of uiPlayhead().
+     */
+    bool uiTrackPosition (int t, size_t& bytes) const noexcept
+    {
+        if (t < 0 || t >= kPhaseTracks) return false;
+        const size_t v = uiTrackPos[static_cast<size_t> (t)].load (std::memory_order_relaxed);
+        if (v == kNoPosition) return false;
+        bytes = v;
+        return true;
+    }
 
     int  masterVolume = VOLUME_FULL;   // 0..7
     TrackMonitor monitor;
@@ -100,6 +134,22 @@ public:
 private:
     double step (const SoundDocument& doc) const noexcept;
     size_t framePos() const noexcept;   // frame-aligned pos using cachedFrameSize
+
+    /** What a loop would play right now: the Set Loop region, else the selection,
+        else every track whole — the same answer play() and the live re-aim give. */
+    struct Aim { LoopMode mode = LoopMode::all; size_t st = 0, end = 0; int first = 1, last = 1; };
+    static Aim loopAim (const SoundDocument& doc, const PlayOptions& opts) noexcept;
+
+    /** Make `next` (mode, span, direction set; phases not) the live mapping: each
+        track's phase is re-derived so it keeps reading the frame it is on, heading
+        the way it was heading; a track that has no such frame in the new span
+        restarts at the span's start. The old mapping fades out underneath. */
+    void anchor (const SoundDocument& doc, PlayContext next) noexcept;
+    void publishRegion (size_t st, size_t end, int first, int last) noexcept;
+    void publishTrackPositions (const SoundDocument& doc) noexcept;
+    void startCrossfade (const PlayContext& from) noexcept;
+
+    static constexpr size_t kNoPosition = static_cast<size_t> (-1);
     void setState (TransportState s) noexcept
     {
         currentState = s;
@@ -114,10 +164,18 @@ private:
     int    cachedFrameSize = 1; // last doc's frameSize, for framePos()
     PlayOptions playOpts;
     PlayContext ctx;            // how pos maps to each track's read position
-    size_t playEnd = 0;         // once-mode stop point
+    double stopPos = 0.0;       // once-mode stop point (a pos value)
+    PlayDirection dir = PlayDirection::forward;
+
+    // The mapping we were on, faded out over the first `xfadeTotal` frames after a
+    // re-anchor. Plain copy: the audio thread never allocates.
+    PlayContext prev;
+    int xfadeLeft = 0, xfadeTotal = 1;
 
     std::atomic<size_t>  uiPos { 0 };
     std::atomic<uint8_t> uiStateCode { static_cast<uint8_t> (TransportState::stopped) };
+    std::atomic<uint8_t> uiDirCode { static_cast<uint8_t> (PlayDirection::forward) };
+    std::array<std::atomic<size_t>, kPhaseTracks> uiTrackPos;
     std::atomic<uint8_t> uiLoopModeCode { static_cast<uint8_t> (LoopMode::once) };
     // Written only by play()/stop() — on the audio thread, like everything else
     // here, since transport commands arrive through the engine's queue.

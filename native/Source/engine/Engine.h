@@ -67,6 +67,11 @@ struct Window
     // OTHER side, down to silence at the end stop. See balanceGains().
     std::atomic<float> balance { 0.0f };
 
+    // Playback direction (a PlayDirection), the Window's own. The message thread's
+    // copy, for the Play button's icon and the Transport menu's ticks; the audio
+    // thread has its own in `transport`, set by the command setDirection() posts.
+    std::atomic<uint8_t> direction { static_cast<uint8_t> (PlayDirection::forward) };
+
     // Post-gain, post-balance peaks of THIS Window's own contribution to the sum,
     // one per output side, published by the audio thread for the mixer's stereo
     // VU. They fall back on their own (see render()), so the UI can sample them at
@@ -152,6 +157,10 @@ public:
     /** Re-pitch a ROLLING transport without restarting it. See Transport. */
     bool setRateScale (uint64_t id, double scale);
     bool seek (uint64_t id, size_t bytes);
+    /** Forward / Backward / Ping-pong for one Window, at any time: a rolling
+        transport re-anchors every track's phase and carries on, no restart. */
+    bool setDirection (uint64_t id, PlayDirection d);
+    PlayDirection direction (uint64_t id) noexcept;
 
     /** Free Windows/documents the audio thread has retired. Msg thread, periodic. */
     void collectRetired();
@@ -180,12 +189,13 @@ private:
     {
         enum class Kind : uint8_t { AddWindow, RemoveWindow, Transport, SwapDoc } kind {};
         enum class Tx   : uint8_t { Play, Stop, Pause, Advance, NormalSpeed, Seek,
-                                    RateScale } tx {};
+                                    RateScale, Direction } tx {};
         uint64_t        id = 0;
         Window*         window = nullptr;   // AddWindow: ownership transfers to audio
         SoundDocument*  doc = nullptr;      // SwapDoc: ownership transfers to audio
         PlayOptions     play {};
         size_t          seekBytes = 0;
+        PlayDirection   direction = PlayDirection::forward;
     };
 
     bool post (const Command& c) noexcept { return incoming.push (c); }

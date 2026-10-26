@@ -174,6 +174,22 @@ bool Engine::setRateScale (uint64_t id, double scale)
 bool Engine::seek (uint64_t id, size_t bytes)
 { Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Seek; c.id=id; c.seekBytes=bytes; return post (c); }
 
+bool Engine::setDirection (uint64_t id, PlayDirection d)
+{
+    auto* w = windowById (id);
+    if (w == nullptr) return false;
+    Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Direction; c.id=id; c.direction=d;
+    if (! post (c)) return false;
+    w->direction.store (static_cast<uint8_t> (d), std::memory_order_relaxed);
+    return true;
+}
+PlayDirection Engine::direction (uint64_t id) noexcept
+{
+    auto* w = windowById (id);
+    return w != nullptr ? static_cast<PlayDirection> (w->direction.load (std::memory_order_relaxed))
+                        : PlayDirection::forward;
+}
+
 void Engine::collectRetired()
 {
     Window* w = nullptr;
@@ -203,6 +219,7 @@ void Engine::applyTransport (Window& w, const Command& c) noexcept
         case Command::Tx::NormalSpeed: w.transport->normalSpeed();      break;
         case Command::Tx::Seek:        w.transport->seek (d, c.seekBytes); break;
         case Command::Tx::RateScale:   w.transport->setRateScale (c.play.rateScale); break;
+        case Command::Tx::Direction:   w.transport->setDirection (c.direction, d); break;
     }
 }
 

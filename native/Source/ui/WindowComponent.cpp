@@ -541,16 +541,6 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
 
     auto* wsnap = engineWindow();
     const bool playing = wsnap && wsnap->transport->uiState() == se::TransportState::playing;
-    const size_t playPos = wsnap ? wsnap->transport->uiPlayhead() : 0;
-    const se::LoopMode loopMode = wsnap ? wsnap->transport->uiLoopMode() : se::LoopMode::once;
-    // What is ACTUALLY playing, frozen when play was pressed — not the document's
-    // selection. Selecting elsewhere mid-loop leaves the old region looping (stop
-    // and play again is how you re-aim it).
-    const bool rolling = wsnap && wsnap->transport->uiState() != se::TransportState::stopped;
-    const size_t loopSt   = rolling ? wsnap->transport->uiPlaySt()  : 0;
-    const size_t loopEnd  = rolling ? wsnap->transport->uiPlayEnd() : 0;
-    const int loopFirstTr = rolling ? wsnap->transport->uiFirstPlayTrack() : 1;
-    const int loopLastTr  = rolling ? wsnap->transport->uiLastPlayTrack()  : 1;
 
     const Colour ink = muted ? kWaveMuted : black;
     // The selection inverts what is under it: a DIFFERENCE layer, white (or #666
@@ -655,23 +645,10 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
         // Per-track playhead, each track at its OWN loop phase.
         if (playing && lenT > 0)
         {
-            const size_t fs = (size_t) std::max (1, d.frameSize());
-            const size_t lenA = lenT - lenT % fs;
-            bool present = true; size_t ph = 0;
-            switch (loopMode)
-            {
-                case se::LoopMode::once: present = playPos < lenA; ph = playPos; break;
-                case se::LoopMode::all:  ph = lenA ? playPos % lenA : 0; break;
-                case se::LoopMode::selection:
-                    if (t >= loopFirstTr - 1 && t <= loopLastTr - 1)
-                    {
-                        const size_t loopLen = loopEnd > loopSt ? loopEnd - loopSt : 0;
-                        if (loopLen > 0) { ph = loopSt + (playPos >= loopSt ? playPos - loopSt : 0) % loopLen; present = ph < lenA; }
-                        else ph = lenA ? playPos % lenA : 0;
-                    }
-                    else present = false;
-                    break;
-            }
+            // Where THIS track is reading: its own length, phase and direction (the
+            // transport publishes it per track, so the playhead can run backward).
+            size_t ph = 0;
+            const bool present = wsnap->transport->uiTrackPosition (t, ph);
             const int px = xAtByte (ph, maxSize);
             if (present && px >= lane.getX() && px < lane.getRight())
             {
