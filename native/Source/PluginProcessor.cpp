@@ -84,6 +84,7 @@ void SoundEffectsAudioProcessor::timerCallback()
 void SoundEffectsAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     engineImpl.prepare (sampleRate, samplesPerBlock);
+    inputCopy.setSize (std::max (1, getTotalNumInputChannels()), std::max (1, samplesPerBlock), false, true, false);
 }
 
 bool SoundEffectsAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -107,9 +108,23 @@ void SoundEffectsAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     auto* left  = buffer.getWritePointer (0);
     auto* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : left;
 
+    // The device / host input, copied aside first: the buffer is shared with the
+    // output, which render() is about to overwrite. Always copied (a few channels
+    // by one block), whether or not a recording is running, so the audio thread
+    // never branches on UI state here.
+    const int numIn = std::min (getTotalNumInputChannels(), inputCopy.getNumChannels());
+    const float* inputs[8] {};
+    const int nIn = std::min (numIn, 8);
+    if (numFrames <= inputCopy.getNumSamples())
+        for (int ch = 0; ch < nIn; ++ch)
+        {
+            inputCopy.copyFrom (ch, 0, buffer, ch, 0, numFrames);
+            inputs[ch] = inputCopy.getReadPointer (ch);
+        }
+
     // The engine sums every open window into the output. (When numChannels == 1,
     // left == right, so the render collapses to mono at the buffer edge.)
-    engineImpl.render (left, right, numFrames);
+    engineImpl.render (left, right, numFrames, inputs, numFrames <= inputCopy.getNumSamples() ? nIn : 0);
 
     // Clear any extra output channels beyond stereo.
     for (int ch = 2; ch < buffer.getNumChannels(); ++ch)

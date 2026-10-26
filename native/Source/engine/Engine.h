@@ -26,6 +26,7 @@
 
 #pragma once
 
+#include "CaptureRing.h"
 #include "SoundDocument.h"
 #include "SpscQueue.h"
 #include "Transport.h"
@@ -40,6 +41,22 @@
 #include <vector>
 
 namespace se {
+
+/** Where a recording takes its audio from (Select Audio Source). */
+enum class AudioSourceKind : uint8_t { external, canvas, daw };
+
+/** What the audio thread captures into the CaptureRing while a capture runs. */
+struct CaptureSetup
+{
+    AudioSourceKind kind = AudioSourceKind::external;
+    /** canvas: 0 = the main mix, otherwise that Window's own post-fader output. */
+    uint64_t tapWindow = 0;
+    /** canvas main mix: this Window (the one being recorded into) is left out of it. */
+    uint64_t excludeWindow = 0;
+    /** external: the first device input channel; with `stereo` it is a pair. */
+    int  firstChannel = 0;
+    bool stereo = true;
+};
 
 /** One Window: a UI document, its audio document, transport, and mixer channel. */
 struct Window
@@ -165,8 +182,31 @@ public:
     /** Free Windows/documents the audio thread has retired. Msg thread, periodic. */
     void collectRetired();
 
+    // --- audio input / capture (0.4.0 recording) ----------------------------
+    // The audio thread captures the chosen source into captureRing(); the Recorder
+    // (message thread) drains it. Capturing is independent of any transport.
+    bool startCapture (const CaptureSetup& setup);
+    bool stopCapture();
+    /** True from the block the start command lands in until the block the stop does:
+        the audio thread's acknowledgement, which the Recorder waits for before it
+        trusts that nothing more will arrive. */
+    bool captureRunning() const noexcept { return capRunning.load (std::memory_order_acquire); }
+    CaptureRing& captureRing() noexcept { return ring; }
+
+    /** Gain on the captured signal (and on what is monitored), linear. */
+    void  setInputGain (float g) noexcept { inputGainValue.store (g, std::memory_order_relaxed); }
+    float inputGain() const noexcept { return inputGainValue.load (std::memory_order_relaxed); }
+    /** Monitoring (hear the input through the output) is OFF by default, against
+        feedback. It only applies to a device or DAW source: the Canvas is audible
+        already. */
+    void setMonitor (bool on) noexcept { monitorOn.store (on, std::memory_order_relaxed); }
+    bool monitor() const noexcept { return monitorOn.load (std::memory_order_relaxed); }
+
     // --- audio thread -------------------------------------------------------
-    void render (float* left, float* right, int frames) noexcept;
+    /** `inputs` are the device's input channels (planar, `numInputs` of them), read
+        BEFORE the output is written: they must not alias `left`/`right`. */
+    void render (float* left, float* right, int frames,
+                 const float* const* inputs = nullptr, int numInputs = 0) noexcept;
 
     double sampleRate() const noexcept { return deviceRate; }
 
@@ -187,7 +227,8 @@ public:
 private:
     struct Command
     {
-        enum class Kind : uint8_t { AddWindow, RemoveWindow, Transport, SwapDoc } kind {};
+        enum class Kind : uint8_t { AddWindow, RemoveWindow, Transport, SwapDoc,
+                                    CaptureStart, CaptureStop } kind {};
         enum class Tx   : uint8_t { Play, Stop, Pause, Advance, NormalSpeed, Seek,
                                     RateScale, Direction } tx {};
         uint64_t        id = 0;
@@ -196,6 +237,7 @@ private:
         PlayOptions     play {};
         size_t          seekBytes = 0;
         PlayDirection   direction = PlayDirection::forward;
+        CaptureSetup    capture {};
     };
 
     bool post (const Command& c) noexcept { return incoming.push (c); }
@@ -217,6 +259,15 @@ private:
     // --- audio-thread state -------------------------------------------------
     std::vector<Window*> live;
     std::vector<float> scratchL, scratchR;
+    std::vector<float> capL, capR, tapL, tapR, exL, exR;   // capture blocks
+    CaptureSetup cap {};
+    bool capActive = false;
+
+    // --- shared, lock-free: input / capture ---------------------------------
+    CaptureRing ring;
+    std::atomic<float> inputGainValue { 1.0f };
+    std::atomic<bool>  monitorOn { false };
+    std::atomic<bool>  capRunning { false };
 
     double deviceRate = 48000.0;
 };

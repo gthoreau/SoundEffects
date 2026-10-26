@@ -30,6 +30,8 @@ void Engine::prepare (double rate, int maxBlockSize)
     deviceRate = rate;
     scratchL.assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
     scratchR.assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
+    for (auto* v : { &capL, &capR, &tapL, &tapR, &exL, &exR })
+        v->assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
     live.reserve (kMaxWindows);
 
     // Pre-audio (prepareToPlay): safe to touch every known transport.
@@ -190,6 +192,17 @@ PlayDirection Engine::direction (uint64_t id) noexcept
                         : PlayDirection::forward;
 }
 
+bool Engine::startCapture (const CaptureSetup& setup)
+{
+    Command c; c.kind = Command::Kind::CaptureStart; c.capture = setup;
+    return post (c);
+}
+bool Engine::stopCapture()
+{
+    Command c; c.kind = Command::Kind::CaptureStop;
+    return post (c);
+}
+
 void Engine::collectRetired()
 {
     Window* w = nullptr;
@@ -262,18 +275,34 @@ void Engine::drainCommands() noexcept
             case Command::Kind::Transport:
                 if (Window* w = liveById (c.id)) applyTransport (*w, c);
                 break;
+
+            case Command::Kind::CaptureStart:
+                cap = c.capture;
+                capActive = true;
+                capRunning.store (true, std::memory_order_release);
+                break;
+
+            case Command::Kind::CaptureStop:
+                capActive = false;
+                capRunning.store (false, std::memory_order_release);
+                break;
         }
     }
 }
 
-void Engine::render (float* left, float* right, int frames) noexcept
+void Engine::render (float* left, float* right, int frames,
+                     const float* const* inputs, int numInputs) noexcept
 {
     drainCommands();
 
     std::fill (left,  left  + frames, 0.0f);
     std::fill (right, right + frames, 0.0f);
 
-    const int cap = std::min (frames, static_cast<int> (scratchL.size()));
+    const int cap_ = std::min (frames, static_cast<int> (scratchL.size()));
+    const bool capturing = capActive && capL.size() >= scratchL.size();
+    if (capturing)
+        for (auto* v : { &tapL, &tapR, &exL, &exR })
+            std::fill (v->begin(), v->begin() + cap_, 0.0f);
 
     // VU fall-off, ~-60 dB over 300 ms, applied once per block. Doing the decay
     // here rather than in the UI keeps the meters honest at any repaint rate: a
@@ -310,7 +339,7 @@ void Engine::render (float* left, float* right, int frames) noexcept
             //
             // It costs nothing for a channel that is not rolling: a stopped
             // transport returns 0 frames before doing any work.
-            const int written = w->transport->render (*w->audioDoc, scratchL.data(), scratchR.data(), cap);
+            const int written = w->transport->render (*w->audioDoc, scratchL.data(), scratchR.data(), cap_);
 
             if (audible && g > 0.0f)
             {
@@ -324,12 +353,73 @@ void Engine::render (float* left, float* right, int frames) noexcept
                     peakR = std::max (peakR, std::abs (r));
                 }
             }
+
+            // The Canvas source's taps. A Window's own tap is post-fader and
+            // post-balance but ignores mute and solo (a Sound can be sampled while
+            // it is silent in the mix); the main mix leaves out the Window being
+            // recorded into, as much of it as the mix actually carried.
+            if (capturing && cap.kind == AudioSourceKind::canvas)
+            {
+                if (w->id == cap.tapWindow)
+                    for (int i = 0; i < written; ++i)
+                    {
+                        tapL[static_cast<size_t> (i)] = scratchL[static_cast<size_t> (i)] * gl;
+                        tapR[static_cast<size_t> (i)] = scratchR[static_cast<size_t> (i)] * gr;
+                    }
+                if (w->id == cap.excludeWindow && audible && g > 0.0f)
+                    for (int i = 0; i < written; ++i)
+                    {
+                        exL[static_cast<size_t> (i)] = scratchL[static_cast<size_t> (i)] * gl;
+                        exR[static_cast<size_t> (i)] = scratchR[static_cast<size_t> (i)] * gr;
+                    }
+            }
         }
 
         const float heldL = w->meterLeft.load (std::memory_order_relaxed) * meterDecay;
         const float heldR = w->meterRight.load (std::memory_order_relaxed) * meterDecay;
         w->meterLeft.store  (std::max (peakL, heldL), std::memory_order_relaxed);
         w->meterRight.store (std::max (peakR, heldR), std::memory_order_relaxed);
+    }
+
+    if (capturing)
+    {
+        const float gain = inputGainValue.load (std::memory_order_relaxed);
+        const int n = cap_;
+        bool heard = false;   // the source is NOT already part of the mix
+
+        if (cap.kind == AudioSourceKind::canvas)
+        {
+            const bool tapped = cap.tapWindow != 0;
+            for (int i = 0; i < n; ++i)
+            {
+                const size_t k = static_cast<size_t> (i);
+                capL[k] = (tapped ? tapL[k] : left[i]  - exL[k]) * gain;
+                capR[k] = (tapped ? tapR[k] : right[i] - exR[k]) * gain;
+            }
+        }
+        else
+        {
+            // External: the chosen device channel(s); DAW: the host's input pair.
+            const int ch = cap.kind == AudioSourceKind::daw ? 0 : std::max (0, cap.firstChannel);
+            const float* a = (inputs != nullptr && ch < numInputs) ? inputs[ch] : nullptr;
+            const float* b = (cap.stereo && inputs != nullptr && ch + 1 < numInputs) ? inputs[ch + 1] : a;
+            for (int i = 0; i < n; ++i)
+            {
+                const size_t k = static_cast<size_t> (i);
+                capL[k] = (a != nullptr ? a[i] : 0.0f) * gain;
+                capR[k] = (b != nullptr ? b[i] : 0.0f) * gain;
+            }
+            heard = monitorOn.load (std::memory_order_relaxed);
+        }
+
+        for (int i = 0; i < n; ++i)
+        {
+            const size_t k = static_cast<size_t> (i);
+            capL[k] = std::clamp (capL[k], -1.0f, 1.0f);
+            capR[k] = std::clamp (capR[k], -1.0f, 1.0f);
+            if (heard) { left[i] += capL[k]; right[i] += capR[k]; }
+        }
+        ring.push (capL.data(), capR.data(), static_cast<size_t> (n));
     }
 
     for (int i = 0; i < frames; ++i)

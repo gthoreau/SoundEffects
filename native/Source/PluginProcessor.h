@@ -64,6 +64,7 @@ private:
     se::EngineState   pendingState;
 
     se::Engine engineImpl;
+    juce::AudioBuffer<float> inputCopy;   // the input channels, aside from the output
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoundEffectsAudioProcessor)
 };

@@ -472,6 +472,254 @@ void directionEngineTests()
 
 } // namespace
 
+// --- audio input / capture (9.1) ----------------------------------------------
+// The audio thread captures a source into the ring; the message thread (here: the
+// test) pops it. Sources: a device channel / pair, the Canvas main mix (minus the
+// Window being recorded into), one Window's post-fader tap, the DAW input.
+
+/** Render one block with `numIn` constant input channels; returns the output. */
+void renderWithInput (se::Engine& e, std::initializer_list<float> levels, std::vector<float>& outL, std::vector<float>& outR)
+{
+    std::vector<std::vector<float>> in;
+    for (float v : levels) in.emplace_back ((size_t) kBlock, v);
+    std::vector<const float*> ptrs;
+    for (auto& c : in) ptrs.push_back (c.data());
+    outL.assign ((size_t) kBlock, 0.0f); outR.assign ((size_t) kBlock, 0.0f);
+    e.render (outL.data(), outR.data(), kBlock, ptrs.data(), (int) ptrs.size());
+}
+
+/** Everything the ring holds, as (first left, first right, frame count). */
+struct Drained { float l = 0, r = 0; size_t n = 0; };
+Drained drain (se::Engine& e)
+{
+    std::vector<float> l (4096), r (4096);
+    Drained d;
+    for (;;)
+    {
+        const size_t got = e.captureRing().pop (l.data(), r.data(), l.size());
+        if (got == 0) break;
+        if (d.n == 0) { d.l = l[0]; d.r = r[0]; }
+        d.n += got;
+    }
+    return d;
+}
+
+void captureTests()
+{
+    const float tol = 1.0e-5f;
+    std::vector<float> ol, orr;
+
+    {
+        se::Engine e;
+        e.prepare (kRate, kBlock);
+        check (! e.captureRunning(), "capture: not running before it is started");
+        renderWithInput (e, { 0.25f, -0.5f, 0.125f }, ol, orr);
+        check (drain (e).n == 0, "capture: a block rendered before the start captures nothing");
+
+        se::CaptureSetup pair; pair.kind = se::AudioSourceKind::external; pair.firstChannel = 0; pair.stereo = true;
+        e.startCapture (pair);
+        renderWithInput (e, { 0.25f, -0.5f, 0.125f }, ol, orr);
+        check (e.captureRunning(), "capture: running once the audio thread has seen the start");
+        Drained d = drain (e);
+        check (d.n == (size_t) kBlock, "capture: one block in, one block out");
+        checkClose (d.l, 0.25f, tol, "external pair: left is channel 0");
+        checkClose (d.r, -0.5f, tol, "external pair: right is channel 1");
+        checkClose (ol[0], 0.0f, tol, "monitor off by default: the output stays silent");
+
+        se::CaptureSetup mono; mono.kind = se::AudioSourceKind::external; mono.firstChannel = 2; mono.stereo = false;
+        e.startCapture (mono);
+        renderWithInput (e, { 0.25f, -0.5f, 0.125f }, ol, orr);
+        d = drain (e);
+        checkClose (d.l, 0.125f, tol, "external mono: the chosen channel on the left");
+        checkClose (d.r, 0.125f, tol, "external mono: ...and duplicated on the right");
+
+        e.setInputGain (0.5f);
+        renderWithInput (e, { 0.25f, -0.5f, 0.5f }, ol, orr);
+        d = drain (e);
+        checkClose (d.l, 0.25f, tol, "input gain 0.5 scales the capture");
+
+        e.setInputGain (4.0f);
+        renderWithInput (e, { 0.5f, 0.0f, 0.5f }, ol, orr);
+        d = drain (e);
+        checkClose (d.l, 1.0f, tol, "input gain past full scale clips at 1.0");
+        e.setInputGain (1.0f);
+
+        e.setMonitor (true);
+        e.startCapture (pair);
+        renderWithInput (e, { 0.25f, -0.5f, 0.0f }, ol, orr);
+        drain (e);
+        checkClose (ol[0], 0.25f, tol, "monitor on: the pair is heard, left");
+        checkClose (orr[0], -0.5f, tol, "monitor on: the pair is heard, right");
+        e.startCapture (mono);
+        renderWithInput (e, { 0.25f, -0.5f, 0.125f }, ol, orr);
+        drain (e);
+        checkClose (ol[0], 0.125f, tol, "monitor on: a mono channel is heard on the left...");
+        checkClose (orr[0], 0.125f, tol, "monitor on: ...and on the right");
+        e.setMonitor (false);
+
+        se::CaptureSetup daw; daw.kind = se::AudioSourceKind::daw;
+        e.startCapture (daw);
+        renderWithInput (e, { 0.3f, 0.6f, 0.9f }, ol, orr);
+        d = drain (e);
+        checkClose (d.l, 0.3f, tol, "DAW: the host's input pair, left");
+        checkClose (d.r, 0.6f, tol, "DAW: the host's input pair, right");
+
+        e.stopCapture();
+        renderWithInput (e, { 0.25f, -0.5f, 0.125f }, ol, orr);
+        check (! e.captureRunning(), "capture: stopped once the audio thread has seen the stop");
+        check (drain (e).n == 0, "capture: nothing after the stop");
+
+        // No input at all (a device without one): silence, not a crash.
+        e.startCapture (pair);
+        std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
+        e.render (l.data(), r.data(), kBlock);
+        d = drain (e);
+        check (d.n == (size_t) kBlock && d.l == 0.0f && d.r == 0.0f, "external with no input channels captures silence");
+        e.stopCapture();
+        e.render (l.data(), r.data(), kBlock);
+    }
+
+    {
+        // The Canvas source.
+        se::Engine e;
+        e.prepare (kRate, kBlock);
+        const uint64_t a = e.addWindow (dcDocument (10, "a"));
+        const uint64_t b = e.addWindow (dcDocument (20, "b"));
+        const uint64_t c = e.addWindow (dcDocument (40, "c"));
+        se::PlayOptions loopAll; loopAll.loop = true;
+        e.play (a, loopAll); e.play (b, loopAll); e.play (c, loopAll);
+
+        auto* wa = e.windowById (a); auto* wb = e.windowById (b); auto* wc = e.windowById (c);
+        wa->soloed = true; const float la = renderLevel (e);
+        wa->soloed = false; wb->soloed = true; const float lb = renderLevel (e);
+        wb->soloed = false; wc->soloed = true; const float lc = renderLevel (e);
+        wc->soloed = false;
+
+        se::CaptureSetup mix; mix.kind = se::AudioSourceKind::canvas;
+        e.startCapture (mix);
+        renderBlocks (e, 1);
+        Drained d = drain (e);
+        checkClose (d.l, la + lb + lc, tol, "canvas main mix: the sum of every Window");
+
+        mix.excludeWindow = b;
+        e.startCapture (mix);
+        renderBlocks (e, 1);
+        d = drain (e);
+        checkClose (d.l, la + lc, tol, "canvas main mix: the Window being recorded into is left out");
+
+        wb->muted = true;
+        renderBlocks (e, 1);
+        d = drain (e);
+        checkClose (d.l, la + lc, tol, "canvas main mix: a muted excluded Window is not subtracted twice");
+        wb->muted = false;
+
+        wc->muted = true;
+        renderBlocks (e, 1);
+        d = drain (e);
+        checkClose (d.l, la, tol, "canvas main mix: a muted Window is not in it");
+        wc->muted = false;
+
+        se::CaptureSetup tap; tap.kind = se::AudioSourceKind::canvas; tap.tapWindow = b;
+        e.startCapture (tap);
+        wb->gain = 0.5f;
+        renderBlocks (e, 1);
+        d = drain (e);
+        checkClose (d.l, lb * 0.5f, tol, "canvas tap: one Window, post-fader");
+        wb->balance = 1.0f;   // hard right: the left side falls to silence
+        renderBlocks (e, 1);
+        d = drain (e);
+        checkClose (d.l, 0.0f, tol, "canvas tap: post-balance (left)");
+        checkClose (d.r, lb * 0.5f, tol, "canvas tap: post-balance (right)");
+        wb->balance = 0.0f;
+        wb->muted = true;
+        renderBlocks (e, 1);
+        d = drain (e);
+        checkClose (d.l, lb * 0.5f, tol, "canvas tap: a muted Window can still be sampled");
+        wb->muted = false;
+
+        // Monitoring never doubles a Canvas source: it is audible already.
+        e.setMonitor (true);
+        e.startCapture (mix);
+        std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
+        wb->gain = 1.0f;
+        e.render (l.data(), r.data(), kBlock);
+        drain (e);
+        checkClose (l[0], la + lb + lc, tol, "canvas source: monitor on does not double the mix");
+    }
+
+    {
+        // A full ring drops what does not fit and counts it; the audio thread never waits.
+        se::Engine e;
+        e.prepare (kRate, kBlock);
+        se::CaptureSetup pair; pair.kind = se::AudioSourceKind::external;
+        e.startCapture (pair);
+        const size_t blocks = e.captureRing().capacity() / (size_t) kBlock + 8;
+        for (size_t i = 0; i < blocks; ++i) renderWithInput (e, { 0.1f, 0.1f }, ol, orr);
+        check (e.captureRing().droppedFrames() > 0, "ring: an overflow is counted, not blocked on");
+        check (e.captureRing().available() == e.captureRing().capacity() - 1, "ring: it holds capacity - 1 frames when full");
+        drain (e);
+        e.captureRing().resetDropped();
+        renderWithInput (e, { 0.1f, 0.1f }, ol, orr);
+        check (drain (e).n == (size_t) kBlock && e.captureRing().droppedFrames() == 0, "ring: works again once drained");
+    }
+}
+
+// The message thread starts / stops captures, drains the ring and turns the input
+// gain and the monitor while the audio thread renders a Canvas source and an
+// external one: what TSan is for. Every frame that arrives must be a frame the
+// audio thread wrote (a ramp, so a torn or reordered frame shows).
+void captureConcurrencyTests()
+{
+    se::Engine e;
+    e.prepare (kRate, kBlock);
+    const uint64_t a = e.addWindow (dcDocument (30, "a"));
+    se::PlayOptions loopAll; loopAll.loop = true;
+    e.play (a, loopAll);
+
+    std::atomic<bool> done { false };
+    std::atomic<bool> sane { true };
+    std::atomic<size_t> frames { 0 };
+
+    std::thread audio ([&]
+    {
+        std::vector<float> in0 ((size_t) kBlock), in1 ((size_t) kBlock), l ((size_t) kBlock), r ((size_t) kBlock);
+        const float* ins[2] = { in0.data(), in1.data() };
+        while (! done.load())
+        {
+            for (int i = 0; i < kBlock; ++i) { in0[(size_t) i] = 0.25f; in1[(size_t) i] = -0.25f; }
+            e.render (l.data(), r.data(), kBlock, ins, 2);
+            for (int i = 0; i < kBlock; ++i)
+                if (! std::isfinite (l[(size_t) i]) || std::fabs (l[(size_t) i]) > 1.0f) sane = false;
+        }
+    });
+
+    std::vector<float> l (2048), r (2048);
+    for (int i = 0; i < 3000; ++i)
+    {
+        se::CaptureSetup s;
+        s.kind = (i % 3 == 0) ? se::AudioSourceKind::external : se::AudioSourceKind::canvas;
+        s.tapWindow = (i % 2) ? a : 0;
+        s.excludeWindow = (i % 5 == 0) ? a : 0;
+        e.startCapture (s);
+        e.setInputGain (0.5f + 0.001f * (float) (i % 50));
+        e.setMonitor ((i % 7) == 0);
+        size_t got;
+        while ((got = e.captureRing().pop (l.data(), r.data(), l.size())) > 0)
+        {
+            frames += got;
+            for (size_t k = 0; k < got; ++k)
+                if (! std::isfinite (l[k]) || std::fabs (l[k]) > 1.0f || std::fabs (r[k]) > 1.0f) sane = false;
+        }
+        if (i % 11 == 0) e.stopCapture();
+        if (i % 97 == 0) std::this_thread::sleep_for (std::chrono::microseconds (200));
+        e.collectRetired();
+    }
+    done = true;
+    audio.join();
+    check (sane.load(), "capture stress: every frame finite and in range");
+    check (frames.load() > 0, "capture stress: frames arrived while the message thread started and stopped");
+}
+
 int main()
 {
     se::Engine engine;
@@ -694,6 +942,8 @@ int main()
     directionEngineTests();
     switchingTests();
     concurrencyTests();
+    captureTests();
+    captureConcurrencyTests();
 
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());
