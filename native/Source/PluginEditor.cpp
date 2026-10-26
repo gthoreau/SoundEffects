@@ -227,8 +227,15 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
             r.setTicked (engineWindow != nullptr && engineWindow->soloed.load (std::memory_order_relaxed));
             break;
         case cmd::playForward:
-            active = w != nullptr; r.setTicked (w != nullptr);   // the only direction until step 8
+            active = w != nullptr; r.setTicked (w != nullptr && w->direction() == se::PlayDirection::forward);
             break;
+        case cmd::playBackward:
+            active = w != nullptr; r.setTicked (w != nullptr && w->direction() == se::PlayDirection::backward);
+            break;
+        case cmd::playPingPong:
+            active = w != nullptr; r.setTicked (w != nullptr && w->direction() == se::PlayDirection::pingPong);
+            break;
+        case cmd::cycleDirection: active = w != nullptr; break;
 
         case cmd::changeName:    active = w != nullptr; break;
         case cmd::toggleSidePanels:
@@ -303,6 +310,10 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         case cmd::stop:          return act (WindowComponent::Action::stop);
         case cmd::loop:          return act (WindowComponent::Action::toggleLoop);
         case cmd::fastForward:   return act (WindowComponent::Action::toggleAdvance);
+        case cmd::playForward:   return act (WindowComponent::Action::playForward);
+        case cmd::playBackward:  return act (WindowComponent::Action::playBackward);
+        case cmd::playPingPong:  return act (WindowComponent::Action::playPingPong);
+        case cmd::cycleDirection: return act (WindowComponent::Action::cycleDirection);
         case cmd::changeName:    return act (WindowComponent::Action::rename);
 
         case cmd::mute:

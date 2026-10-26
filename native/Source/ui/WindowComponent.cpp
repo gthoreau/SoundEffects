@@ -57,6 +57,12 @@ WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
     sourceButton.onClick = [this] { if (onRecordRequested) onRecordRequested(); };
     stopButton.onClick = [this] { perform (Action::stop); };
     playButton.onPlay = [this] { if (! isPlaying()) togglePlayPause(); };
+    playButton.onDirectionChange = [this] (Os8ComboPlay::Direction d)
+    {
+        setDirection (d == Os8ComboPlay::Direction::backward ? se::PlayDirection::backward
+                      : d == Os8ComboPlay::Direction::pingPong ? se::PlayDirection::pingPong
+                                                               : se::PlayDirection::forward);
+    };
     pauseButton.onClick = [this]
     {
         auto* w = engineWindow();
@@ -953,6 +959,11 @@ void WindowComponent::updateTransportButtons()
     auto* w = engineWindow();
     const auto state = w != nullptr ? w->transport->uiState() : se::TransportState::stopped;
     playButton.setPlaying (state == se::TransportState::playing);
+    // The icon follows the Window's direction, whoever changed it (menu, D, the strip).
+    const auto dir = direction();
+    playButton.setDirection (dir == se::PlayDirection::backward ? Os8ComboPlay::Direction::backward
+                             : dir == se::PlayDirection::pingPong ? Os8ComboPlay::Direction::pingPong
+                                                                  : Os8ComboPlay::Direction::forward);
     pauseButton.setToggleState (state == se::TransportState::paused, juce::dontSendNotification);
     pauseButton.setEnabled (state != se::TransportState::stopped);
     stopButton.setEnabled (state != se::TransportState::stopped);
@@ -1319,6 +1330,18 @@ bool WindowComponent::keyPressed (const juce::KeyPress&)
     return false;
 }
 
+se::PlayDirection WindowComponent::direction() const
+{
+    return engine.direction (id);
+}
+
+void WindowComponent::setDirection (se::PlayDirection d)
+{
+    engine.setDirection (id, d);
+    updateTransportButtons();
+    repaint();
+}
+
 bool WindowComponent::isPlaying() const
 {
     auto* w = engine.windowById (id);
@@ -1347,6 +1370,7 @@ bool WindowComponent::canPerform (Action a) const
         case Action::shiftSound: case Action::selectExactly: case Action::selectPeak:
             return d->maxTrackSize() > 0;   // "can only be applied to an existing sound"
         case Action::playPause: case Action::stop: case Action::toggleLoop:
+        case Action::playForward: case Action::playBackward: case Action::playPingPong: case Action::cycleDirection:
         case Action::toggleAdvance: case Action::selectAll: case Action::rename:
         case Action::leaveSilence:
             return true;
@@ -1363,6 +1387,12 @@ bool WindowComponent::perform (Action a)
     {
         case Action::playPause: togglePlayPause(); return true;
         case Action::stop:      engine.stop (id); advanceEnabled = false; updateTransportButtons(); repaint(); return true;
+        case Action::playForward:  setDirection (se::PlayDirection::forward);  return true;
+        case Action::playBackward: setDirection (se::PlayDirection::backward); return true;
+        case Action::playPingPong: setDirection (se::PlayDirection::pingPong); return true;
+        case Action::cycleDirection:   // Forward -> Backward -> Ping-pong -> Forward
+            setDirection (static_cast<se::PlayDirection> ((static_cast<int> (direction()) + 1) % 3));
+            return true;
         case Action::toggleLoop: loopEnabled = ! loopEnabled; updateTransportButtons(); repaint(); return true;
         case Action::toggleAdvance:
             // advance() starts playback if the transport is stopped, so engaging it

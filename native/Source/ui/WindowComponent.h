@@ -97,6 +97,7 @@ public:
     enum class Action
     {
         playPause, stop, toggleLoop, toggleAdvance,
+        playForward, playBackward, playPingPong, cycleDirection,   // the Window's playback direction
         selectAll, cut, copy, paste, duplicate, clear, crop, insertSilence,
         leaveSilence, shiftSound,   // open their popup; the edit happens on Apply
         extendToBeginning, extendToEnd, extendAbove, extendBelow,
@@ -112,6 +113,8 @@ public:
     bool isPlaying() const;
     bool isLoopOn() const noexcept    { return loopEnabled; }
     bool isAdvanceOn() const noexcept { return advanceEnabled; }
+    se::PlayDirection direction() const;
+    void setDirection (se::PlayDirection);
 
     void refresh();
     std::function<void (uint64_t)> onClose;
