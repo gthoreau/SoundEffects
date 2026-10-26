@@ -269,6 +269,7 @@ void EffectsPanelComponent::appPrefChanged (const juce::String& key)
     for (auto& g : groups)
         if (g->autoApply != nullptr)
             g->autoApply->setToggleState (AppPrefs::get().autoApply(), juce::dontSendNotification);
+    if (openModule != nullptr) refreshTray();
 }
 
 void EffectsPanelComponent::setTargetWindow (uint64_t windowId)
@@ -377,6 +378,7 @@ void EffectsPanelComponent::rebuildButtons()
             e.button->setWantsKeyboardFocus (false);
             e.button->setMouseClickGrabsKeyboardFocus (false);
             e.button->setGreyed (e.applicability != se::Applicability::Ok);
+            e.button->onClick = [this, gp = g.get(), i] { effectClicked (gp->entries[(size_t) i]); };
             content->addAndMakeVisible (*e.button);
             g->entries.push_back (std::move (e));
         }
@@ -444,9 +446,7 @@ void EffectsPanelComponent::layoutAll()
         for (auto& e : g->entries) holdsOpen = holdsOpen || (openModule != nullptr && e.module == openModule);
         if (holdsOpen)
         {
-            content->trayLayout = openModule != nullptr && fxlayout::layoutFor (openModule->name) != nullptr
-                                ? *fxlayout::layoutFor (openModule->name)
-                                : fxlayout::Layout { openModule->name, {} };
+            content->trayLayout = openLayout;
             const int h = content->trayLayout.contentHeight() + 2 * kTrayInset;
             content->trayRect = { 0, y, kFrameW, h };
             y += h;
@@ -455,7 +455,8 @@ void EffectsPanelComponent::layoutAll()
             {
                 const int cy = content->trayRect.getY() + kTrayInset + content->trayLayout.contentHeight() - fxlayout::kButtonsH;
                 applyButton->setBounds (kTrayInset + 199, cy + 4, 53, os8::buttonHeight (os8::ButtonKind::primary));
-                resetButton->setBounds (kTrayInset + 139, cy + 6, 50, os8::buttonHeight (os8::ButtonKind::secondary));
+                const int cancelW = openIsOneClick ? 56 : 50;       // 189 is the right edge of both
+                resetButton->setBounds (kTrayInset + 189 - cancelW, cy + 6, cancelW, os8::buttonHeight (os8::ButtonKind::secondary));
             }
         }
     }
@@ -478,8 +479,9 @@ void EffectsPanelComponent::effectClicked (Entry& e)
         return;
     }
 
-    // An effect with something to ask opens its tray; one with nothing to ask applies.
-    if (e.module->schema)
+    // An effect with something to ask opens its tray; one with nothing to ask applies
+    // at once — unless Auto-apply is off, when it opens the "Apply X." tray instead.
+    if (e.module->schema || ! AppPrefs::get().autoApply())
     {
         openEffect (e.module);
         return;
@@ -505,6 +507,33 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     working = kept != remembered.end() ? kept->second
                                        : (module->defaults ? module->defaults() : se::Settings{});
     openSchema = module->schema ? module->schema() : se::SettingsSchema{};
+    openIsOneClick = ! module->schema;
+    warningLines.clear();
+    if (openIsOneClick)
+    {
+        // Weird Tempo warns on every run (STR# 1000 #3); the tray is where it is read
+        // before the irreversible click rather than after.
+        if (module->name == "Weird Tempo" && module->strings.size() > 2)
+        {
+            juce::String line;
+            for (const auto& word : juce::StringArray::fromTokens (juce::String (module->strings[2]), " ", ""))
+            {
+                const auto next = line.isEmpty() ? word : line + " " + word;
+                if (line.isNotEmpty() && os8::widthOf (next, os8::TextStyle::smallLabel) > fxlayout::kContentW)
+                {
+                    warningLines.push_back (line);
+                    line = word;
+                }
+                else line = next;
+            }
+            if (line.isNotEmpty()) warningLines.push_back (line);
+        }
+        openLayout = fxlayout::oneClickLayout (module->name, (int) warningLines.size());
+    }
+    else if (const auto* l = fxlayout::layoutFor (module->name))
+        openLayout = *l;
+    else
+        openLayout = fxlayout::Layout { module->name, {} };
     openApplicability = runner.check (targetId, *module);
     touchedKeys.clear();
 
@@ -515,12 +544,13 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     applyButton->onClick = [this] { applyOpen(); };
     content->addAndMakeVisible (*applyButton);
 
-    resetButton = std::make_unique<Os8Button> ("Reset", os8::ButtonKind::secondary);
+    resetButton = std::make_unique<Os8Button> (openIsOneClick ? "Cancel" : "Reset", os8::ButtonKind::secondary);
     resetButton->setWantsKeyboardFocus (false);
     resetButton->setMouseClickGrabsKeyboardFocus (false);
     resetButton->onClick = [this]
     {
         if (openModule == nullptr) return;
+        if (openIsOneClick) { closeTray(); return; }
         working = openModule->defaults ? openModule->defaults() : se::Settings{};
         touchedKeys.clear();
         prefillSpanFields();
@@ -708,8 +738,25 @@ void EffectsPanelComponent::buildTray()
     using fxlayout::Kind;
     clearTray();
 
-    const auto* layout = fxlayout::layoutFor (openModule->name);
-    if (layout == nullptr) return;
+    const auto* layout = &openLayout;
+
+    if (openIsOneClick)
+    {
+        // "Activate Auto-Apply", at the left of the buttons row.
+        int h = fxlayout::kTitleH;
+        for (const auto& r : layout->rows) h += r.h;
+        h += fxlayout::kSpacerH;
+        auto t = std::make_unique<Os8Toggle> ("Activate Auto-Apply", Os8Toggle::Shape::checkbox);
+        t->setSize (t->preferredWidth(), os8::kToggleSize);
+        t->setWantsKeyboardFocus (false);
+        t->setMouseClickGrabsKeyboardFocus (false);
+        auto* tp = t.get();
+        trayParts.push_back ({ std::move (t), { 0, h + 10, tp->getWidth(), os8::kToggleSize } });
+        content->addAndMakeVisible (*tp);
+        tp->onClick = [tp] { AppPrefs::get().setAutoApply (tp->getToggleState()); };
+        trayRefreshers.push_back ([tp] { tp->setToggleState (AppPrefs::get().autoApply(), juce::dontSendNotification); });
+        return;
+    }
 
     bool hasExtend = false;
     int rowY = fxlayout::kTitleH;
@@ -1116,6 +1163,13 @@ void EffectsPanelComponent::Content::paintTray (Graphics& g)
         }
         rowY += row.h;
     }
+
+    // The warning, a line to each of the blank rows reserved for it.
+    g.setColour (colour::black);
+    const int warnTop = fxlayout::kTitleH + 14 + 18;
+    for (int i = 0; i < (int) owner.warningLines.size(); ++i)
+        os8::drawText (g, owner.warningLines[(size_t) i], os8::TextStyle::smallLabel,
+                       { (float) ox, (float) (oy + warnTop + i * 12), (float) fxlayout::kContentW, 10.0f });
 }
 
 void EffectsPanelComponent::Content::paint (Graphics& g)

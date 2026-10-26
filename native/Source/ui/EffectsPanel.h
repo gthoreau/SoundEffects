@@ -27,6 +27,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "AppPrefs.h"
+#include "EffectLayouts.h"
 #include "Os8.h"
 #include "Os8Widgets.h"
 #include "effects/EffectRunner.h"
@@ -139,6 +140,9 @@ private:
     std::vector<TrayPart> trayParts;
     std::vector<std::function<void()>> trayRefreshers;
     se::SettingsSchema openSchema;
+    fxlayout::Layout openLayout;             // where the open tray's controls sit
+    bool openIsOneClick = false;             // the "Apply X." tray of a parameterless effect
+    std::vector<juce::String> warningLines;  // Weird Tempo's apology, wrapped to the tray
     std::set<std::string> touchedKeys;       // scope-defaulted fields the user typed over
     bool allowExtend = false;                // answers AskDoExtend() for modules that grow
     std::map<std::string, se::Settings> remembered;   // last-used values, per module, this session
