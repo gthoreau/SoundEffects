@@ -56,6 +56,45 @@ void setLoop (SoundDocument& doc)
     doc.loopEnd = doc.selEnd;
 }
 
+bool selectLoop (SoundDocument& doc)
+{
+    if (doc.maxTrackSize() == 0) return false;
+    doc.selSt = doc.loopSt;
+    doc.selEnd = doc.loopEnd;
+    doc.firstSelTrack = 1;
+    doc.lastSelTrack = doc.numTracks();
+    return true;
+}
+
+bool extendToBeginning (SoundDocument& doc)
+{
+    if (doc.maxSelectedTrackSize() == 0) return false;
+    doc.selSt = 0;
+    return true;
+}
+
+bool extendToEnd (SoundDocument& doc)
+{
+    const size_t max = doc.maxSelectedTrackSize();
+    if (max == 0) return false;
+    doc.selEnd = max;
+    return true;
+}
+
+bool extendAbove (SoundDocument& doc)
+{
+    if (doc.firstSelTrack <= 1) return false;
+    --doc.firstSelTrack;
+    return true;
+}
+
+bool extendBelow (SoundDocument& doc)
+{
+    if (doc.lastSelTrack >= doc.numTracks()) return false;
+    ++doc.lastSelTrack;
+    return true;
+}
+
 bool clear (SoundDocument& doc)
 {
     if (doc.selSt == doc.selEnd) return false;

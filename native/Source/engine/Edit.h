@@ -30,8 +30,24 @@ ByteRange trackRange (const SoundDocument& doc, int trackIndex, size_t selSt, si
     Swaps if inverted. Leaves the track range untouched. */
 void setSelection (SoundDocument& doc, size_t start, size_t end);
 
-/** Selection ▸ Set Loop — loop bounds follow the current selection. */
+/** Selection ▸ Set Loop — loop bounds follow the current selection, unclamped, a
+    caret included (CODE 4 @0x1f10). */
 void setLoop (SoundDocument& doc);
+
+/** Selection ▸ Select Loop — the loop region becomes the selection, across every
+    track. False (nothing done) on an empty sound (CODE 4 @0x1f62). */
+bool selectLoop (SoundDocument& doc);
+
+/** Selection ▸ Extend to Beginning / End — the selection's start goes to 0, or its
+    end to the SELECTED tracks' longest end; the tracks stay. False when the selected
+    tracks are empty (CODE 4 @0x584e / 0x592a). */
+bool extendToBeginning (SoundDocument& doc);
+bool extendToEnd (SoundDocument& doc);
+
+/** Selection ▸ Extend Above / Below (0.4.0) — one more track above or below the
+    selected ones, the time range kept. False at the first / last track. */
+bool extendAbove (SoundDocument& doc);
+bool extendBelow (SoundDocument& doc);
 
 /** Edit ▸ Clear — remove the selection from the selected tracks (shortens them).
     A caret (empty selection) does nothing. Returns true if anything changed. */

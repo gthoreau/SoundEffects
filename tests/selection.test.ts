@@ -7,6 +7,11 @@ import {
   getBytesToProcess,
   setSelection,
   setLoop,
+  selectLoop,
+  extendToBeginning,
+  extendToEnd,
+  extendAbove,
+  extendBelow,
   selectExactly,
   findPeak,
   selectPeak,
@@ -313,5 +318,37 @@ describe("selectSilence", () => {
     // Left: silent frames 4 and 6 both dropped. Right: only frame 12 dropped.
     expect(d.selSt - 4).toBe(2 * d.frameSize);
     expect(12 - d.selEnd).toBe(0);
+  });
+});
+
+describe("Set Loop / Select Loop / Extend — CODE 4", () => {
+  it("Select Loop selects the loop region across every channel", () => {
+    const d = docFrom([[0, 0, 0, 0, 0, 0], [0, 0, 0, 0]]);
+    setSelection(d, 1, 3);
+    setLoop(d);
+    d.firstSelCh = d.lastSelCh = 2;
+    setSelection(d, 0, 0);
+    expect(selectLoop(d)).toBe(true);
+    expect([d.selSt, d.selEnd, d.firstSelCh, d.lastSelCh]).toEqual([1, 3, 1, 2]);
+  });
+
+  it("Extend to End stops at the selected channels' longest end", () => {
+    const d = docFrom([[0, 0, 0, 0, 0, 0], [0, 0, 0, 0]]);
+    d.firstSelCh = d.lastSelCh = 2;
+    setSelection(d, 1, 2);
+    expect(extendToEnd(d)).toBe(true);
+    expect([d.selSt, d.selEnd]).toEqual([1, 4]);
+    expect(extendToBeginning(d)).toBe(true);
+    expect([d.selSt, d.selEnd]).toEqual([0, 4]);
+  });
+
+  it("Extend Above / Below add one channel, up to the edges", () => {
+    const d = docFrom([[0], [0], [0]]);
+    d.firstSelCh = d.lastSelCh = 2;
+    expect(extendAbove(d)).toBe(true);
+    expect(extendAbove(d)).toBe(false);
+    expect(extendBelow(d)).toBe(true);
+    expect(extendBelow(d)).toBe(false);
+    expect([d.firstSelCh, d.lastSelCh]).toEqual([1, 3]);
   });
 });

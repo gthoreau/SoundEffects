@@ -201,6 +201,10 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::shiftSound:    active = can (WindowComponent::Action::shiftSound); break;
         case cmd::clear:         active = can (WindowComponent::Action::clear); break;
         case cmd::selectAll:     active = can (WindowComponent::Action::selectAll); break;
+        case cmd::extendToBeginning: active = can (WindowComponent::Action::extendToBeginning); break;
+        case cmd::extendToEnd:   active = can (WindowComponent::Action::extendToEnd); break;
+        case cmd::extendAbove:   active = can (WindowComponent::Action::extendAbove); break;
+        case cmd::extendBelow:   active = can (WindowComponent::Action::extendBelow); break;
         case cmd::crop:          active = can (WindowComponent::Action::crop); break;
         case cmd::insertSilence: active = can (WindowComponent::Action::insertSilence); break;
 
@@ -274,6 +278,10 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         case cmd::shiftSound:    return act (WindowComponent::Action::shiftSound);
         case cmd::clear:         return act (WindowComponent::Action::clear);
         case cmd::selectAll:     return act (WindowComponent::Action::selectAll);
+        case cmd::extendToBeginning: return act (WindowComponent::Action::extendToBeginning);
+        case cmd::extendToEnd:   return act (WindowComponent::Action::extendToEnd);
+        case cmd::extendAbove:   return act (WindowComponent::Action::extendAbove);
+        case cmd::extendBelow:   return act (WindowComponent::Action::extendBelow);
         case cmd::crop:          return act (WindowComponent::Action::crop);
         case cmd::insertSilence: return act (WindowComponent::Action::insertSilence);
 

@@ -99,6 +99,7 @@ public:
         playPause, stop, toggleLoop, toggleAdvance,
         selectAll, cut, copy, paste, duplicate, clear, crop, insertSilence,
         leaveSilence, shiftSound,   // open their popup; the edit happens on Apply
+        extendToBeginning, extendToEnd, extendAbove, extendBelow,
         rename
     };
     /** Do it; false when it does not apply right now (nothing to paste, say). */

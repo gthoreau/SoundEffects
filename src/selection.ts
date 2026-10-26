@@ -90,10 +90,53 @@ export function setSelection(doc: SoundDocument, start: number, end: number): vo
   doc.selEnd = e;
 }
 
-/** Selection ▸ Set Loop (§2.1). Loop bounds follow the current selection. */
+/** Selection ▸ Set Loop (§2.1). Loop bounds follow the current selection, unclamped,
+ * a caret included. `[BINARY: CODE 4 @0x1f10]` */
 export function setLoop(doc: SoundDocument, start = doc.selSt, end = doc.selEnd): void {
   doc.loopSt = start;
   doc.loopEnd = end;
+}
+
+/** Selection ▸ Select Loop — the loop region becomes the selection, across EVERY
+ * channel. Nothing happens on an empty sound. `[BINARY: CODE 4 @0x1f62]` */
+export function selectLoop(doc: SoundDocument): boolean {
+  if (doc.maxChSize() === 0) return false;
+  doc.selSt = doc.loopSt;
+  doc.selEnd = doc.loopEnd;
+  doc.firstSelCh = 1;
+  doc.lastSelCh = doc.numChans;
+  return true;
+}
+
+/** Selection ▸ Extend to Beginning — the selection's start goes to 0; the channels
+ * stay. Nothing happens when the selected channels are empty. `[BINARY: CODE 4 @0x584e]` */
+export function extendToBeginning(doc: SoundDocument): boolean {
+  if (doc.maxRelChSize() === 0) return false;
+  doc.selSt = 0;
+  return true;
+}
+
+/** Selection ▸ Extend to End — the selection's end goes to the SELECTED channels'
+ * longest end (not the sound's). `[BINARY: CODE 4 @0x592a]` */
+export function extendToEnd(doc: SoundDocument): boolean {
+  const max = doc.maxRelChSize();
+  if (max === 0) return false;
+  doc.selEnd = max;
+  return true;
+}
+
+/** Selection ▸ Extend Above / Below (0.4.0) — one more channel above or below the
+ * selected ones; the time range stays. False at the first / last channel. */
+export function extendAbove(doc: SoundDocument): boolean {
+  if (doc.firstSelCh <= 1) return false;
+  doc.firstSelCh -= 1;
+  return true;
+}
+
+export function extendBelow(doc: SoundDocument): boolean {
+  if (doc.lastSelCh >= doc.numChans) return false;
+  doc.lastSelCh += 1;
+  return true;
 }
 
 // ---------------------------------------------------------------------------

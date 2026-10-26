@@ -267,6 +267,26 @@ int main()
         check (! se::duplicate (dup), "duplicate: a caret does nothing");
     }
 
+    // --- Selection ▸ Extend / Set Loop / Select Loop (CODE 4) ----------------
+    {
+        se::DocumentInit init;
+        init.numTracks = 3;
+        init.sizeBytes = 6;
+        se::SoundDocument d (init);
+        d.tracks[2].data.resize (4);
+        d.firstSelTrack = d.lastSelTrack = 3;
+        d.selSt = 1; d.selEnd = 2;
+        check (se::extendToEnd (d) && d.selEnd == 4, "extend to end: the selected tracks' longest end");
+        check (se::extendToBeginning (d) && d.selSt == 0, "extend to beginning: start at 0");
+        check (! se::extendBelow (d) && se::extendAbove (d) && se::extendAbove (d) && ! se::extendAbove (d)
+               && d.firstSelTrack == 1 && d.lastSelTrack == 3, "extend above/below: one track at a time, up to the edges");
+        d.selSt = 2; d.selEnd = 5;
+        se::setLoop (d);
+        d.firstSelTrack = d.lastSelTrack = 2; d.selSt = d.selEnd = 0;
+        check (se::selectLoop (d) && d.selSt == 2 && d.selEnd == 5 && d.firstSelTrack == 1 && d.lastSelTrack == 3,
+               "select loop: the loop region, every track");
+    }
+
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());
     return failures == 0 ? 0 : 1;

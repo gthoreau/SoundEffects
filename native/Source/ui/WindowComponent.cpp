@@ -1356,6 +1356,10 @@ bool WindowComponent::canPerform (Action a) const
         case Action::cut: case Action::copy: case Action::duplicate: case Action::clear:
         case Action::crop: case Action::insertSilence:
             return d->selEnd > d->selSt;   // an insertion point has nothing to act on
+        case Action::extendToBeginning: return d->maxSelectedTrackSize() > 0 && d->selSt > 0;
+        case Action::extendToEnd:       return d->maxSelectedTrackSize() > 0 && d->selEnd < d->maxSelectedTrackSize();
+        case Action::extendAbove:       return d->firstSelTrack > 1;
+        case Action::extendBelow:       return d->lastSelTrack < d->numTracks();
         case Action::shiftSound:
             return d->maxTrackSize() > 0;   // "can only be applied to an existing sound"
         case Action::playPause: case Action::stop: case Action::toggleLoop:
@@ -1395,6 +1399,11 @@ bool WindowComponent::perform (Action a)
         case Action::crop:      se::crop (*d); commit(); resizeToFit(); return true;             // keep only the selection
         case Action::insertSilence: se::silenceSelection (*d); commit(); return true;          // zeros in place, same length
         case Action::rename:    beginNameEdit(); return true;
+
+        case Action::extendToBeginning: se::extendToBeginning (*d); commit(); return true;   // selection only: publish so Play follows
+        case Action::extendToEnd:       se::extendToEnd (*d);       commit(); return true;
+        case Action::extendAbove:       se::extendAbove (*d);       commit(); return true;
+        case Action::extendBelow:       se::extendBelow (*d);       commit(); return true;
 
         case Action::leaveSilence:
             openPopup (editpopups::leaveSilence (*d, [safe = SafePointer<WindowComponent> (this)] (size_t bytes, bool wholeSound)
