@@ -44,7 +44,9 @@ Cell choice (string key, float x, float y, int w, string items)
 
 Cell setup (float x = 44, float y = 4)
 {
-    Cell c; c.kind = Kind::setup; c.x = x; c.y = y; c.w = 100;
+    // Figma draws it 100 px wide, which cuts a setup's name short ("Plain Flang...");
+    // the author asked for the whole row (2026-10-26), so it runs to the box's edge.
+    Cell c; c.kind = Kind::setup; c.x = x; c.y = y; c.w = kContentW - (int) x;
     return c;
 }
 

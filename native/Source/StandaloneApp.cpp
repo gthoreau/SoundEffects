@@ -756,6 +756,22 @@ private:
             if (! r.isEmpty()) shoot (r.withWidth (panel.getWidth()), "tray-" + juce::String (m.name).replaceCharacter (' ', '-'));
         }
 
+        // The Setup popups (6.3), over the Flanger tray they belong to, shadow included.
+        {
+            const auto tray = panel.openEffectNamed ("Flanger");
+            const struct { bool del; const char* text; const char* file; } popups[] = {
+                { false, "", "popup-save-empty" }, { false, "My flange", "popup-save" },
+                { false, "Soft Flange", "popup-save-replace" }, { true, "Plain Flange - Slowest", "popup-delete" },
+            };
+            for (const auto& p : popups)
+            {
+                const auto r = panel.snapshotSetupPopup (p.del, juce::String::fromUTF8 (p.text));
+                shoot (r, p.file);
+                shoot (tray.getUnion (r).expanded (0, 2).withX (0).withWidth (panel.getWidth()), juce::String (p.file) + "-in-tray");
+                panel.clearSnapshotPopups();
+            }
+        }
+
         // The two canvas palettes, frame only (their shadow is 2 px below the frame).
         ViewPalette view;
         view.setSize (ViewPalette::kMaxWidth, ViewPalette::kHeight);

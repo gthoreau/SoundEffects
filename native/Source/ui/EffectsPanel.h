@@ -29,6 +29,7 @@
 #include "AppPrefs.h"
 #include "EffectLayouts.h"
 #include "Os8.h"
+#include "Os8Popup.h"
 #include "Os8Widgets.h"
 #include "effects/EffectRunner.h"
 #include "effects/Module.h"
@@ -55,6 +56,12 @@ public:
     /** Re-read what the target Window looks like now (its selection may have been
         dragged, its audio edited). Driven by the editor's timer. */
     void refresh();
+
+    /** For the snapshot tool: show the Save Setup popup with `text` typed (or the
+        Delete Setup popup for the setup named `text`) over the open tray, not modally,
+        and say where. clearSnapshotPopups() takes them away again. */
+    juce::Rectangle<int> snapshotSetupPopup (bool deleting, const juce::String& text);
+    void clearSnapshotPopups();
 
     /** Say what an effect run did, in the header's status line. Public because the
         Keyboard palette runs effects too and has nowhere to put an outcome. */
@@ -136,6 +143,12 @@ private:
     void chooseSetup (int index);
     void saveSetupAs();
     void deleteSetup (int index);
+    /** Where the Save / Delete popups go: over the tray, just under its Setup row. */
+    juce::Point<int> setupPopupOrigin() const;
+    std::unique_ptr<Os8Popup> makeSavePopup (Os8TextField*& field);
+    /** The saved setup called `name`, or -1. */
+    int setupNamed (const juce::String& name) const;
+    std::unique_ptr<Os8Popup> makeDeletePopup (const std::string& name);
 
     const se::SoundDocument* targetDoc() const;
 

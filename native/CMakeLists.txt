@@ -77,6 +77,7 @@ target_sources(SoundEffects PRIVATE
     Source/ui/Os8.cpp
     Source/ui/Os8Gallery.cpp
     Source/ui/Os8Widgets.cpp
+    Source/ui/Os8Popup.cpp
     Source/ui/Os8Icons.cpp
     Source/ui/AppPrefs.cpp
     Source/ui/AppCommands.cpp

@@ -151,6 +151,13 @@ public:
     /** Return was pressed, after the value was committed. */
     std::function<void()> onReturn;
 
+    /** Escape was pressed (after the text went back to what was committed), and
+        every keystroke that changed the text. */
+    std::function<void()> onEscape, onTextChange;
+
+    /** Put the caret here, everything selected. */
+    void grabFocus() { editor.grabKeyboardFocus(); }
+
     os8::FieldState currentState() const;
 
     void paint (juce::Graphics&) override;

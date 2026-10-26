@@ -310,7 +310,11 @@ void Os8TextField::commit()
     restyle();
 }
 
-void Os8TextField::textEditorTextChanged (juce::TextEditor&)       { restyle(); }
+void Os8TextField::textEditorTextChanged (juce::TextEditor&)
+{
+    restyle();
+    if (onTextChange) onTextChange();
+}
 void Os8TextField::textEditorReturnKeyPressed (juce::TextEditor&)
 {
     commit();
@@ -326,6 +330,7 @@ void Os8TextField::textEditorEscapeKeyPressed (juce::TextEditor&)
     editor.setText (committed, false);
     editor.selectAll();
     restyle();
+    if (onEscape) onEscape();
 }
 
 os8::FieldState Os8TextField::currentState() const
