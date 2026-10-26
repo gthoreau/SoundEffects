@@ -15,16 +15,15 @@
 //     effect, not a view — but it is a PALETTE toggle, and the palette it shows
 //     hangs directly below this one, so this is where the hand looks for it.
 //
-// Drawn in the System 7 vocabulary of Sys7.h — flat face, 1px black frames, weight
-// for hover — plus the solid black drop shadow System 7 gave the things that float
-// above a window rather than sit in one.
+// Drawn in the Mac OS 8 vocabulary of Os8.h, to the design's Canvas-palette frame
+// (Figma 534:11202 / 636:21378): a fixed 343 x 38 frame with a soft shadow under it.
 
 #pragma once
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
-#include "KeyboardArt.h"
-#include "Sys7.h"
+#include "Os8.h"
+#include "Os8Widgets.h"
 
 #include <functional>
 
@@ -40,11 +39,12 @@ public:
     // The two numbers are the strip's own metrics; the 38 is the Keyboard toggle
     // (28) plus the gap that sets it apart (10), kept as a sum so the widths the
     // zoom cluster was designed around stay readable.
-    static constexpr int kMaxWidth = 336 + 38;
-    static constexpr int kMinWidth = 260 + 38;
-    static constexpr int kHeight = 38;
+    static constexpr int kMaxWidth = 343;
+    static constexpr int kMinWidth = 343;
+    static constexpr int kFrameHeight = 38;
+    static constexpr int kHeight = kFrameHeight + os8::kPaletteShadow;
     /** The drop shadow lives inside the bounds, so the frame stops short of them. */
-    static constexpr int kShadow = 3;
+    static constexpr int kShadow = os8::kPaletteShadow;
 
     /** The layout toggle moved: true for the grid, false for free placement. */
     std::function<void (bool)> onMosaicModeChanged;
@@ -93,7 +93,7 @@ private:
     juce::Rectangle<int> body() const noexcept;
 
     juce::Rectangle<int> gridSeg, freeSeg, zoomLabel, minusRect, plusRect, troughRect, keysSeg;
-    Sys7Button resetButton { "100%" };
+    Os8Button resetButton { "100%", os8::ButtonKind::secondary };
 
     bool  mosaic = true;
     bool  keyboardShown = false;

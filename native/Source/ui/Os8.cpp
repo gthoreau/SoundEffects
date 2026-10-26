@@ -974,4 +974,19 @@ void paintSmallBevelButton (juce::Graphics& g, juce::Rectangle<int> faceBounds, 
     }
 }
 
+void paintPaletteFrame (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    const auto f = r.toFloat();
+    const auto shape = roundedRect (f, 8.0f);
+
+    // The drop shadow, then the face with its two bevels in the order Figma lists
+    // them, then the stroke.
+    dropShadow (g, shape, 0.0f, 2.0f, juce::Colour (0xff808080).withAlpha (0.7f));
+    g.setColour (colour::gray000);
+    g.fillPath (shape);
+    innerShadow (g, shape, -3.0f, -3.0f, 0, juce::Colour (0xffd0d0d0));
+    innerShadow (g, shape, 3.0f, 3.0f, 0, juce::Colour (0xfffffdfd).withAlpha (0.93f));
+    strokeInside (g, f, 8.0f, 1.0f, colour::black);
+}
+
 } // namespace os8

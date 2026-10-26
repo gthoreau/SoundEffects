@@ -32,6 +32,7 @@ KeyboardPalette::KeyboardPalette (se::Engine& e)
     setMouseClickGrabsKeyboardFocus (false);
 
     applyButton.setWantsKeyboardFocus (false);
+    applyButton.setMouseClickGrabsKeyboardFocus (false);
     applyButton.setEnabled (false);
     applyButton.onClick = [this] { applyPitch(); };
     addAndMakeVisible (applyButton);
@@ -63,7 +64,7 @@ juce::Colour KeyboardPalette::targetTint() const
     auto* w = const_cast<se::Engine&> (engine).windowById (targetId);
     // A Window the canvas has not painted yet has no tint, and the chrome grey is
     // what everything untinted in this UI is made of. Same fallback the mixer uses.
-    return w != nullptr && w->tint >= 0 ? sys7::tintFromPalette (w->tint) : sys7::kFace;
+    return w != nullptr && w->tint >= 0 ? os8::themeColour (w->tint) : os8::colour::gray100;
 }
 
 bool KeyboardPalette::isRolling() const
@@ -105,42 +106,23 @@ void KeyboardPalette::refresh()
 
 Point<int> KeyboardPalette::keysOrigin() const
 {
-    return { kPad, kPad };
+    return { kPad, kPad + 2 };   // the keys sit 2 px into the design's 41 px keybed
 }
 
 void KeyboardPalette::resized()
 {
-    auto body = getLocalBounds().withTrimmedRight (kShadow).withTrimmedBottom (kShadow);
-    auto tail = body.reduced (kPad, 0).withTrimmedLeft (kbd::kPicW + kGap);
-
-    // The badge is aligned to the KEYBOARD's top rather than centred on the strip:
-    // the row of keys is what the eye tracks along, and a readout that floats
-    // half a line below it reads as belonging to the strip instead of to the note.
-    badgeRect = tail.removeFromLeft (kBadgeW).withHeight (kBadgeH).withY (kPad);
-    tail.removeFromLeft (kGap);
-    applyButton.setBounds (tail.removeFromLeft (kApplyW)
-                               .withSizeKeepingCentre (kApplyW, kApplyH)
-                               .withY (kPad + (kbd::kPicH - kApplyH) / 2));
+    // Figma 636:21379: the keybed's note box at 457 and Apply at 504 within the 557 px
+    // content, which starts 9 px in.
+    badgeRect = { kPad + 457, kPad + 2, kBadgeW, kBadgeH };
+    applyButton.setBounds (kPad + 504, kPad + 9, kApplyW, kApplyH);
 }
 
 // --- paint -------------------------------------------------------------------
 
 void KeyboardPalette::paint (Graphics& g)
 {
-    const auto body = getLocalBounds().withTrimmedRight (kShadow)
-                                      .withTrimmedBottom (kShadow).toFloat();
-
-    // System 7 drew a solid black shadow under what floats above a window and
-    // nothing under what is docked in one. It is what says this strip is over the
-    // canvas rather than part of it — and it is the ViewPalette's own shadow, so
-    // the two read as one stack.
-    g.setColour (sys7::kInk.withAlpha (0.35f));
-    g.fillRoundedRectangle (body.translated ((float) kShadow, (float) kShadow), 5.0f);
-
-    g.setColour (sys7::kPanel);
-    g.fillRoundedRectangle (body, 5.0f);
-    g.setColour (sys7::kInk);
-    g.drawRoundedRectangle (body.reduced (0.5f), 5.0f, 1.0f);
+    using namespace os8::colour;
+    os8::paintPaletteFrame (g, getLocalBounds().withTrimmedBottom (kShadow));
 
     // The instrument. With no Window to play, the dot has no base note to sit under
     // either — the keyboard is drawn plain, which is the honest picture of a
@@ -150,59 +132,48 @@ void KeyboardPalette::paint (Graphics& g)
     // The readout: the note the last key played, over how far that is from the
     // sound's own base note — which is exactly what Apply will write.
     //
-    // The badge wears the target Window's tint the moment one is selected — before
-    // any key is played. That is the point of it: with no room for a title, the
-    // tint is what says WHICH Window the keys are about to move, and it changes
-    // under the pointer as the canvas selection does.
+    // The badge wears the target Window's theme the moment one is selected — before
+    // any key is played, so it says WHICH Window the keys are about to move.
     const bool aimed = doc() != nullptr;
     const bool live  = hasTarget() && lastNote >= 0;
-    auto badge = badgeRect;
+    const auto badge = badgeRect;
 
-    if (aimed)
     {
-        g.setColour (targetTint());
-        g.fillRoundedRectangle (badge.toFloat(), 4.0f);
+        juce::Path shape;
+        shape.addRectangle (badge.toFloat());
+        g.setColour (aimed ? targetTint() : gray100);
+        g.fillRect (badge);
+        os8::innerShadow (g, shape, 2.0f, 2.0f, 0, gray400.withAlpha (0.75f));
+        os8::innerShadow (g, shape, -2.0f, -2.0f, 0, white.withAlpha (0.5f));
+        g.setColour (black);
+        g.drawRect (badge, 1);
     }
-    g.setColour (aimed ? sys7::kInk : sys7::kDim);
-    g.drawRoundedRectangle (badge.toFloat().reduced (0.5f), 4.0f, 1.0f);
+
+    g.setColour (black);
 
     if (! live)
     {
-        // Aimed at nothing, or at nothing playable: a dash. An empty tinted block
-        // would read as a readout that had broken rather than one waiting. WHY it
-        // is idle (no Window, or a Window with no audio) is already on screen in
-        // the effects panel's header, which is up whenever this strip is.
-        g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
-        g.drawText (juce::String (juce::CharPointer_UTF8 ("\xe2\x80\x93")), badge,
-                    juce::Justification::centred, false);
+        // Aimed at nothing, or at nothing playable: a dash. An empty block would read
+        // as a readout that had broken rather than one waiting.
+        os8::drawText (g, "-", os8::TextStyle::largeLabel,
+                       { (float) badge.getX() + 5.0f, (float) badge.getY() + 6.0f, 29.0f, 14.0f },
+                       juce::Justification::horizontallyCentred);
         return;
     }
 
     const int semitones = lastNote - baseNote();
+    os8::drawText (g, kbd::noteName (lastNote), os8::TextStyle::largeLabel,
+                   { (float) badge.getX() + 5.0f, (float) badge.getY() + 6.0f, 29.0f, 14.0f },
+                   juce::Justification::horizontallyCentred);
 
-    // Ink on the tint, not white on black: the twelve tints are pastels (Sys7.cpp),
-    // and they carry dark text exactly as the Windows they came from do.
-    g.setColour (sys7::kInk);
-    g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
-    g.drawText (kbd::noteName (lastNote), badge.removeFromTop (kBadgeH * 3 / 5).withTrimmedTop (2),
-                juce::Justification::centred, false);
-
-    // "st" rather than "semitones": the badge is the size of the number it carries,
-    // and the unit is standard enough not to need the room.
+    // "st" rather than "semitones": the badge is the size of the number it carries.
     juce::String offset;
-    if (semitones < 0)      offset << juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x92"));
+    if (semitones < 0)      offset << "-";
     else if (semitones > 0) offset << "+";   // no sign on zero: "+0" is not a number
     offset << std::abs (semitones) << "st";
-
-    // A shade lighter than the note it qualifies — the size difference alone is not
-    // much of a hierarchy at 10pt, and on a pastel there is room to lift the note
-    // without the offset going faint.
-    g.setColour (sys7::kInk.withAlpha (0.7f));
-    g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-    // Fitted, not drawn: a document whose base note is not the usual 60 can put
-    // three digits in here, and a clipped offset beside an irreversible button is
-    // the one thing this readout must never do.
-    g.drawFittedText (offset, badge.withTrimmedBottom (2), juce::Justification::centred, 1);
+    os8::drawText (g, offset, os8::TextStyle::xSmallLabel,
+                   { (float) badge.getX() + 5.0f, (float) badge.getY() + 24.0f, 29.0f, 9.0f },
+                   juce::Justification::horizontallyCentred);
 }
 
 // --- playing -----------------------------------------------------------------

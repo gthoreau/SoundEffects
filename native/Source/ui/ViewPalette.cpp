@@ -9,42 +9,15 @@ using juce::Point;
 using juce::Rectangle;
 
 namespace {
-constexpr int kPad     = 8;
-constexpr int kRowH    = 22;
-constexpr int kSegW    = 28;   // one half of the layout toggle
-constexpr int kLabelW  = 40;   // "ZOOM" / the percentage readout that replaces it
-constexpr int kStepW   = 12;   // the - and + marks at the ends of the travel
-constexpr int kTroughH = 12;
-constexpr int kThumbW  = 9;
-constexpr int kResetW  = 48;
-constexpr int kKeysW   = 28;   // the Keyboard toggle, sized like a layout segment
+// The frame's content box starts 9 px in; every position below is Figma's, within it.
+constexpr int kPad     = 9;
+constexpr int kThumbW  = os8::kThumbWidth;
 
 /** How far off the 100% tick the cap still snaps to it, in pixels of travel. */
 constexpr int kDetent = 3;
 
 /** One zoom step for the - / + marks, matching the canvas's own +/- keys. */
 constexpr float kStepFactor = 1.25f;
-
-/** Four cells that touch, in two rows: the grid. */
-void drawGridIcon (Graphics& g, Rectangle<int> r)
-{
-    constexpr int s = 6, gap = 1;
-    const auto block = Rectangle<int> (s * 2 + gap, s * 2 + gap).withCentre (r.getCentre());
-
-    for (int row = 0; row < 2; ++row)
-        for (int col = 0; col < 2; ++col)
-            g.drawRect (Rectangle<int> (block.getX() + col * (s + gap),
-                                        block.getY() + row * (s + gap), s, s), 1);
-}
-
-/** The same windows, dropped where they fell: unequal, unaligned, overlapping. */
-void drawFreeIcon (Graphics& g, Rectangle<int> r)
-{
-    const auto c = r.getCentre();
-    g.drawRect (Rectangle<int> (c.x - 8, c.y - 7, 7, 6), 1);
-    g.drawRect (Rectangle<int> (c.x + 1, c.y - 4, 7, 6), 1);
-    g.drawRect (Rectangle<int> (c.x - 6, c.y + 2, 8, 5), 1);
-}
 }
 
 ViewPalette::ViewPalette()
@@ -54,6 +27,8 @@ ViewPalette::ViewPalette()
     // the zoom slider is not a reason to lose them.
     setWantsKeyboardFocus (false);
     resetButton.setWantsKeyboardFocus (false);
+    resetButton.setMouseClickGrabsKeyboardFocus (false);
+    resetButton.setGreyed (true);   // at 100% to begin with
     resetButton.onClick = [this] { if (onZoomReset) onZoomReset(); };
     addAndMakeVisible (resetButton);
 }
@@ -109,6 +84,8 @@ void ViewPalette::setZoom (float newZoom)
 {
     if (std::abs (newZoom - zoom) < 1.0e-4f) return;
     zoom = newZoom;
+    // The design shows the 100% button greyed while the view already is at 100%.
+    resetButton.setGreyed (std::abs (zoom - 1.0f) < 1.0e-3f);
     repaint();
 }
 
@@ -116,140 +93,59 @@ void ViewPalette::setZoom (float newZoom)
 
 Rectangle<int> ViewPalette::body() const noexcept
 {
-    return getLocalBounds().withTrimmedRight (kShadow).withTrimmedBottom (kShadow);
+    return getLocalBounds().withTrimmedBottom (kShadow);
 }
 
 void ViewPalette::resized()
 {
-    auto row = body().reduced (kPad, 0).withSizeKeepingCentre (body().getWidth() - 2 * kPad, kRowH);
-
-    gridSeg = row.removeFromLeft (kSegW);
-    freeSeg = row.removeFromLeft (kSegW);
-    row.removeFromLeft (12);
-
-    zoomLabel = row.removeFromLeft (kLabelW);
-    row.removeFromLeft (4);
-    minusRect = row.removeFromLeft (kStepW);
-    row.removeFromLeft (2);
-
-    // The trough takes what the fixed parts leave, so the slider is what grows if
-    // these metrics are ever nudged.
-    //
-    // The Keyboard toggle sits outermost with a wide gap before it: it is the only
-    // control here that shows something rather than changing the view, and the gap
-    // is what says so.
-    keysSeg = row.removeFromRight (kKeysW);
-    row.removeFromRight (10);
-    auto tail = row.removeFromRight (kResetW);
-    resetButton.setBounds (tail);
-    row.removeFromRight (10);
-    plusRect = row.removeFromRight (kStepW);
-    row.removeFromRight (2);
-
-    troughRect = row.withSizeKeepingCentre (row.getWidth(), kTroughH);
+    const auto o = body().getPosition() + Point<int> (kPad, kPad);
+    gridSeg   = { o.x,       o.y, 22, 20 };
+    freeSeg   = { o.x + 22,  o.y, 22, 20 };
+    zoomLabel = { o.x + 52,  o.y + 5, 36, 10 };
+    minusRect = { o.x + 91,  o.y + 4, 13, 12 };
+    troughRect = { o.x + 112, o.y + 1, 94, 18 };
+    plusRect  = { o.x + 214, o.y + 4, 12, 12 };
+    resetButton.setBounds (o.x + 234, o.y, 45, 20);
+    keysSeg   = { o.x + 287, o.y, 38, 20 };
 }
 
 // --- paint -------------------------------------------------------------------
 
 void ViewPalette::paint (Graphics& g)
 {
-    const auto face = body().toFloat();
+    using namespace os8::colour;
+    os8::paintPaletteFrame (g, body());
 
-    // System 7 drew a solid black shadow under what floats above a window — a menu,
-    // a palette — and nothing under what is docked in one. It is the only thing
-    // saying this strip is over the canvas rather than part of it.
-    g.setColour (sys7::kInk.withAlpha (0.35f));
-    g.fillRoundedRectangle (face.translated ((float) kShadow, (float) kShadow), 5.0f);
+    // The layout toggle: grid | free, the half you are in pressed.
+    os8::paintCanvasToggle (g, gridSeg.getPosition(), mosaic);
 
-    g.setColour (sys7::kPanel);
-    g.fillRoundedRectangle (face, 5.0f);
-    g.setColour (sys7::kInk);
-    g.drawRoundedRectangle (face.reduced (0.5f), 5.0f, 1.0f);
+    // The slider's name, and — while it is being dragged — the number it is on.
+    g.setColour (black);
+    os8::drawText (g, dragging ? juce::String (juce::roundToInt (zoom * 100.0f)) + "%" : juce::String ("Zoom"),
+                   os8::TextStyle::smallLabel, zoomLabel.toFloat());
 
-    // The layout toggle: two icons in one frame, the arrangement you are in on white
-    // and the one you are not on the chrome grey — the white half reads as the open
-    // one, the grey as the half still shut. The pictures say what "grid" and "free"
-    // mean without spending a word each.
-    const auto group = gridSeg.getUnion (freeSeg).toFloat();
-    g.setColour (sys7::kFace);
-    g.fillRoundedRectangle (group, 3.0f);
-
-    // The lit half is a plain rectangle clipped to the group's rounded outline —
-    // filled straight it would push a square corner out through the round one.
-    {
-        juce::Path rounded;
-        rounded.addRoundedRectangle (group, 3.0f);
-        juce::Graphics::ScopedSaveState clip (g);
-        g.reduceClipRegion (rounded);
-        g.setColour (sys7::kWhite);
-        g.fillRect (mosaic ? gridSeg : freeSeg);
-    }
-
-    g.setColour (sys7::kInk);
-    g.drawVerticalLine (freeSeg.getX(), (float) group.getY() + 1.0f, (float) group.getBottom() - 1.0f);
-    g.drawRoundedRectangle (group.reduced (0.5f), 3.0f, 1.0f);
-    if (hovered == Part::grid || hovered == Part::free)
-        g.drawRect (hovered == Part::grid ? gridSeg : freeSeg, sys7::kBorderHover);
-
-    drawGridIcon (g, gridSeg);
-    drawFreeIcon (g, freeSeg);
-
-    // The slider's name, and — while it is being dragged — the number it is on. The
-    // mixer's faders do the same: the label beside a control you are moving is the
-    // one place a readout can appear without adding a control to read.
-    g.setColour (dragging ? sys7::kInk : sys7::kDim);
-    g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-    g.drawText (dragging ? juce::String (juce::roundToInt (zoom * 100.0f)) + "%" : juce::String ("ZOOM"),
-                zoomLabel, juce::Justification::centredLeft, false);
-
-    // - and + mark the ends of the travel, and step the zoom when clicked. Weight
-    // carries the hover here as it does everywhere else in this UI.
-    const auto drawStep = [&g] (Rectangle<int> r, bool plus, bool over)
+    // - and + mark the ends of the travel, and step the zoom when clicked. The design
+    // sets them as 12 pt text (an em dash and a full-width plus); drawn as lines the
+    // same size so they do not depend on the face having those glyphs.
+    const auto mark = [&g] (Rectangle<int> r, bool plus)
     {
         const auto c = r.getCentre();
-        const float t = over ? 2.0f : 1.0f;
-        g.setColour (sys7::kInk);
-        g.fillRect ((float) c.x - 4.0f, (float) c.y - t * 0.5f, 8.0f, t);
-        if (plus) g.fillRect ((float) c.x - t * 0.5f, (float) c.y - 4.0f, t, 8.0f);
+        g.fillRect (c.x - 4, c.y, 9, 1);
+        if (plus) g.fillRect (c.x, c.y - 4, 1, 9);
     };
-    drawStep (minusRect, false, hovered == Part::minus);
-    drawStep (plusRect,  true,  hovered == Part::plus);
+    mark (minusRect, false);
+    mark (plusRect, true);
 
-    g.setColour (sys7::kWhite);
-    g.fillRect (troughRect);
+    // The slider is the pan one — a bar from the 100% tick to the cap.
+    os8::SliderLook look;
+    look.thumbX = (float) (xForPos (zoomToPos (zoom)) - troughRect.getX() - kThumbW / 2);
+    look.centreX = (float) (xForPos (zoomToPos (1.0f)) - troughRect.getX());
+    look.markerX = look.centreX - 0.5f;
+    os8::paintSlider (g, troughRect, os8::SliderKind::pan, look);
 
-    // The 100% tick, the one place on the travel worth finding again — and the cap
-    // snaps to it, so it can be found by feel and not only by eye.
-    g.setColour (sys7::kInk);
-    g.drawVerticalLine (xForPos (zoomToPos (1.0f)), (float) troughRect.getY(), (float) troughRect.getBottom());
-    g.drawRect (troughRect, 1);
-
-    // The cap: the mixer's fader handle, notched down the middle, riding this trough
-    // instead of a meter.
-    const int cx = xForPos (zoomToPos (zoom));
-    const Rectangle<int> cap (cx - kThumbW / 2, troughRect.getY() - 3, kThumbW, troughRect.getHeight() + 6);
-    g.setColour (sys7::kFace);
-    g.fillRect (cap);
-    g.setColour (sys7::kInk);
-    g.drawRect (cap, hovered == Part::trough ? sys7::kBorderHover : sys7::kBorderIdle);
-    g.drawVerticalLine (cx, (float) cap.getY() + 3.0f, (float) cap.getBottom() - 3.0f);
-
-    // The Keyboard toggle. Inverted while its palette is up — the app's one and only
-    // way of saying "on" (Sys7.h), the same one the transport and the mixer use — so
-    // the button shows the state rather than naming it. The picture is the module's
-    // own ICN# 128, which is why no word is needed.
-    {
-        const auto seg = keysSeg.toFloat();
-        g.setColour (keyboardShown ? sys7::kInk : sys7::kFace);
-        g.fillRoundedRectangle (seg, 3.0f);
-        g.setColour (sys7::kInk);
-        g.drawRoundedRectangle (seg.reduced (0.5f), 3.0f,
-                                hovered == Part::keys ? (float) sys7::kBorderHover : 1.0f);
-
-        g.setColour (keyboardShown ? sys7::kWhite : sys7::kInk);
-        kbd::drawIcon (g, { keysSeg.getCentreX() - kbd::kIconW / 2,
-                            keysSeg.getCentreY() - kbd::kIconH / 2 });
-    }
+    // The Keyboard toggle: pressed while its palette is up.
+    os8::paintIconButton (g, keysSeg, keyboardShown ? os8::IconButtonState::active : os8::IconButtonState::normal,
+                          os8::icon::outline (os8::icon::Id::keyboard), os8::icon::sizeOf (os8::icon::Id::keyboard));
 }
 
 // --- input -------------------------------------------------------------------
@@ -263,7 +159,7 @@ ViewPalette::Part ViewPalette::partAt (Point<int> p) const
     // The whole row height grabs the slider: a 12px trough is a mean target, and the
     // palette has nothing else along that stretch to hit by mistake.
     if (keysSeg.contains (p)) return Part::keys;
-    if (troughRect.expanded (2, kRowH).contains (p)) return Part::trough;
+    if (troughRect.expanded (2, 4).contains (p)) return Part::trough;
     return Part::none;
 }
 

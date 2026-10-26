@@ -755,6 +755,20 @@ private:
             const auto r = panel.openEffectNamed (juce::String (m.name));
             if (! r.isEmpty()) shoot (r.withWidth (panel.getWidth()), "tray-" + juce::String (m.name).replaceCharacter (' ', '-'));
         }
+
+        // The two canvas palettes, frame only (their shadow is 2 px below the frame).
+        ViewPalette view;
+        view.setSize (ViewPalette::kMaxWidth, ViewPalette::kHeight);
+        view.setKeyboardShown (true);
+        view.setZoom (1.0f);
+        ok = writePng (view.createComponentSnapshot ({ 0, 0, ViewPalette::kMaxWidth, ViewPalette::kHeight }, true, 1.0f),
+                       dir.getChildFile ("palette-view.png")) && ok;
+
+        KeyboardPalette keys (engine);
+        keys.setTargetWindow (id);
+        keys.setSize (KeyboardPalette::kWidth, KeyboardPalette::kHeight);
+        ok = writePng (keys.createComponentSnapshot ({ 0, 0, KeyboardPalette::kWidth, KeyboardPalette::kHeight }, true, 1.0f),
+                       dir.getChildFile ("palette-keyboard.png")) && ok;
         return ok;
     }
 

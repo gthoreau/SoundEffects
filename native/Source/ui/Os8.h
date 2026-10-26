@@ -300,4 +300,12 @@ void paintTitleBarBox (juce::Graphics&, juce::Point<int> origin, bool on, TitleB
     a smaller size, the outside stroke grown into by the bevel. */
 void paintSmallBevelButton (juce::Graphics&, juce::Rectangle<int> face, bool pressed);
 
+// --- canvas palettes ("Frames" Canvas-palette 534:11202) ---------------------------
+
+/** The frame the floating canvas palettes wear: #eeeeee, 8 px corners, a black inside
+    stroke, a grey bevel on each side and a soft grey shadow 2 px below. `r` is the
+    frame itself; the shadow lands 2 px under it, so callers keep that room. */
+void paintPaletteFrame (juce::Graphics&, juce::Rectangle<int> r);
+inline constexpr int kPaletteShadow = 2;
+
 } // namespace os8

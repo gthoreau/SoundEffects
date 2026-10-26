@@ -62,7 +62,8 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "KeyboardArt.h"
-#include "Sys7.h"
+#include "Os8.h"
+#include "Os8Widgets.h"
 #include "effects/EffectRunner.h"
 #include "engine/Engine.h"
 
@@ -73,36 +74,29 @@ class KeyboardPalette : public juce::Component
 public:
     explicit KeyboardPalette (se::Engine& engine);
 
-    /** The drop shadow lives inside the bounds, so the body stops short of them. */
-    static constexpr int kShadow = 3;
-    static constexpr int kPad = 10;
+    /** The frame is the design's 575 x 60 Canvas-palette (Figma 636:21379), with its
+        soft shadow 2 px below it inside our bounds. */
+    static constexpr int kShadow = os8::kPaletteShadow;
+    static constexpr int kPad = 9;
+    static constexpr int kFrameW = 575;
+    static constexpr int kFrameH = 60;
     /**
-     * The readout badge: the note name over its offset in semitones, on a block
-     * wearing the TARGET WINDOW'S TINT.
+     * The readout badge ("note-st-deviation"): the note name over its offset in
+     * semitones, on a block wearing the TARGET WINDOW'S THEME colour.
      *
-     * The tint is this app's way of saying which Window a thing belongs to — the
+     * The theme is this app's way of saying which Window a thing belongs to — the
      * mixer's strips wear it for exactly that reason, so the eye pairs strip to
      * Window without reading a name. The keyboard is aimed at one Window at a time
      * and re-aims as the canvas selection moves, so the badge is where that has to
-     * show: the strip is a single row with no room for a title, and the tint says
-     * what a title would.
-     *
-     * It is filled and framed like a Window rather than inverted like a button,
-     * because it is not a control — it is a small readout OF one of them.
+     * show; the design leaves its fill to the Placeholder-gray-100 slot for this.
      */
-    static constexpr int kBadgeW = 40;
-    static constexpr int kBadgeH = 36;
-    static constexpr int kApplyW = 58;
-    static constexpr int kApplyH = 22;
-    /** Between the keyboard, the badge and Apply — they read as one right-hand
-        cluster, so the gaps inside it are even and small. */
-    static constexpr int kGap = 10;
-    /** The keyboard plus the dot the original hangs under it. */
-    static constexpr int kContentH = kbd::kPicH + 5;
+    static constexpr int kBadgeW = 39;
+    static constexpr int kBadgeH = 39;
+    static constexpr int kApplyW = 53;
+    static constexpr int kApplyH = 25;
 
-    static constexpr int kWidth  = kPad + kbd::kPicW + kGap + kBadgeW + kGap + kApplyW
-                                 + kPad + kShadow;
-    static constexpr int kHeight = kPad + kContentH + kPad + kShadow;
+    static constexpr int kWidth  = kFrameW;
+    static constexpr int kHeight = kFrameH + kShadow;
 
     /**
      * The Window the keyboard is aimed at — the canvas's selection, pushed in on
@@ -173,7 +167,7 @@ private:
 
     uint64_t targetId = 0;
 
-    Sys7Button applyButton { "Apply" };
+    Os8Button applyButton { "Apply", os8::ButtonKind::primary };
 
     /** The last key CLICKED, which is what Apply commits. −1 until one is played. */
     int lastNote = -1;

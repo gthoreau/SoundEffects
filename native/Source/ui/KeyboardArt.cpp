@@ -140,7 +140,7 @@ void kbd::draw (Graphics& g, Point<int> o, int held, int baseNote)
     if (const auto key = keyBounds (baseNote); ! key.isEmpty())
     {
         g.setColour (kInk);
-        g.fillEllipse ((float) (o.x + key.getCentreX() - 1), (float) (o.y + kPicH + 2), 3.0f, 3.0f);
+        g.fillEllipse ((float) (o.x + key.getCentreX() - 2), (float) (o.y + kPicH + 1), 4.0f, 4.0f);   // 4 px, as designed
     }
 }
 
