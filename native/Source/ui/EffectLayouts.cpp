@@ -127,6 +127,11 @@ void hoseGroup (std::vector<Row>& rows, const string& key, const string& caption
     const float finalX = inUnits ? 177.0f : 178.0f;
     const float endIconX = inUnits ? 163.0f : 164.0f;
     const string gate = key + ".on";
+    // Pan is stored 0..100 with 50 at the centre (the factory default, the kernel's
+    // 0 = L / 100 = R), and the design shows it as a percentage of the sample's own
+    // position: 0 % left, 100 % where it already is, 200 % right — twice the stored
+    // number.
+    const int scale = key == "pan" ? twice : 0;
 
     rows.push_back (row (20, { check (gate, 0, 4, caption), labelRight (hintX, 5.5f, 250 - (int) hintX, hint, true) }));
 
@@ -134,9 +139,9 @@ void hoseGroup (std::vector<Row>& rows, const string& key, const string& caption
     {
         std::vector<Cell> cells {
             label (0, 7, l), legend (Kind::legendStart, 74, 6.5f),
-            field (key + "." + first, 88, 4, fw, inUnits ? "units" : "", 0, gate),
+            field (key + "." + first, 88, 4, fw, inUnits ? "units" : "", scale, gate),
             legend (Kind::legendEnd, endIconX, 6.5f),
-            field (key + "." + second, finalX, 4, fw, inUnits ? "units" : "", 0, gate),
+            field (key + "." + second, finalX, 4, fw, inUnits ? "units" : "", scale, gate),
         };
         if (! inUnits)
         {
