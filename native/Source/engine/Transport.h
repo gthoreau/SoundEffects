@@ -27,7 +27,7 @@ enum class PlayFrom { beginning = 1, insertionPoint = 2 };
 struct PlayOptions
 {
     bool   loop = false;            // loop button: loops the selection
-    bool   useLoopRegion = false;   // option-Play: loop the Set Loop region instead
+    bool   useLoopRegion = false;   // loop the Set Loop region, when one is set, not the selection
     double rateScale = 1.0;         // Keyboard's chromatic auditioning (§8 #18)
     int    soloTrack = -1;          // F1..Fn soloing (0-based); -1 = none
 };

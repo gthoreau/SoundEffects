@@ -101,7 +101,7 @@ public:
         leaveSilence, shiftSound,   // open their popup; the edit happens on Apply
         extendToBeginning, extendToEnd, extendAbove, extendBelow,
         selectExactly, selectPeak,  // popups too
-        selectSilence,
+        selectSilence, setLoop, selectLoop,
         rename
     };
     /** Do it; false when it does not apply right now (nothing to paste, say). */

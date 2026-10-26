@@ -208,6 +208,8 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::selectExactly: active = can (WindowComponent::Action::selectExactly); break;
         case cmd::selectPeak:    active = can (WindowComponent::Action::selectPeak); break;
         case cmd::selectSilence: active = can (WindowComponent::Action::selectSilence); break;
+        case cmd::setLoop:       active = can (WindowComponent::Action::setLoop); break;
+        case cmd::selectLoop:    active = can (WindowComponent::Action::selectLoop); break;
         case cmd::crop:          active = can (WindowComponent::Action::crop); break;
         case cmd::insertSilence: active = can (WindowComponent::Action::insertSilence); break;
 
@@ -289,6 +291,8 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         case cmd::selectExactly: return act (WindowComponent::Action::selectExactly);
         case cmd::selectPeak:    return act (WindowComponent::Action::selectPeak);
         case cmd::selectSilence: return act (WindowComponent::Action::selectSilence);
+        case cmd::setLoop:       return act (WindowComponent::Action::setLoop);
+        case cmd::selectLoop:    return act (WindowComponent::Action::selectLoop);
         case cmd::crop:          return act (WindowComponent::Action::crop);
         case cmd::insertSilence: return act (WindowComponent::Action::insertSilence);
 

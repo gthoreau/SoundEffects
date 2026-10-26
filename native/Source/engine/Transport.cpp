@@ -35,7 +35,7 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
     ctx = {};
     if (opts.loop && opts.useLoopRegion && doc.loopEnd > doc.loopSt)
     {
-        // option-Play: loop the Set Loop region across all tracks.
+        // The Set Loop region (0.4.0: the Loop button, whenever a region is set), across all tracks.
         ctx.mode = LoopMode::selection;
         ctx.selSt = doc.loopSt; ctx.selEnd = doc.loopEnd;
         ctx.firstSelTrack = 1; ctx.lastSelTrack = doc.numTracks();

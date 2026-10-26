@@ -749,11 +749,13 @@ void WindowComponent::paintZoomBar (Graphics& g, const se::SoundDocument& d)
         g.fillRect (x, o.getY() + 2, 1, (i == 0 || i == 4) ? 5 : 3);
     }
 
-    // The block: the looping region while it rolls, the selection while stopped.
+    // The block: the region rolling while it plays; stopped, the Set Loop region the
+    // Loop button will play, or the selection when no region is set.
     auto* w = engineWindow();
     const bool rolling = w && w->transport->uiState() != se::TransportState::stopped;
-    const size_t b0 = rolling ? w->transport->uiPlaySt()  : d.selSt;
-    const size_t b1 = rolling ? w->transport->uiPlayEnd() : d.selEnd;
+    const bool region = d.loopEnd > d.loopSt;
+    const size_t b0 = rolling ? w->transport->uiPlaySt()  : region ? d.loopSt  : d.selSt;
+    const size_t b1 = rolling ? w->transport->uiPlayEnd() : region ? d.loopEnd : d.selEnd;
     if (maxSize > 0 && b1 > b0)
         g.fillRect (spanX ((double) b0 / (double) maxSize, (double) b1 / (double) maxSize, o.getY() + 2, 4));
 
@@ -1259,7 +1261,9 @@ void WindowComponent::togglePlayPause()
     // the top.
     if (state == se::TransportState::stopped)
     {
-        se::PlayOptions o; o.loop = loopEnabled;
+        // Loop plays the Set Loop region when there is one, else the selection
+        // (Transport falls back by itself when the region is empty).
+        se::PlayOptions o; o.loop = loopEnabled; o.useLoopRegion = true;
         engine.play (id, o);
         advanceEnabled = false;         // play() resets advanceScale
     }
@@ -1360,6 +1364,8 @@ bool WindowComponent::canPerform (Action a) const
         case Action::extendToEnd:       return d->maxSelectedTrackSize() > 0 && d->selEnd < d->maxSelectedTrackSize();
         case Action::extendAbove:       return d->firstSelTrack > 1;
         case Action::extendBelow:       return d->lastSelTrack < d->numTracks();
+        case Action::setLoop:           return d->maxTrackSize() > 0;   // a caret clears the region
+        case Action::selectLoop:        return d->maxTrackSize() > 0 && d->loopEnd > d->loopSt;
         case Action::selectSilence:     return d->maxTrackSize() > 0 && d->selSt == d->selEnd;   // needs a caret
         case Action::shiftSound: case Action::selectExactly: case Action::selectPeak:
             return d->maxTrackSize() > 0;   // "can only be applied to an existing sound"
@@ -1409,6 +1415,8 @@ bool WindowComponent::perform (Action a)
         case Action::selectSilence:
             if (se::selectSilence (*d)) commit();
             return true;
+        case Action::setLoop:    se::setLoop (*d);    commit(); return true;   // published: the next Play loops it
+        case Action::selectLoop: se::selectLoop (*d); commit(); return true;
         case Action::selectExactly:
             openPopup (editpopups::selectExactly (*d, [safe = SafePointer<WindowComponent> (this)] (size_t bytes, int anchor)
             {
