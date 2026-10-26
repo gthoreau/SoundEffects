@@ -10,10 +10,13 @@
 #include "engine/Engine.h"
 #include "engine/SampleFormat.h"
 
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <initializer_list>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -322,6 +325,128 @@ void directionTests()
     }
 }
 
+// A smooth signal exposes a click that a ramp hides: one sine cycle, amplitude 100
+// (8-bit units), so no honest step between neighbouring frames exceeds ~0.16.
+std::unique_ptr<se::SoundDocument> sineDocument (size_t len)
+{
+    se::DocumentInit init;
+    init.numTracks = 1; init.bps = 8; init.rateHz = kRate; init.sizeBytes = len;
+    auto doc = std::make_unique<se::SoundDocument> (init);
+    for (size_t i = 0; i < len; ++i)
+        se::setSample (doc->tracks[0].data.data(), i,
+                       (int) std::lround (100.0 * std::sin (6.283185307179586 * (double) i / (double) len)), 8);
+    return doc;
+}
+
+void switchingTests()
+{
+    using se::PlayDirection;
+    // Flip the direction every 70 frames (more often than the crossfade lasts), in
+    // every order, over a loop of the whole sound, over a selection, and with
+    // Advance's 2x and the Keyboard's re-pitch in the mix. The worst step between
+    // neighbouring output frames is the click; the sine's own slope is ~0.16 units,
+    // 8-bit quantisation 1, so anything near a jump would show.
+    for (int scenario = 0; scenario < 4; ++scenario)
+    {
+        auto doc = sineDocument (4000);
+        if (scenario == 1) { doc->selSt = 500; doc->selEnd = 1500; }   // same value at both ends
+        se::PlayOptions o; o.loop = true;
+        se::Transport tr (kRate);
+        tr.play (*doc, o);
+        if (scenario == 2) tr.advance (*doc);
+        if (scenario == 3) tr.setRateScale (1.5);
+
+        float prev = 0.0f, worst = 0.0f;
+        bool first = true;
+        std::vector<float> l (70, 0.0f), r (70, 0.0f);
+        for (int block = 0; block < 300; ++block)
+        {
+            tr.setDirection ((PlayDirection) ((block * 7 + block / 3) % 3), *doc);
+            const int n = tr.render (*doc, l.data(), r.data(), 70);
+            for (int i = 0; i < n; ++i)
+            {
+                if (! first) worst = std::max (worst, std::fabs (l[(size_t) i] - prev) * 128.0f);
+                prev = l[(size_t) i]; first = false;
+            }
+        }
+        // Only the 1-unit quantisation and the sine's own slope: flips add nothing.
+        const float limit = 3.0f;
+        check (worst < limit, "switching: a direction flip every 70 frames, " + std::string (
+                              scenario == 0 ? "whole-sound loop" : scenario == 1 ? "selection loop" : scenario == 2 ? "advance (2x)" : "re-pitched")
+                              + " (worst step " + std::to_string (worst) + ")");
+    }
+}
+
+// The message thread flips directions, plays, pauses, edits and reads the playheads
+// while the audio thread renders: what TSan is for. Nothing here asserts timing,
+// only that the output stays finite and in range and the run is race-free.
+void concurrencyTests()
+{
+    using se::PlayDirection;
+    se::Engine engine;
+    engine.prepare (kRate, kBlock);
+    const uint64_t a = engine.addWindow (sineDocument (4000));
+    const uint64_t b = engine.addWindow (rampDocument ({ 700, 450 }));
+
+    std::atomic<bool> stop { false };
+    std::atomic<bool> sane { true };
+    std::thread audio ([&]
+    {
+        std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
+        while (! stop.load())
+        {
+            engine.render (l.data(), r.data(), kBlock);
+            for (int i = 0; i < kBlock; ++i)
+                if (! std::isfinite (l[(size_t) i]) || ! std::isfinite (r[(size_t) i])
+                    || std::fabs (l[(size_t) i]) > 1.0f || std::fabs (r[(size_t) i]) > 1.0f) sane = false;
+        }
+    });
+
+    unsigned seed = 12345;
+    const auto next = [&] (unsigned m) { seed = seed * 1664525u + 1013904223u; return (seed >> 8) % m; };
+    long reads = 0;
+    for (int i = 0; i < 4000; ++i)
+    {
+        const uint64_t id = next (2) ? a : b;
+        switch (next (9))
+        {
+            case 0: engine.setDirection (id, (PlayDirection) next (3)); break;
+            case 1: { se::PlayOptions o; o.loop = next (2) != 0; o.useLoopRegion = next (2) != 0; engine.play (id, o); break; }
+            case 2: engine.pause (id); break;
+            case 3: engine.stop (id); break;
+            case 4: engine.advance (id); break;
+            case 5: engine.setRateScale (id, 0.5 + 0.25 * (double) next (6)); break;
+            case 6:
+            {
+                if (auto* d = engine.editDoc (id))
+                {
+                    const size_t len = d->maxTrackSize();
+                    d->selSt = next (3) ? len / (2 + next (3)) : 0;
+                    d->selEnd = next (3) ? d->selSt + len / (3 + next (3)) : d->selSt;
+                    d->loopSt = next (2) ? len / 5 : 0;
+                    d->loopEnd = next (2) ? d->loopSt + len / 4 : 0;
+                    engine.commitEdit (id);
+                }
+                break;
+            }
+            default: break;
+        }
+        if (auto* w = engine.windowById (id))
+        {
+            size_t p = 0;
+            reads += w->transport->uiTrackPosition ((int) next (2), p) ? 1 : 0;
+            reads += (long) (w->transport->uiPlayhead() & 1);
+            reads += (long) w->transport->uiDirection() + (long) w->transport->uiPlayEnd() % 2;
+        }
+        engine.collectRetired();
+        std::this_thread::sleep_for (std::chrono::microseconds (200));
+    }
+    stop = true;
+    audio.join();
+    engine.collectRetired();
+    check (sane.load(), "concurrency: output stays finite and in range under direction / play / edit churn (" + std::to_string (reads) + " reads)");
+}
+
 // The Engine's own bridge: the command, and the Window's copy for the UI.
 void directionEngineTests()
 {
@@ -567,6 +692,8 @@ int main()
 
     directionTests();
     directionEngineTests();
+    switchingTests();
+    concurrencyTests();
 
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());
