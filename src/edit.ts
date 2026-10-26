@@ -6,7 +6,8 @@
  * back, and nothing in this module keeps one.
  *
  * Confidence: the editing engine is `[DOC/RES]` — the behaviour is known from
- * the manuals and resource fork, but these routines were **not** disassembled.
+ * the manuals and resource fork, but these routines were **not** disassembled —
+ * except Shift Sound… and Leave Silence…, which are `[BINARY]` (see their notes).
  * The core weirdness (channels are independent buffers, so an edit shortens only
  * the channels it touches and lets the rest drift out of alignment) is well
  * attested; the finer policy calls are flagged `[INTERPRETED]` at each site and
@@ -270,123 +271,222 @@ export function insertSilence(doc: SoundDocument, bytes: number): void {
 }
 
 // ---------------------------------------------------------------------------
-// Shift Sound… / Leave Silence…  — [RES]-only, interpreted. See SPEC §14.
+// Shift Sound… / Leave Silence… — [BINARY: disassembly/Edit-Selection-Commands.md]
 // ---------------------------------------------------------------------------
 
-export type ShiftScope =
-  | { kind: "sound" }
-  | { kind: "channel"; channel: number }
-  | { kind: "channels"; first: number; last: number }
-  | { kind: "selection" };
+/** The leading run of exact digital zero (as Select Silence), frame-aligned. */
+function leadingSilence(data: Uint8Array, frameSize: number): number {
+  let run = 0;
+  if (frameSize === 1) {
+    while (run < data.length && data[run] === 0x80) run++;
+  } else {
+    while (run < data.length && data[run] === 0x00) run++;
+    run -= run % frameSize; // a frame is silent only if all its bytes are zero
+  }
+  return run;
+}
 
-function scopeChannels(doc: SoundDocument, scope: ShiftScope): number[] {
+function silence(len: number, bps: number): Uint8Array {
+  const out = new Uint8Array(len);
+  out.fill(silentByte(bps));
+  return out;
+}
+
+function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const out = new Uint8Array(a.length + b.length);
+  out.set(a, 0);
+  out.set(b, a.length);
+  return out;
+}
+
+/** What Shift Sound… acts on. The dialog offers no choice: the scope follows from the
+ * selection, and its sentence says which it is. `[BINARY: CODE 12 @0x0ae2]` */
+export interface ShiftScope {
+  kind: "sound" | "channel" | "channels" | "selection";
+  firstCh: number; // 1-based, inclusive
+  lastCh: number;
+  start: number; // byte range, half-open
+  end: number;
+}
+
+/**
+ * The scope Shift Sound… takes, read from the selection exactly as the original does:
+ * - a caret, or a selection spanning the whole sound, with every channel selected:
+ *   **the whole sound**, `[0, maxChSize)`;
+ * - otherwise a caret, or a selection spanning `[0, maxRelChSize)`: **channel N** or
+ *   **channels N to M** (the selected ones), `[0, maxRelChSize)`;
+ * - otherwise **the selection**, `[selSt, selEnd)` on the selected channels.
+ * (0.9.2's function-key single-channel focus, which also chose "channel N", has no
+ * counterpart here.)
+ */
+export function shiftScope(doc: SoundDocument): ShiftScope {
+  const caret = doc.selSt === doc.selEnd;
+  const all = doc.firstSelCh === 1 && doc.lastSelCh === doc.numChans;
+  if ((caret || (doc.selSt === 0 && doc.selEnd === doc.maxChSize())) && all)
+    return { kind: "sound", firstCh: 1, lastCh: doc.numChans, start: 0, end: doc.maxChSize() };
+  if (caret || (doc.selSt === 0 && doc.selEnd === doc.maxRelChSize()))
+    return {
+      kind: doc.firstSelCh === doc.lastSelCh ? "channel" : "channels",
+      firstCh: doc.firstSelCh,
+      lastCh: doc.lastSelCh,
+      start: 0,
+      end: doc.maxRelChSize(),
+    };
+  return { kind: "selection", firstCh: doc.firstSelCh, lastCh: doc.lastSelCh, start: doc.selSt, end: doc.selEnd };
+}
+
+/** The dialog's sentence, from STR# 139: "Shift ", the scope, " by:". */
+export function shiftCaption(scope: ShiftScope): string {
   switch (scope.kind) {
     case "sound":
-      return doc.channels.map((_, i) => i);
+      return "Shift the whole sound by:";
     case "channel":
-      return [scope.channel - 1];
-    case "channels": {
-      const out: number[] = [];
-      for (let i = scope.first - 1; i <= scope.last - 1; i++) out.push(i);
-      return out;
-    }
+      return `Shift channel number ${scope.firstCh} by:`;
+    case "channels":
+      return `Shift channels ${scope.firstCh} to ${scope.lastCh} by:`;
     case "selection":
-      return doc.selectedChannelIndices();
+      return "Shift the selection by:";
   }
 }
 
 /**
- * Edit ▸ Shift Sound… — "Shift {the whole sound / channel N / channels N to M /
- * the selection} by [N units], • Shift Left / • Shift Right"
- * `[RES: DITL 139 + STR# 139]` — **`[INTERPRETED]`, needs disassembly (§14).**
+ * Edit ▸ Shift Sound… `[BINARY: CODE 12 @0x0958, worker @0x1042]`
  *
- * Read as: slide the audio within its buffer, preserving channel length, filling
- * the vacated end with silence and letting the far end fall off. The alternative
- * readings (rotate; or grow the buffer) are not supported by any string in the
- * resource fork, and length-preserving-with-silence is the only one that makes
- * "Shift Left" lossy in the way a destructive editor implies.
+ * Moves the scope's byte range of each scoped channel by `bytes`, and the selection
+ * moves with it. Nothing is rotated and lengths are NOT preserved:
  *
- * For `selection` scope the shift is confined to the selected range.
+ * **Shift Left.** If the range starts less than `bytes` from the beginning, EVERY
+ * non-empty channel of the sound (scoped or not) first gets the shortfall of silence
+ * prepended, which keeps them aligned. Then the range is copied `bytes` earlier,
+ * overwriting what was there. A range that runs to its channel's end shortens the
+ * channel (by `bytes`, or by the range's length if that is shorter); otherwise the
+ * vacated tail of the range (or the whole old range, if `bytes` exceeds it) is silenced.
+ *
+ * **Shift Right.** The range is copied `bytes` later, overwriting what follows it; a
+ * channel too short to receive it is first lengthened with silence. The vacated head of
+ * the range (or the whole old range, if `bytes` exceeds it) is silenced. A channel the
+ * range does not reach is skipped.
+ *
+ * @returns false when there is nothing to shift by.
  */
-export function shiftSound(
-  doc: SoundDocument,
-  scope: ShiftScope,
-  bytes: number,
-  direction: "left" | "right",
-): void {
+export function shiftSound(doc: SoundDocument, bytes: number, direction: "left" | "right"): boolean {
   const frameSize = doc.frameSize;
   const amount = bytes - (bytes % frameSize);
-  if (amount <= 0) return;
+  if (amount <= 0) return false;
+  const scope = shiftScope(doc);
+  let { start, end } = scope;
+  const silent = silentByte(doc.bps);
 
-  for (const i of scopeChannels(doc, scope)) {
-    if (i < 0 || i >= doc.numChans) continue;
-    const ch = doc.channels[i]!;
-    let lo = 0;
-    let hi = ch.data.length;
-    if (scope.kind === "selection") {
-      const r = channelRange(doc, i);
-      lo = r.start;
-      hi = r.end;
+  if (direction === "left") {
+    if (start < amount) {
+      const grow = amount - start;
+      for (const ch of doc.channels) {
+        if (ch.data.length !== 0) ch.data = concat(silence(grow, doc.bps), ch.data);
+      }
+      start += grow;
+      end += grow;
+      doc.selSt += grow;
+      doc.selEnd += grow;
     }
-    const span = hi - lo;
-    if (span <= 0) continue;
-    if (amount >= span) {
-      fillSilence(ch.data, lo, hi, doc.bps);
-      continue;
+    for (let i = scope.firstCh - 1; i <= scope.lastCh - 1; i++) {
+      const ch = doc.channels[i]!;
+      const size = ch.data.length;
+      const s = Math.min(start, size);
+      const e = Math.min(end, size);
+      const len = e - s;
+      ch.data.copyWithin(s - amount, s, e);
+      if (e === size) {
+        ch.data = ch.data.slice(0, size - (len > amount ? amount : len));
+      } else if (len > amount) {
+        ch.data.fill(silent, e - amount, e);
+      } else {
+        ch.data.fill(silent, s, e);
+      }
     }
-    const region = ch.data.slice(lo, hi);
-    if (direction === "left") {
-      ch.data.set(region.subarray(amount), lo);
-      fillSilence(ch.data, hi - amount, hi, doc.bps);
-    } else {
-      ch.data.set(region.subarray(0, span - amount), lo + amount);
-      fillSilence(ch.data, lo, lo + amount, doc.bps);
+    doc.selSt -= amount;
+    doc.selEnd -= amount;
+  } else {
+    for (let i = scope.firstCh - 1; i <= scope.lastCh - 1; i++) {
+      const ch = doc.channels[i]!;
+      const size = ch.data.length;
+      const s = Math.min(start, size);
+      const e = Math.min(end, size);
+      if (s === e) continue;
+      if (e + amount > size) ch.data = concat(ch.data, silence(e + amount - size, doc.bps));
+      ch.data.copyWithin(s + amount, s, e);
+      ch.data.fill(silent, s, s + amount < e ? s + amount : e);
     }
+    doc.selSt += amount;
+    doc.selEnd += amount;
   }
+  return true;
 }
 
 export type LeaveSilenceScope = "sound" | "selectedChannels";
 
 /**
- * Edit ▸ Leave Silence… — "Leave [N units] of silence at the beginning of
- * (• the Sound / • the Selected Channels)" — trims everything else
- * `[RES: DITL 142]` — **`[INTERPRETED]`, needs disassembly (§14).**
+ * Edit ▸ Leave Silence… — "Leave [N units] of silence at the beginning of (• the Sound /
+ * • the Selected Channels)" `[BINARY: CODE 12 @0x0162]`
  *
- * Read as: normalise the *leading silent run* to exactly N bytes. Longer runs are
- * trimmed ("trims everything else"); a run shorter than N is padded up to N,
- * which the wording does not clearly license but which is the only way the
- * command can honour "leave N" on a sound that starts abruptly. If the
- * disassembly later shows it only ever trims, drop the padding branch.
+ * "the Sound" selects every channel first (the dialog writes the range into the
+ * document). Then, over the selected channels:
  *
- * Leading silence is measured per channel with the same exact-zero test as
- * Select Silence.
+ * 1. Each channel's leading silent run is measured (exact digital zero). A channel
+ *    that is silent from end to end (or empty) is **emptied**.
+ * 2. The **shortest** run among the others is the one adjusted, for all of them alike:
+ *    every channel loses or gains the same amount at its start, so they stay aligned
+ *    and a channel that started later keeps its extra silence. With no audible channel
+ *    at all the run counts as 0 and the selection collapses to 0.
+ * 3. An emptied channel becomes exactly N of silence.
+ *
+ * The selection moves with the audio: by the growth if it ends past the old run (else
+ * it becomes a caret at N); by the shrink otherwise, each end stopping at 0.
  */
-export function leaveSilence(
-  doc: SoundDocument,
-  bytes: number,
-  scope: LeaveSilenceScope,
-): void {
+export function leaveSilence(doc: SoundDocument, bytes: number, scope: LeaveSilenceScope): void {
   const frameSize = doc.frameSize;
   const want = bytes - (bytes % frameSize);
-  const indices =
-    scope === "sound" ? doc.channels.map((_, i) => i) : doc.selectedChannelIndices();
-  const silent = silentByte(doc.bps);
+  if (scope === "sound") {
+    doc.firstSelCh = 1;
+    doc.lastSelCh = doc.numChans;
+  }
 
-  for (const i of indices) {
+  let run = doc.maxChSize();
+  let audible = false;
+  for (const i of doc.selectedChannelIndices()) {
     const ch = doc.channels[i]!;
-    // Measure the leading silent run, frame-aligned.
-    let run = 0;
-    while (run < ch.data.length && ch.data[run] === silent) run++;
-    run -= run % frameSize;
-
-    if (run > want) {
-      spliceOut(ch, want, run);
-    } else if (run < want) {
-      const pad = new Uint8Array(want - run);
-      pad.fill(silent);
-      spliceIn(ch, 0, pad);
+    const lead = leadingSilence(ch.data, frameSize);
+    if (run > lead && lead !== ch.data.length) {
+      run = lead;
+      audible = true;
+    } else if (lead === ch.data.length) {
+      ch.data = new Uint8Array(0);
     }
   }
-  doc.selSt = 0;
-  doc.selEnd = 0;
+  if (!audible) {
+    run = 0;
+    doc.selSt = 0;
+    doc.selEnd = 0;
+  }
+
+  for (const i of doc.selectedChannelIndices()) {
+    const ch = doc.channels[i]!;
+    if (ch.data.length === 0) ch.data = silence(want, doc.bps);
+    else if (run < want) ch.data = concat(silence(want, doc.bps), ch.data.subarray(run));
+    else if (run > want) ch.data = concat(ch.data.slice(0, want), ch.data.subarray(run));
+  }
+
+  if (run < want) {
+    const delta = want - run;
+    if (run < doc.selEnd) {
+      doc.selSt += delta;
+      doc.selEnd += delta;
+    } else {
+      doc.selSt = want;
+      doc.selEnd = want;
+    }
+  } else {
+    const delta = run - want;
+    doc.selSt = delta < doc.selSt ? doc.selSt - delta : 0;
+    doc.selEnd = delta < doc.selEnd ? doc.selEnd - delta : 0;
+  }
 }

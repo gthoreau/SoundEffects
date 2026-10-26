@@ -4,6 +4,7 @@
 #include "SampleFormat.h"
 
 #include <algorithm>
+#include <cstring>
 
 namespace se {
 
@@ -218,6 +219,174 @@ void silenceSelection (SoundDocument& doc)
         auto& data = doc.tracks[static_cast<size_t> (i)].data;
         const auto r = trackRange (doc, i, doc.selSt, doc.selEnd);
         for (size_t p = r.start; p < r.end && p < data.size(); ++p) data[p] = silent;
+    }
+}
+
+// --- Shift Sound… / Leave Silence… ----------------------------------------------
+
+namespace {
+
+size_t leadingSilence (const std::vector<uint8_t>& data, size_t frameSize)
+{
+    size_t run = 0;
+    if (frameSize == 1)
+        while (run < data.size() && data[run] == 0x80) ++run;
+    else
+    {
+        while (run < data.size() && data[run] == 0x00) ++run;
+        run -= run % frameSize;   // a frame is silent only if all its bytes are zero
+    }
+    return run;
+}
+
+void prependSilence (std::vector<uint8_t>& data, size_t n, uint8_t silent)
+{
+    data.insert (data.begin(), n, silent);
+}
+
+void fillSilence (std::vector<uint8_t>& data, size_t from, size_t to, uint8_t silent)
+{
+    std::fill (data.begin() + static_cast<std::ptrdiff_t> (from),
+               data.begin() + static_cast<std::ptrdiff_t> (to), silent);
+}
+
+/** BlockMove: overlapping ranges are fine. */
+void moveBytes (std::vector<uint8_t>& data, size_t from, size_t to, size_t len)
+{
+    if (len > 0) std::memmove (data.data() + to, data.data() + from, len);
+}
+
+} // namespace
+
+ShiftScope shiftScope (const SoundDocument& doc)
+{
+    const bool caret = doc.selSt == doc.selEnd;
+    const bool all = doc.firstSelTrack == 1 && doc.lastSelTrack == doc.numTracks();
+    ShiftScope s;
+    if ((caret || (doc.selSt == 0 && doc.selEnd == doc.maxTrackSize())) && all)
+    {
+        s.kind = ShiftScope::Kind::sound;
+        s.firstTrack = 1; s.lastTrack = doc.numTracks();
+        s.start = 0; s.end = doc.maxTrackSize();
+    }
+    else if (caret || (doc.selSt == 0 && doc.selEnd == doc.maxSelectedTrackSize()))
+    {
+        s.kind = doc.firstSelTrack == doc.lastSelTrack ? ShiftScope::Kind::track : ShiftScope::Kind::tracks;
+        s.firstTrack = doc.firstSelTrack; s.lastTrack = doc.lastSelTrack;
+        s.start = 0; s.end = doc.maxSelectedTrackSize();
+    }
+    else
+    {
+        s.kind = ShiftScope::Kind::selection;
+        s.firstTrack = doc.firstSelTrack; s.lastTrack = doc.lastSelTrack;
+        s.start = doc.selSt; s.end = doc.selEnd;
+    }
+    return s;
+}
+
+std::string shiftCaption (const ShiftScope& s)
+{
+    switch (s.kind)
+    {
+        case ShiftScope::Kind::sound:     return "Shift the whole sound by:";
+        case ShiftScope::Kind::track:     return "Shift channel number " + std::to_string (s.firstTrack) + " by:";
+        case ShiftScope::Kind::tracks:    return "Shift channels " + std::to_string (s.firstTrack) + " to "
+                                               + std::to_string (s.lastTrack) + " by:";
+        case ShiftScope::Kind::selection: return "Shift the selection by:";
+    }
+    return {};
+}
+
+bool shiftSound (SoundDocument& doc, size_t bytes, bool right)
+{
+    const size_t frameSize = static_cast<size_t> (doc.frameSize());
+    const size_t amount = bytes - (bytes % frameSize);
+    if (amount == 0) return false;
+    const ShiftScope scope = shiftScope (doc);
+    size_t start = scope.start, end = scope.end;
+    const uint8_t silent = silentByte (doc.bps);
+
+    if (! right)
+    {
+        if (start < amount)
+        {
+            const size_t grow = amount - start;
+            for (auto& t : doc.tracks)
+                if (! t.data.empty()) prependSilence (t.data, grow, silent);
+            start += grow; end += grow;
+            doc.selSt += grow; doc.selEnd += grow;
+        }
+        for (int i = scope.firstTrack - 1; i <= scope.lastTrack - 1; ++i)
+        {
+            auto& data = doc.tracks[static_cast<size_t> (i)].data;
+            const size_t size = data.size();
+            const size_t s = std::min (start, size), e = std::min (end, size), len = e - s;
+            if (len > 0) moveBytes (data, s, s - amount, len);
+            if (e == size)       data.resize (size - std::min (len, amount));
+            else if (len > amount) fillSilence (data, e - amount, e, silent);
+            else                 fillSilence (data, s, e, silent);
+        }
+        doc.selSt -= amount; doc.selEnd -= amount;
+    }
+    else
+    {
+        for (int i = scope.firstTrack - 1; i <= scope.lastTrack - 1; ++i)
+        {
+            auto& data = doc.tracks[static_cast<size_t> (i)].data;
+            const size_t size = data.size();
+            const size_t s = std::min (start, size), e = std::min (end, size);
+            if (s == e) continue;
+            if (e + amount > size) data.resize (e + amount, silent);
+            moveBytes (data, s, s + amount, e - s);
+            fillSilence (data, s, std::min (s + amount, e), silent);
+        }
+        doc.selSt += amount; doc.selEnd += amount;
+    }
+    return true;
+}
+
+void leaveSilence (SoundDocument& doc, size_t bytes, bool wholeSound)
+{
+    const size_t frameSize = static_cast<size_t> (doc.frameSize());
+    const size_t want = bytes - (bytes % frameSize);
+    const uint8_t silent = silentByte (doc.bps);
+    if (wholeSound)
+    {
+        doc.firstSelTrack = 1;
+        doc.lastSelTrack = doc.numTracks();
+    }
+
+    // The shortest lead-in among the audible tracks; silent ones are emptied.
+    size_t run = doc.maxTrackSize();
+    bool audible = false;
+    for (int i : doc.selectedTrackIndices())
+    {
+        auto& data = doc.tracks[static_cast<size_t> (i)].data;
+        const size_t lead = leadingSilence (data, frameSize);
+        if (run > lead && lead != data.size()) { run = lead; audible = true; }
+        else if (lead == data.size())          data.clear();
+    }
+    if (! audible) { run = 0; doc.selSt = doc.selEnd = 0; }
+
+    for (int i : doc.selectedTrackIndices())
+    {
+        auto& data = doc.tracks[static_cast<size_t> (i)].data;
+        if (data.empty())     data.assign (want, silent);
+        else if (run < want)  prependSilence (data, want - run, silent);   // its first `run` bytes are silent already
+        else if (run > want)  spliceOut (data, want, run);
+    }
+
+    if (run < want)
+    {
+        const size_t delta = want - run;
+        if (run < doc.selEnd) { doc.selSt += delta; doc.selEnd += delta; }
+        else                  { doc.selSt = doc.selEnd = want; }
+    }
+    else
+    {
+        const size_t delta = run - want;
+        doc.selSt  = delta < doc.selSt  ? doc.selSt  - delta : 0;
+        doc.selEnd = delta < doc.selEnd ? doc.selEnd - delta : 0;
     }
 }
 

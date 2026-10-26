@@ -19,6 +19,7 @@
 #include "effects/Host.h"
 #include "effects/Module.h"
 #include "effects/Registry.h"
+#include "engine/Edit.h"
 
 #include <cstdlib>
 #include <iomanip>
@@ -75,6 +76,28 @@ bool runPortedModule (const std::string& moduleName,
         spawned.push_back (*d);
 
     return true;
+}
+
+/**
+ * The Edit and Selection menus' commands (signature "Edit"): not modules, but the
+ * same contract, replayed against engine/Edit. False when the name is none of them.
+ */
+bool runEditCommand (const std::string& name, const se::fx::Case& testCase,
+                     se::SoundDocument& doc, se::ModResult& result)
+{
+    const auto bytes = static_cast<size_t> (se::getInt (testCase.params, "bytes"));
+    if (name == "Leave Silence")
+    {
+        se::leaveSilence (doc, bytes, se::getBool (testCase.params, "sound"));
+        result = 0;
+        return true;
+    }
+    if (name == "Shift Sound")
+    {
+        result = se::shiftSound (doc, bytes, se::getBool (testCase.params, "right")) ? 1 : 0;
+        return true;
+    }
+    return false;
 }
 
 std::string pad (std::string s, size_t width)
@@ -147,7 +170,8 @@ int main (int argc, char** argv)
             std::vector<se::SoundDocument> spawned;
             se::ModResult result = se::kModNoError;
 
-            if (! runPortedModule (file.moduleName, testCase, doc, spawned, result))
+            if (! runPortedModule (file.moduleName, testCase, doc, spawned, result)
+                && ! runEditCommand (file.moduleName, testCase, doc, result))
             {
                 ++pending;
                 continue;

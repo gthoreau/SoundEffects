@@ -335,6 +335,7 @@ void Os8TextField::textEditorEscapeKeyPressed (juce::TextEditor&)
 
 os8::FieldState Os8TextField::currentState() const
 {
+    if (forcedState) return *forcedState;
     if (! isEnabled()) return os8::FieldState::disabled;
     if (! editor.hasKeyboardFocus (true)) return os8::FieldState::normal;
 

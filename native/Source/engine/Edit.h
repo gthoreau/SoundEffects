@@ -16,6 +16,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <string>
 
 namespace se {
 
@@ -68,5 +69,38 @@ void insertSilence (SoundDocument& doc, size_t bytes);
 /** Zero the selection in the selected tracks WITHOUT shortening them (turns the
     selected range into silence). */
 void silenceSelection (SoundDocument& doc);
+
+// --- Shift Sound… / Leave Silence… — disassembled (disassembly/Edit-Selection-Commands.md)
+
+/** What Shift Sound… acts on. The dialog offers no choice: the selection decides. */
+struct ShiftScope
+{
+    enum class Kind { sound, track, tracks, selection } kind = Kind::sound;
+    int firstTrack = 1, lastTrack = 1;   // 1-based, inclusive
+    size_t start = 0, end = 0;           // byte range, half-open
+};
+
+/** A caret (or a selection spanning the sound) with every track selected: the whole
+    sound. Else a caret (or [0, longest selected track)): those tracks, to their
+    longest end. Else the selection. */
+ShiftScope shiftScope (const SoundDocument& doc);
+
+/** The dialog's sentence (STR# 139): "Shift the whole sound by:", "Shift channel
+    number 2 by:", "Shift channels 2 to 3 by:", "Shift the selection by:". */
+std::string shiftCaption (const ShiftScope&);
+
+/** Edit ▸ Shift Sound… — move the scope's range of each scoped track by `bytes`; the
+    selection moves with it. Right copies it later (lengthening a track too short to
+    take it) and silences the vacated head; Left first pads EVERY non-empty track with
+    the shortfall if the range starts closer than `bytes` to the beginning, copies it
+    earlier, then shortens a track the range ran to the end of or silences the
+    vacated tail. False when `bytes` is less than a frame. */
+bool shiftSound (SoundDocument& doc, size_t bytes, bool right);
+
+/** Edit ▸ Leave Silence… — make the selected tracks' leading silence exactly `bytes`.
+    `wholeSound` selects every track first. Tracks silent end to end become `bytes` of
+    silence; the others all move by the same amount, set by the SHORTEST lead-in among
+    them, so they stay aligned. The selection moves with the audio. */
+void leaveSilence (SoundDocument& doc, size_t bytes, bool wholeSound);
 
 } // namespace se

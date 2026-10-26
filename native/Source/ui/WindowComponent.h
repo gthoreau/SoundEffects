@@ -30,6 +30,7 @@
 #include "engine/Edit.h"
 #include "engine/Engine.h"
 #include "AppPrefs.h"
+#include "EditPopups.h"
 #include "Os8Widgets.h"
 
 #include <algorithm>
@@ -97,6 +98,7 @@ public:
     {
         playPause, stop, toggleLoop, toggleAdvance,
         selectAll, cut, copy, paste, duplicate, clear, crop, insertSilence,
+        leaveSilence, shiftSound,   // open their popup; the edit happens on Apply
         rename
     };
     /** Do it; false when it does not apply right now (nothing to paste, say). */
@@ -149,6 +151,8 @@ private:
     // without a size change, e.g. silence — the size-based cache wouldn't notice).
     void commit()   { engine.commitEdit (id); cachedWidth = -1; repaint(); }
     void resizeToFit();
+    /** Show one of the Edit/Selection popups centred over this Window, field focused. */
+    void openPopup (editpopups::Built);
     void ensurePeaks (se::SoundDocument& d);
     /** Mouse position in canvas ("world") coordinates — stable while this window
         moves or the canvas is zoomed, unlike local or screen coordinates. */

@@ -40,6 +40,7 @@
 #include "PluginEditor.h"
 #include "ui/AppCommands.h"
 #include "ui/AppMenuBar.h"
+#include "ui/EditPopups.h"
 #include "ui/MacWindowChrome.h"
 #include "ui/Os8Gallery.h"
 #include "engine/Import.h"
@@ -639,6 +640,15 @@ public:
             return;
         }
 
+        // The Edit and Selection menus' popups (step 7), each as a 1x PNG with its
+        // frame and shadow — the pixel diff against "Popups-settings" 543:7841.
+        if (const int i = args.indexOf ("--edit-snapshot"); i >= 0 && i + 1 < args.size())
+        {
+            setApplicationReturnValue (writeEditSnapshot (juce::File (args[i + 1].unquoted())) ? 0 : 1);
+            quit();
+            return;
+        }
+
         mainWindow = std::make_unique<MainWindow> (
             getApplicationName(),
             juce::LookAndFeel::getDefaultLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId),
@@ -785,6 +795,33 @@ private:
         keys.setSize (KeyboardPalette::kWidth, KeyboardPalette::kHeight);
         ok = writePng (keys.createComponentSnapshot ({ 0, 0, KeyboardPalette::kWidth, KeyboardPalette::kHeight }, true, 1.0f),
                        dir.getChildFile ("palette-keyboard.png")) && ok;
+        return ok;
+    }
+
+    /** See --edit-snapshot. The documents are set up to give each popup the state its
+        Figma variant shows: a two-track sound with its second track selected (Leave
+        Silence's second radio, Shift Sound's "channel number 2"). */
+    static bool writeEditSnapshot (const juce::File& dir)
+    {
+        dir.createDirectory();
+        editpopups::resetMemory();
+
+        se::DocumentInit init;
+        init.numTracks = 2;
+        init.sizeBytes = 22254;
+        se::SoundDocument doc (init);
+        doc.firstSelTrack = doc.lastSelTrack = 2;
+
+        bool ok = true;
+        const auto shoot = [&] (editpopups::Built b, const char* name)
+        {
+            b.field->setSnapshotState (os8::FieldState::highlighted);
+            auto& p = *b.popup;
+            ok = writePng (p.createComponentSnapshot (p.getLocalBounds(), true, 1.0f),
+                           dir.getChildFile (juce::String (name) + ".png")) && ok;
+        };
+        shoot (editpopups::leaveSilence (doc, {}), "popup-leave-silence");
+        shoot (editpopups::shiftSound (doc, {}), "popup-shift-sound");
         return ok;
     }
 

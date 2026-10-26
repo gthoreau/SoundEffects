@@ -1356,8 +1356,11 @@ bool WindowComponent::canPerform (Action a) const
         case Action::cut: case Action::copy: case Action::duplicate: case Action::clear:
         case Action::crop: case Action::insertSilence:
             return d->selEnd > d->selSt;   // an insertion point has nothing to act on
+        case Action::shiftSound:
+            return d->maxTrackSize() > 0;   // "can only be applied to an existing sound"
         case Action::playPause: case Action::stop: case Action::toggleLoop:
         case Action::toggleAdvance: case Action::selectAll: case Action::rename:
+        case Action::leaveSilence:
             return true;
     }
     return false;
@@ -1392,6 +1395,32 @@ bool WindowComponent::perform (Action a)
         case Action::crop:      se::crop (*d); commit(); resizeToFit(); return true;             // keep only the selection
         case Action::insertSilence: se::silenceSelection (*d); commit(); return true;          // zeros in place, same length
         case Action::rename:    beginNameEdit(); return true;
+
+        case Action::leaveSilence:
+            openPopup (editpopups::leaveSilence (*d, [safe = SafePointer<WindowComponent> (this)] (size_t bytes, bool wholeSound)
+            {
+                if (safe == nullptr || safe->doc() == nullptr) return;
+                se::leaveSilence (*safe->doc(), bytes, wholeSound);
+                safe->commit();
+                safe->resizeToFit();
+            }));
+            return true;
+        case Action::shiftSound:
+            openPopup (editpopups::shiftSound (*d, [safe = SafePointer<WindowComponent> (this)] (size_t bytes, bool right)
+            {
+                if (safe == nullptr || safe->doc() == nullptr) return;
+                se::shiftSound (*safe->doc(), bytes, right);
+                safe->commit();
+                safe->resizeToFit();
+            }));
+            return true;
     }
     return false;
+}
+
+void WindowComponent::openPopup (editpopups::Built built)
+{
+    auto* popup = built.popup.release();
+    popup->showOver (*this, { (getWidth() - popup->getWidth()) / 2, (getHeight() - popup->getHeight()) / 2 });
+    built.field->grabFocus();
 }

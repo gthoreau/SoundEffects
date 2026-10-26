@@ -27,7 +27,8 @@ import { Host } from "../src/runtime/host.js";
 import type { EffectModule } from "../src/runtime/module.js";
 import { DoExtend } from "../src/runtime/host.js";
 import { doubleToFixed, Unit } from "../src/units.js";
-import { getSample, setSample, frameSizeFor } from "../src/samples.js";
+import { getSample, setSample, frameSizeFor, silentByte } from "../src/samples.js";
+import { leaveSilence, shiftSound } from "../src/edit.js";
 import { EFFECTS } from "../src/effects/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1028,6 +1029,165 @@ function changedAnything(a: SoundDocument, b: SoundDocument, spawned: number): b
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// Menu commands — the Edit and Selection menu's destructive and selection maths
+// ---------------------------------------------------------------------------
+
+/**
+ * Not effects, but the same contract: input document + parameters → the exact
+ * document the reference produced, selection included. They share the container
+ * (signature "Edit") so the native runner replays them beside the modules; it
+ * dispatches by name to `engine/Edit` instead of the effect registry.
+ *
+ * `result` is what the command returned, as an integer (true = 1), or 0.
+ */
+interface EditCase {
+  shape: keyof typeof SHAPES;
+  sel: SelKind;
+  params: Params;
+  /** Runs after the selection: lead-in silence, an odd track range, a shrunk track. */
+  prep?: (doc: SoundDocument) => void;
+  expectNoOp?: boolean;
+}
+
+interface EditCommand {
+  name: string;
+  run: (doc: SoundDocument, params: Params) => number;
+  cases: EditCase[];
+}
+
+/** Prepend `frames` of exact silence to each listed track (1-based → frames). */
+function leadIn(frames: Record<number, number>): (doc: SoundDocument) => void {
+  return (doc) => {
+    for (const [track, n] of Object.entries(frames)) {
+      const ch = doc.channels[Number(track) - 1]!;
+      const pad = new Uint8Array(n * doc.frameSize);
+      pad.fill(silentByte(doc.bps));
+      const out = new Uint8Array(pad.length + ch.data.length);
+      out.set(pad, 0);
+      out.set(ch.data, pad.length);
+      ch.data = out;
+    }
+  };
+}
+
+/** Make a track silent from end to end. */
+function silenceTrack(track: number): (doc: SoundDocument) => void {
+  return (doc) => doc.channels[track - 1]!.data.fill(silentByte(doc.bps));
+}
+
+function both(...fs: Array<(doc: SoundDocument) => void>): (doc: SoundDocument) => void {
+  return (doc) => fs.forEach((f) => f(doc));
+}
+
+const EDITS: EditCommand[] = [
+  {
+    name: "Leave Silence",
+    run: (doc, p) => {
+      leaveSilence(doc, Number(p.bytes), p.sound ? "sound" : "selectedChannels");
+      return 0;
+    },
+    cases: [
+      // Trim: a long lead-in comes down to N.
+      { shape: "mono8", sel: "caret", params: { bytes: 4, sound: 1 }, prep: leadIn({ 1: 20 }) },
+      // Pad: the material starts abruptly (fillChannel's first frame is a zero, so
+      // the run is one frame), and 16-bit frames are two bytes.
+      { shape: "mono16", sel: "mid", params: { bytes: 40, sound: 1 } },
+      // Ragged lead-ins: the SHORTEST run is the one adjusted, the others keep their
+      // extra silence; the selection moves by the difference.
+      { shape: "ragged8", sel: "mid", params: { bytes: 6, sound: 1 }, prep: leadIn({ 1: 10, 2: 30, 3: 18 }) },
+      // A track silent from end to end becomes exactly N.
+      { shape: "ragged8", sel: "pastShort", params: { bytes: 12, sound: 1 }, prep: both(silenceTrack(2), leadIn({ 1: 3, 3: 7 })) },
+      // The selected channels only (track 2 of 3), the others untouched.
+      { shape: "ragged8", sel: "secondTrack", params: { bytes: 2, sound: 0 }, prep: leadIn({ 1: 9, 2: 9, 3: 9 }) },
+      // "the Sound" re-selects every track before anything else.
+      { shape: "stereo16", sel: "secondTrack", params: { bytes: 8, sound: 1 }, prep: leadIn({ 1: 12, 2: 5 }) },
+      // Nothing audible anywhere: the run counts as 0 and the caret goes to N.
+      { shape: "stereo16", sel: "mid", params: { bytes: 6, sound: 1 }, prep: both(silenceTrack(1), silenceTrack(2)) },
+    ],
+  },
+  {
+    name: "Shift Sound",
+    run: (doc, p) => (shiftSound(doc, Number(p.bytes), p.right ? "right" : "left") ? 1 : 0),
+    cases: [
+      // The whole sound (caret, every track): right grows it. Left pads every track by
+      // the shift, then moves the range back over the padding: a net no-op, which is
+      // what 0.9.2 does (CODE 12 @0x1042), and the case pins it.
+      { shape: "mono8", sel: "caret", params: { bytes: 10, right: 1 } },
+      { shape: "ragged8", sel: "caret", params: { bytes: 7, right: 0 }, expectNoOp: true },
+      // ...but on channels 2 to 3 only, the padding lands on track 1 too and is NOT
+      // moved back there: track 1 ends up later than the others.
+      { shape: "ragged8", sel: "caret", params: { bytes: 7, right: 0 }, prep: (d) => { d.firstSelCh = 2; } },
+      // The selection, both ways, on 16-bit frames.
+      { shape: "mono16", sel: "mid", params: { bytes: 20, right: 1 } },
+      { shape: "mono16", sel: "mid", params: { bytes: 20, right: 0 } },
+      // A shift longer than the range silences the whole old range.
+      { shape: "stereo16", sel: "mid", params: { bytes: 120, right: 1 } },
+      // Left past the start on one track pads EVERY track.
+      { shape: "ragged8", sel: "secondTrack", params: { bytes: 30, right: 0 } },
+      // A range running past the short track's end: left shortens it, right lengthens.
+      { shape: "ragged8", sel: "pastShort", params: { bytes: 16, right: 0 } },
+      { shape: "ragged8", sel: "pastShort", params: { bytes: 16, right: 1 } },
+      // Channels 2 to 3, caret: their own longest end is the range.
+      { shape: "ragged8", sel: "caret", params: { bytes: 5, right: 1 }, prep: (d) => { d.firstSelCh = 2; } },
+      // Zero does nothing.
+      { shape: "mono8", sel: "mid", params: { bytes: 0, right: 1 }, expectNoOp: true },
+    ],
+  },
+];
+
+/** Run every edit command's cases and write one fixture per command. */
+function generateEdits(index: string[], problems: string[]): number {
+  let total = 0;
+  for (const command of EDITS) {
+    const cases: GeneratedCase[] = [];
+    command.cases.forEach((spec, i) => {
+      const doc = buildDoc(SHAPES[spec.shape]!);
+      applySelection(doc, spec.sel);
+      spec.prep?.(doc);
+      const input = doc.clone();
+      const result = command.run(doc, spec.params);
+      const c: GeneratedCase = {
+        name: `${spec.shape}-${spec.sel}-${i}`,
+        seed: 1,
+        extend: false,
+        params: spec.params,
+        input,
+        result,
+        output: doc,
+        spawned: [],
+      };
+      const changed = changedAnything(input, doc, 0);
+      if (!changed && !spec.expectNoOp) problems.push(`  no-op   ${command.name} [${c.name}]`);
+      else if (changed && spec.expectNoOp) problems.push(`  CHANGED ${command.name} [${c.name}]: expectNoOp, but it did something`);
+      cases.push(c);
+    });
+
+    const w = new Writer();
+    w.bytes(new TextEncoder().encode("SEFX"));
+    w.u32(FIXTURE_VERSION);
+    w.str(command.name);
+    w.str("Edit");
+    w.u32(cases.length);
+    for (const c of cases) {
+      w.str(c.name);
+      w.u32(c.seed);
+      w.u8(2);
+      w.u8(0);
+      writeParams(w, c.params);
+      writeDoc(w, c.input);
+      w.i32(c.result);
+      writeDoc(w, c.output);
+      w.u32(0);
+    }
+    const file = `edit-${slug(command.name)}.fx`;
+    writeFileSync(join(OUT_DIR, file), w.finish());
+    index.push(`${file}  ${command.name} (${cases.length} cases)`);
+    total += cases.length;
+  }
+  return total;
+}
+
 function generate(): void {
   mkdirSync(OUT_DIR, { recursive: true });
   // Stale fixtures are worse than none: a renamed module would otherwise leave a
@@ -1106,8 +1266,9 @@ function generate(): void {
     totalCases += cases.length;
   }
 
+  const editCases = generateEdits(index, problems);
   writeFileSync(join(OUT_DIR, "INDEX.txt"), index.sort().join("\n") + "\n");
-  console.log(`${EFFECTS.length} modules, ${totalCases} cases → ${OUT_DIR}`);
+  console.log(`${EFFECTS.length} modules, ${totalCases} cases, ${EDITS.length} menu commands, ${editCases} cases → ${OUT_DIR}`);
 
   if (problems.length > 0) {
     console.log(`\n${problems.length} to look at (${noOps} no-op):`);

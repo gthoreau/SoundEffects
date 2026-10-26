@@ -11,6 +11,8 @@ import {
   silenceOut,
   silenceSelection,
   insertSilence,
+  shiftScope,
+  shiftCaption,
   shiftSound,
   leaveSilence,
 } from "../src/edit.js";
@@ -303,89 +305,143 @@ describe("insertSilence", () => {
   });
 });
 
-describe("shiftSound", () => {
-  it("shifts left, filling the tail with silence and dropping the head", () => {
+describe("shiftScope — chosen by the selection, not by the user", () => {
+  it("a caret with every channel selected is the whole sound", () => {
+    const d = docFrom([[1, 2, 3], [1, 2]]);
+    expect(shiftScope(d)).toEqual({ kind: "sound", firstCh: 1, lastCh: 2, start: 0, end: 3 });
+    expect(shiftCaption(shiftScope(d))).toBe("Shift the whole sound by:");
+  });
+
+  it("a caret on some channels is those channels, to their longest end", () => {
+    const d = docFrom([[1, 2, 3], [1, 2], [1]]);
+    d.firstSelCh = 2;
+    d.lastSelCh = 3;
+    expect(shiftScope(d)).toEqual({ kind: "channels", firstCh: 2, lastCh: 3, start: 0, end: 2 });
+    expect(shiftCaption(shiftScope(d))).toBe("Shift channels 2 to 3 by:");
+    d.lastSelCh = 2;
+    expect(shiftCaption(shiftScope(d))).toBe("Shift channel number 2 by:");
+  });
+
+  it("anything else is the selection", () => {
     const d = docFrom([[1, 2, 3, 4]]);
-    shiftSound(d, { kind: "sound" }, 1, "left");
-    expect(samplesOf(d, 0)).toEqual([2, 3, 4, 0]);
-  });
-
-  it("shifts right, filling the head with silence and dropping the tail", () => {
-    const d = docFrom([[1, 2, 3, 4]]);
-    shiftSound(d, { kind: "sound" }, 1, "right");
-    expect(samplesOf(d, 0)).toEqual([0, 1, 2, 3]);
-  });
-
-  it("preserves channel length", () => {
-    const d = docFrom([[1, 2, 3, 4]]);
-    shiftSound(d, { kind: "sound" }, 2, "right");
-    expect(d.channels[0]!.data.length).toBe(4);
-  });
-
-  it("silences the lot when the shift exceeds the span", () => {
-    const d = docFrom([[1, 2, 3]]);
-    shiftSound(d, { kind: "sound" }, 99, "left");
-    expect(samplesOf(d, 0)).toEqual([0, 0, 0]);
-  });
-
-  it("shifts a single channel, which is how tracks get misaligned on purpose", () => {
-    const d = docFrom([
-      [1, 2, 3],
-      [1, 2, 3],
-    ]);
-    shiftSound(d, { kind: "channel", channel: 2 }, 1, "right");
-    expect(samplesOf(d, 0)).toEqual([1, 2, 3]);
-    expect(samplesOf(d, 1)).toEqual([0, 1, 2]);
-  });
-
-  it("confines a selection-scoped shift to the selected range", () => {
-    const d = docFrom([[1, 2, 3, 4, 5, 6]]);
-    setSelection(d, 1, 4);
-    shiftSound(d, { kind: "selection" }, 1, "left");
-    expect(samplesOf(d, 0)).toEqual([1, 3, 4, 0, 5, 6]);
-  });
-
-  it("shifts a channel range", () => {
-    const d = docFrom([
-      [1, 2],
-      [1, 2],
-      [1, 2],
-    ]);
-    shiftSound(d, { kind: "channels", first: 2, last: 3 }, 1, "right");
-    expect(samplesOf(d, 0)).toEqual([1, 2]);
-    expect(samplesOf(d, 1)).toEqual([0, 1]);
-    expect(samplesOf(d, 2)).toEqual([0, 1]);
+    setSelection(d, 1, 3);
+    expect(shiftScope(d)).toEqual({ kind: "selection", firstCh: 1, lastCh: 1, start: 1, end: 3 });
   });
 });
 
-describe("leaveSilence", () => {
+describe("shiftSound — CODE 12 @0x1042", () => {
+  it("right on the whole sound lengthens it and moves the caret", () => {
+    const d = docFrom([[1, 2, 3, 4]]);
+    expect(shiftSound(d, 1, "right")).toBe(true);
+    expect(samplesOf(d, 0)).toEqual([0, 1, 2, 3, 4]);
+    expect([d.selSt, d.selEnd]).toEqual([1, 1]);
+  });
+
+  it("left from the very start pads first, so the sound stays put", () => {
+    const d = docFrom([[1, 2, 3, 4]]);
+    shiftSound(d, 1, "left");
+    expect(samplesOf(d, 0)).toEqual([1, 2, 3, 4]);
+    expect([d.selSt, d.selEnd]).toEqual([0, 0]);
+  });
+
+  it("left on a selection overwrites before it and silences its vacated tail", () => {
+    const d = docFrom([[1, 2, 3, 4, 5, 6]]);
+    setSelection(d, 2, 4);
+    shiftSound(d, 1, "left");
+    expect(samplesOf(d, 0)).toEqual([1, 3, 4, 0, 5, 6]);
+    expect([d.selSt, d.selEnd]).toEqual([1, 3]);
+  });
+
+  it("right on a selection overwrites after it and silences its vacated head", () => {
+    const d = docFrom([[1, 2, 3, 4, 5, 6]]);
+    setSelection(d, 2, 4);
+    shiftSound(d, 1, "right");
+    expect(samplesOf(d, 0)).toEqual([1, 2, 0, 3, 4, 6]);
+    expect([d.selSt, d.selEnd]).toEqual([3, 5]);
+  });
+
+  it("a shift longer than the range silences the whole old range", () => {
+    const d = docFrom([[1, 2, 3, 4, 5, 6]]);
+    setSelection(d, 1, 2);
+    shiftSound(d, 3, "right");
+    expect(samplesOf(d, 0)).toEqual([1, 0, 3, 4, 2, 6]);
+  });
+
+  it("left, a range running to the end shortens its channel", () => {
+    const d = docFrom([[1, 2, 3]]);
+    setSelection(d, 1, 3);
+    shiftSound(d, 2, "left");
+    expect(samplesOf(d, 0)).toEqual([2, 3]);
+    expect([d.selSt, d.selEnd]).toEqual([0, 2]);
+  });
+
+  it("left past the start pads every channel, scoped or not", () => {
+    const d = docFrom([[1, 2, 3], [4, 5, 6]]);
+    d.firstSelCh = 2;
+    d.lastSelCh = 2;
+    setSelection(d, 1, 2);
+    shiftSound(d, 2, "left");
+    expect(samplesOf(d, 0)).toEqual([0, 1, 2, 3]);
+    expect(samplesOf(d, 1)).toEqual([5, 4, 0, 6]);
+    expect([d.selSt, d.selEnd]).toEqual([0, 1]);
+  });
+
+  it("does nothing by zero", () => {
+    const d = docFrom([[1, 2]]);
+    expect(shiftSound(d, 0, "right")).toBe(false);
+    expect(samplesOf(d, 0)).toEqual([1, 2]);
+  });
+});
+
+describe("leaveSilence — CODE 12 @0x0162", () => {
   it("trims a long leading silence down to exactly N", () => {
     const d = docFrom([[0, 0, 0, 0, 1, 2]]);
     leaveSilence(d, 1, "sound");
     expect(samplesOf(d, 0)).toEqual([0, 1, 2]);
   });
 
-  it("pads up to N when the sound starts abruptly", () => {
+  it("pads up to N when the sound starts abruptly, the caret going to N", () => {
     const d = docFrom([[1, 2]]);
     leaveSilence(d, 2, "sound");
     expect(samplesOf(d, 0)).toEqual([0, 0, 1, 2]);
+    expect([d.selSt, d.selEnd]).toEqual([2, 2]);
   });
 
-  it("leaves an already-correct run alone", () => {
-    const d = docFrom([[0, 1, 2]]);
+  it("adjusts every channel by the SHORTEST run, so they stay aligned", () => {
+    const d = docFrom([[0, 0, 0, 1], [0, 0, 0, 0, 0, 1]]);
     leaveSilence(d, 1, "sound");
-    expect(samplesOf(d, 0)).toEqual([0, 1, 2]);
+    expect(samplesOf(d, 0)).toEqual([0, 1]);
+    expect(samplesOf(d, 1)).toEqual([0, 0, 0, 1]);
+  });
+
+  it("turns a channel silent from end to end into exactly N of silence", () => {
+    const d = docFrom([[0, 0, 0], [0, 1]]);
+    leaveSilence(d, 2, "sound");
+    expect(samplesOf(d, 0)).toEqual([0, 0]);
+    expect(samplesOf(d, 1)).toEqual([0, 0, 1]);
   });
 
   it("touches only the selected channels when scoped that way", () => {
-    const d = docFrom([
-      [0, 0, 0, 1],
-      [0, 0, 0, 1],
-    ]);
+    const d = docFrom([[0, 0, 0, 1], [0, 0, 0, 1]]);
     d.firstSelCh = 2;
     d.lastSelCh = 2;
     leaveSilence(d, 1, "selectedChannels");
     expect(samplesOf(d, 0)).toEqual([0, 0, 0, 1]);
     expect(samplesOf(d, 1)).toEqual([0, 1]);
+    expect([d.firstSelCh, d.lastSelCh]).toEqual([2, 2]);
+  });
+
+  it("'the Sound' selects every channel", () => {
+    const d = docFrom([[0, 1], [0, 1]]);
+    d.firstSelCh = 2;
+    leaveSilence(d, 1, "sound");
+    expect([d.firstSelCh, d.lastSelCh]).toEqual([1, 2]);
+  });
+
+  it("moves the selection with the audio", () => {
+    const d = docFrom([[0, 0, 0, 0, 1, 2, 3]]);
+    setSelection(d, 4, 6);
+    leaveSilence(d, 1, "sound");
+    expect([d.selSt, d.selEnd]).toEqual([1, 3]);
   });
 });

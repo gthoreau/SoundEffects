@@ -197,6 +197,8 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::copy:          active = can (WindowComponent::Action::copy); break;
         case cmd::paste:         active = can (WindowComponent::Action::paste); break;
         case cmd::duplicate:     active = can (WindowComponent::Action::duplicate); break;
+        case cmd::leaveSilence:  active = can (WindowComponent::Action::leaveSilence); break;
+        case cmd::shiftSound:    active = can (WindowComponent::Action::shiftSound); break;
         case cmd::clear:         active = can (WindowComponent::Action::clear); break;
         case cmd::selectAll:     active = can (WindowComponent::Action::selectAll); break;
         case cmd::crop:          active = can (WindowComponent::Action::crop); break;
@@ -268,6 +270,8 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         case cmd::copy:          return act (WindowComponent::Action::copy);
         case cmd::paste:         return act (WindowComponent::Action::paste);
         case cmd::duplicate:     return act (WindowComponent::Action::duplicate);
+        case cmd::leaveSilence:  return act (WindowComponent::Action::leaveSilence);
+        case cmd::shiftSound:    return act (WindowComponent::Action::shiftSound);
         case cmd::clear:         return act (WindowComponent::Action::clear);
         case cmd::selectAll:     return act (WindowComponent::Action::selectAll);
         case cmd::crop:          return act (WindowComponent::Action::crop);

@@ -8,6 +8,7 @@
 #include "Os8Icons.h"
 
 #include <limits>
+#include <optional>
 
 /** Buttons 87:8, as a JUCE button.
 
@@ -160,6 +161,10 @@ public:
 
     os8::FieldState currentState() const;
 
+    /** Paint as `state` whatever the focus says: the off-screen snapshots have no
+        keyboard focus to show the Highlighted field the designs draw. */
+    void setSnapshotState (std::optional<os8::FieldState> state) { forcedState = state; restyle(); }
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void enablementChanged() override;
@@ -194,6 +199,7 @@ private:
     Editor editor { *this };
     juce::String committed;
 
+    std::optional<os8::FieldState> forcedState;
     bool numeric = false;
     double stepSize = 1.0, minValue = 0.0, maxValue = 0.0;
     int decimals = 0;
