@@ -127,11 +127,7 @@ void hoseGroup (std::vector<Row>& rows, const string& key, const string& caption
     const float finalX = inUnits ? 177.0f : 178.0f;
     const float endIconX = inUnits ? 163.0f : 164.0f;
     const string gate = key + ".on";
-    // Pan is stored 0..100 with 50 at the centre (the factory default, the kernel's
-    // 0 = L / 100 = R), and the design shows it as a percentage of the sample's own
-    // position: 0 % left, 100 % where it already is, 200 % right — twice the stored
-    // number.
-    const int scale = key == "pan" ? twice : 0;
+    const int scale = 0;
 
     rows.push_back (row (20, { check (gate, 0, 4, caption), labelRight (hintX, 5.5f, 250 - (int) hintX, hint, true) }));
 
@@ -143,12 +139,12 @@ void hoseGroup (std::vector<Row>& rows, const string& key, const string& caption
             legend (Kind::legendEnd, endIconX, 6.5f),
             field (key + "." + second, finalX, 4, fw, inUnits ? "units" : "", scale, gate),
         };
-        if (! inUnits)
+        // Pan's own two values (0 left, 50 centre, 100 right) carry no "%".
+        if (! inUnits && ! (key == "pan" && what == "value"))
         {
             cells.push_back (label (132, 7, "%"));
             cells.push_back (label (222, 7, "%"));
         }
-        (void) what;
         rows.push_back (row (24, std::move (cells)));
     };
 
@@ -175,7 +171,7 @@ Layout sampleHose()
     rows.push_back (gap (14));
     hoseGroup (rows, "gain", "Gain", "Sample volume (% of actual)", 44, "Gain:", false);
     rows.push_back (gap (14));
-    hoseGroup (rows, "pan", "Pan", "L/R distribution (% of actual)", 41, "Pan:", false);
+    hoseGroup (rows, "pan", "Pan", "50 Center, 0 Left, 100 Right", 41, "Pan:", false);
     rows.push_back (gap (14));
     hoseGroup (rows, "bite", "Bite", "Sample crop (time)", 42, "Crop size:", true);
     rows.push_back (gap (14));

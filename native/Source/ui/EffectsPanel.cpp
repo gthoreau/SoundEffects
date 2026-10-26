@@ -838,7 +838,6 @@ void EffectsPanelComponent::buildTray()
                         else if (flags & fxlayout::fixed16)  working[key] = se::Value ((int64_t) se::doubleToFixed (v));
                         else if (flags & fxlayout::kilo)     working[key] = se::Value (v * 1000.0);
                         else if (decimal)                    working[key] = se::Value (v);
-                        else if (flags & fxlayout::twice)    working[key] = se::Value (juce::jlimit (0.0, 200.0, v) / 2.0);
                         else
                         {
                             // The schema's own bounds, where the original's settings() clamps.
@@ -894,12 +893,6 @@ void EffectsPanelComponent::buildTray()
                             shown = se::getDouble (working, key);
                             places = (flags & fxlayout::decimals4) ? 4 : 3;
                             step = (flags & fxlayout::decimals4) ? 0.1 : 0.01;
-                        }
-                        else if (flags & fxlayout::twice)
-                        {
-                            shown = se::getDouble (working, key) * 2.0;
-                            places = shown == std::floor (shown) ? 0 : 1;
-                            lo = 0.0; hi = 200.0;
                         }
                         else
                         {
