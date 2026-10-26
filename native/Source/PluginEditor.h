@@ -13,8 +13,11 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include <map>
+
 #include "PluginProcessor.h"
 #include "ui/AppMenuBar.h"
+#include "ui/AudioSourcePopup.h"
 #include "ui/CanvasComponent.h"
 #include "ui/EffectsPanel.h"
 #include "ui/KeyboardPalette.h"
@@ -108,6 +111,14 @@ private:
     void timerCallback() override;
     /** How a take is set up for a Window: its audio source and conversion. */
     bool recordSetupFor (uint64_t window, se::RecordSetup& s);
+    /** Is the Window's chosen source usable right now? */
+    bool recordReadyFor (uint64_t window) const;
+    /** Show Select Audio Source for a Window (again, when its kind changed). */
+    void openSourcePopup (uint64_t window);
+    audiosource::SourceChoice& choiceFor (uint64_t window) { return sourceChoices[window]; }
+    int numInputChannels() const;
+    bool isPluginHost() const;
+    std::map<uint64_t, audiosource::SourceChoice> sourceChoices;   // per Window, this session
     /** The Window the menus act on: the canvas's selected one. */
     WindowComponent* targetWindow() const { return canvas.selectedWindowComponent(); }
     /** Is the user typing into a text field? Single-key shortcuts stand down then. */

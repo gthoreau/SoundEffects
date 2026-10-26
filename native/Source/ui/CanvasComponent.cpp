@@ -147,8 +147,8 @@ void CanvasComponent::refresh()
         };
         wc->onDropped = [this] { if (mosaicEnabled) layoutGrid(); };
         wc->onSelected = [this] (uint64_t wid) { selectWindow (wid); };
-        wc->onRecordRequested = [this] { if (onAudioSettingsRequested) onAudioSettingsRequested(); };
-        wc->setRecordEnabled (recordEnabled);   // a Window born mid-session joins in the right state
+        wc->onSourceRequested = [this] (uint64_t wid) { if (onSourceRequested) onSourceRequested (wid); };
+        wc->recordReady = recordReady;
         world.addAndMakeVisible (*wc);
         placeNew (*wc, newCount++);
         windows.push_back (std::move (wc));
@@ -187,20 +187,13 @@ void CanvasComponent::invalidateWaveform (uint64_t id)
             w->invalidateWaveform();
 }
 
-void CanvasComponent::setRecording (se::Recorder* r, std::function<bool (uint64_t, se::RecordSetup&)> setupFor)
+void CanvasComponent::setRecording (se::Recorder* r, std::function<bool (uint64_t, se::RecordSetup&)> setupFor,
+                                    std::function<bool (uint64_t)> ready)
 {
     recorder = r;
     recordSetupFor = std::move (setupFor);
-    for (auto& w : windows) { w->recorder = recorder; w->recordSetupFor = recordSetupFor; }
-}
-
-void CanvasComponent::setRecordEnabled (bool enabled)
-{
-    if (recordEnabled == enabled) return;
-    recordEnabled = enabled;
-
-    for (auto& w : windows)
-        w->setRecordEnabled (enabled);
+    recordReady = std::move (ready);
+    for (auto& w : windows) { w->recorder = recorder; w->recordSetupFor = recordSetupFor; w->recordReady = recordReady; }
 }
 
 void CanvasComponent::selectWindow (uint64_t id)

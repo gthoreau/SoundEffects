@@ -94,7 +94,8 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     // app can serve that, so it forwards to a hook the app installs.
     // Recording: the processor owns the recorder (a take outlives the editor); the
     // Window asks it, and the canvas redraws what it writes.
-    canvas.setRecording (&p.recorder(), [this] (uint64_t window, se::RecordSetup& s) { return recordSetupFor (window, s); });
+    canvas.setRecording (&p.recorder(), [this] (uint64_t window, se::RecordSetup& s) { return recordSetupFor (window, s); },
+                         [this] (uint64_t window) { return recordReadyFor (window); });
     p.recorder().onChanged = [this] (uint64_t window)
     {
         if (auto* wc = canvas.windowComponentFor (window)) wc->invalidateWaveform();
@@ -104,7 +105,7 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
         if (auto* wc = canvas.windowComponentFor (window)) wc->invalidateWaveform();
     };
 
-    canvas.onAudioSettingsRequested = [this] { if (onShowAudioSettings) onShowAudioSettings(); };
+    canvas.onSourceRequested = [this] (uint64_t window) { openSourcePopup (window); };
 
     // The palette and the canvas are two faces of one state: the palette asks, the
     // canvas decides — it clamps the zoom to its own range — and what it settled on
@@ -226,6 +227,7 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::insertSilence: active = can (WindowComponent::Action::insertSilence); break;
 
         case cmd::record:        active = can (WindowComponent::Action::record); break;
+        case cmd::selectAudioSource: active = can (WindowComponent::Action::selectAudioSource); break;
         case cmd::stop:          active = w != nullptr; break;
         case cmd::play:          active = w != nullptr && ! w->isPlaying(); break;
         case cmd::pause:         active = w != nullptr && w->isPlaying(); break;
@@ -321,6 +323,7 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         case cmd::play: case cmd::pause:
                                  return act (WindowComponent::Action::playPause);
         case cmd::record:        return act (WindowComponent::Action::record);
+        case cmd::selectAudioSource: return act (WindowComponent::Action::selectAudioSource);
         case cmd::stop:          return act (WindowComponent::Action::stop);
         case cmd::loop:          return act (WindowComponent::Action::toggleLoop);
         case cmd::fastForward:   return act (WindowComponent::Action::toggleAdvance);
@@ -533,24 +536,99 @@ SoundEffectsAudioProcessorEditor::~SoundEffectsAudioProcessorEditor()
     processorRef.recorder().onFinished = nullptr;
 }
 
-bool SoundEffectsAudioProcessorEditor::recordSetupFor (uint64_t, se::RecordSetup& s)
+int SoundEffectsAudioProcessorEditor::numInputChannels() const
 {
-    // 9.3: the default source, the first input pair, Raw. 9.5 puts the Select Audio
-    // Source popup's choice here, per Window.
-    s.source.kind = se::AudioSourceKind::external;
-    s.source.firstChannel = 0;
-    s.source.stereo = true;
-    s.incomingStereo = true;
-    s.mode = se::ConvertMode::raw;
+    return processorRef.getTotalNumInputChannels();
+}
+
+bool SoundEffectsAudioProcessorEditor::isPluginHost() const
+{
+    return processorRef.wrapperType != juce::AudioProcessor::wrapperType_Standalone;
+}
+
+bool SoundEffectsAudioProcessorEditor::recordReadyFor (uint64_t window) const
+{
+    const auto it = sourceChoices.find (window);
+    const auto kind = it != sourceChoices.end() ? it->second.kind : se::AudioSourceKind::external;
+    switch (kind)
+    {
+        case se::AudioSourceKind::canvas:   return true;   // the engine's own output: always there
+        case se::AudioSourceKind::daw:      return isPluginHost();
+        case se::AudioSourceKind::external:
+            // The standalone mutes its input until "Mute audio input" is cleared in the
+            // audio settings; a plug-in has no such switch (the host decides).
+            return numInputChannels() > 0 && (isPluginHost() || (isAudioInputActive != nullptr && isAudioInputActive()));
+    }
+    return false;
+}
+
+bool SoundEffectsAudioProcessorEditor::recordSetupFor (uint64_t window, se::RecordSetup& s)
+{
+    const auto& c = choiceFor (window);
+    auto& engine = processorRef.engine();
+    s.source = {};
+    s.source.kind = c.kind;
+    s.mode = c.clean ? se::ConvertMode::clean : se::ConvertMode::raw;
+
+    switch (c.kind)
+    {
+        case se::AudioSourceKind::external:
+        {
+            const auto list = audiosource::externalSources (numInputChannels());
+            if (list.empty()) return false;
+            const auto& src = list[(size_t) std::clamp (c.externalIndex, 0, (int) list.size() - 1)];
+            s.source.firstChannel = src.firstChannel;
+            s.source.stereo = src.stereo;
+            s.incomingStereo = src.stereo;
+            break;
+        }
+        case se::AudioSourceKind::canvas:
+            s.source.tapWindow = c.canvasWindow;   // 0 = the main mix, minus the Window recorded into
+            s.incomingStereo = true;               // "always stereo"
+            break;
+        case se::AudioSourceKind::daw:
+            s.source.stereo = true;
+            s.incomingStereo = true;
+            break;
+    }
+
+    // Input gain and monitoring belong to the Window's choice; the engine has one of
+    // each, so they are set as its take begins. Monitoring a Canvas source would only
+    // double what is audible already.
+    engine.setInputGain ((float) (c.gainPercent / 100.0));
+    engine.setMonitor (c.monitor && c.kind != se::AudioSourceKind::canvas);
     return true;
+}
+
+void SoundEffectsAudioProcessorEditor::openSourcePopup (uint64_t window)
+{
+    auto* wc = canvas.windowComponentFor (window);
+    if (wc == nullptr) return;
+
+    audiosource::Context ctx;
+    ctx.engine = &processorRef.engine();
+    ctx.window = window;
+    ctx.numInputChannels = numInputChannels();
+    ctx.dawAvailable = isPluginHost();
+    if (onShowAudioSettings) ctx.openAudioSettings = [this] { onShowAudioSettings(); };
+
+    auto built = audiosource::build (ctx, choiceFor (window),
+        [this, window] (const audiosource::SourceChoice& c) { choiceFor (window) = c; },
+        [this, window] (const audiosource::SourceChoice& c)
+        {
+            // The kind changed: keep what was picked and show the popup in its new shape.
+            choiceFor (window) = c;
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this), window]
+            {
+                if (safe != nullptr) safe->openSourcePopup (window);
+            });
+        });
+    auto* popup = built.popup.release();
+    popup->showOver (*wc, { (wc->getWidth() - popup->getWidth()) / 2, (wc->getHeight() - popup->getHeight()) / 2 });
 }
 
 void SoundEffectsAudioProcessorEditor::timerCallback()
 {
-    // Muted unless something says otherwise: in a plugin there is no hook to ask,
-    // and the record button should be grey there too.
-    canvas.setRecordEnabled (isAudioInputActive != nullptr && isAudioInputActive());
-
     canvas.refresh();
     mixer.refresh();
     effects.refresh();

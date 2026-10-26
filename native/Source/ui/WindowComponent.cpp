@@ -54,7 +54,7 @@ WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
     configureSelectionFields();
 
     sourceButton.setTextStyle (os8::TextStyle::smallLabel);
-    sourceButton.onClick = [this] { if (onRecordRequested) onRecordRequested(); };
+    sourceButton.onClick = [this] { perform (Action::selectAudioSource); };
     stopButton.onClick = [this] { perform (Action::stop); };
     playButton.onPlay = [this] { if (! isPlaying()) togglePlayPause(); };
     playButton.onDirectionChange = [this] (Os8ComboPlay::Direction d)
@@ -836,13 +836,6 @@ void WindowComponent::setSelected (bool shouldBeSelected)
     repaint();
 }
 
-void WindowComponent::setRecordEnabled (bool enabled)
-{
-    if (recordEnabled == enabled) return;
-    recordEnabled = enabled;
-    updateTransportButtons();
-}
-
 // --- the selection readout --------------------------------------------------------
 
 double WindowComponent::toUnits (size_t bytes) const
@@ -984,6 +977,7 @@ void WindowComponent::updateTransportButtons()
     bool recLit = taking && ! takePaused;
     if (takePaused) recLit = (juce::Time::getMillisecondCounter() / 450) % 2 == 0;
     recordButton.setEnabled (taking || canPerform (Action::record));
+    sourceButton.setEnabled (canPerform (Action::selectAudioSource));
     recordButton.setToggleState (recLit, juce::dontSendNotification);
 }
 
@@ -1399,13 +1393,15 @@ bool WindowComponent::canPerform (Action a) const
         case Action::selectSilence:     return d->maxTrackSize() > 0 && d->selSt == d->selEnd;   // needs a caret
         case Action::shiftSound: case Action::selectExactly: case Action::selectPeak:
             return d->maxTrackSize() > 0;   // "can only be applied to an existing sound"
+        case Action::selectAudioSource:
+            return onSourceRequested != nullptr && ! isRecording();   // the source is fixed while a take runs
         case Action::record:
             // The source is live, nobody else is recording, and the selection covers
             // at most two tracks. Recording is a take already running here: Pause
             // and Stop hold it, and Record carries on a paused one.
             if (recorder == nullptr) return false;
             if (isRecording()) return recorder->state() == se::Recorder::State::paused;
-            return recordEnabled && ! recorder->active() && se::Recorder::canRecord (*d);
+            return recordReady && recordReady (id) && ! recorder->active() && se::Recorder::canRecord (*d);
         case Action::playForward: case Action::playBackward: case Action::playPingPong: case Action::cycleDirection:
         case Action::toggleAdvance:
             return ! isRecording();   // recording forces Forward, plays at normal speed
@@ -1429,6 +1425,9 @@ bool WindowComponent::perform (Action a)
             if (isRecording()) recorder->stop();
             else               engine.stop (id);
             advanceEnabled = false; updateTransportButtons(); repaint(); return true;
+        case Action::selectAudioSource:
+            onSourceRequested (id);
+            return true;
         case Action::record:
         {
             if (isRecording()) { recorder->resume(); updateTransportButtons(); return true; }

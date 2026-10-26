@@ -29,11 +29,14 @@ juce_add_plugin(SoundEffects
     NEEDS_MIDI_OUTPUT         FALSE
     IS_MIDI_EFFECT            FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
-    PRODUCT_NAME              "SoundEffects")
+    PRODUCT_NAME              "SoundEffects"
+    MICROPHONE_PERMISSION_ENABLED TRUE   # recording from an External source
+    MICROPHONE_PERMISSION_TEXT "SoundEffects records the audio input you choose in Select Audio Source.")
 
 target_sources(SoundEffects PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/ui/AudioSourcePopup.cpp
     Source/engine/SoundDocument.cpp
     Source/engine/Mixer.cpp
     Source/engine/Transport.cpp

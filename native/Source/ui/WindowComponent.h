@@ -79,9 +79,6 @@ public:
     void setSelected (bool shouldBeSelected);
     bool isSelected() const noexcept { return selected; }
 
-    /** Is audio input live? Record is enabled when it is. */
-    void setRecordEnabled (bool enabled);
-
     /** The audio was rewritten under us — drop the cached peaks.
         The cache is keyed on track SIZES, so it cannot notice a destructive effect
         that rewrote every sample without changing the length. Amplify is exactly
@@ -92,6 +89,8 @@ public:
         audio source and conversion). Null in a build with no recording. */
     se::Recorder* recorder = nullptr;
     std::function<bool (uint64_t window, se::RecordSetup&)> recordSetupFor;
+    /** Is this Window's source usable right now (an External one needs live input)? */
+    std::function<bool (uint64_t window)> recordReady;
     /** A take is running or paused in THIS Window. */
     bool isRecording() const;
 
@@ -111,6 +110,7 @@ public:
         extendToBeginning, extendToEnd, extendAbove, extendBelow,
         selectExactly, selectPeak,  // popups too
         selectSilence, setLoop, selectLoop,
+        selectAudioSource,   // the Source button / ⌘⇧R: the popup
         record,     // start a take, or carry on with a paused one
         rename
     };
@@ -141,10 +141,8 @@ public:
     std::function<void (juce::Point<int>)> onDragged;
     /** Title-bar drag finished — settle into the layout. */
     std::function<void()> onDropped;
-    /** Source was clicked. Until the audio-source popup exists (step 9) the canvas
-        routes this to the audio device settings, which is where input is turned on.
-        Left null in a plugin build, where the host owns the device. */
-    std::function<void()> onRecordRequested;
+    /** Source was clicked: the editor shows the Select Audio Source popup for this Window. */
+    std::function<void (uint64_t)> onSourceRequested;
 
     void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
@@ -289,7 +287,6 @@ private:
 
     bool hovered = false;
     bool selected = false;
-    bool recordEnabled = false;
 
     // last drawn state, so refresh() can skip idle repaints
     bool   lastPlaying = false, lastMuted = false, lastSoloed = false;
