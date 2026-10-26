@@ -6,6 +6,7 @@
 // against (there is no 1994 original for a mixer that never existed), so they are
 // asserted directly. JUCE-free, like everything else under Source/engine/.
 
+#include "engine/Edit.h"
 #include "engine/Engine.h"
 #include "engine/SampleFormat.h"
 
@@ -245,6 +246,26 @@ int main()
     check (wa->slot == 1 && wc->slot == 0 && engine.windowById (d)->slot == 2,
            "slots: normalising keeps the first claimant and reseats the rest lowest-first");
     engine.collectRetired();
+
+    // --- Edit ▸ Duplicate (0.4.0, no 1994 original) ---------------------------
+    {
+        se::DocumentInit init;
+        init.numTracks = 2;
+        init.sizeBytes = 8;
+        se::SoundDocument dup (init);
+        for (size_t i = 0; i < 8; ++i) { dup.tracks[0].data[i] = (uint8_t) i; dup.tracks[1].data[i] = (uint8_t) (10 + i); }
+        dup.tracks[1].data.resize (3);   // ragged: track 2 ends inside the selection
+        dup.firstSelTrack = 1; dup.lastSelTrack = 2;
+        dup.selSt = 2; dup.selEnd = 5;
+        check (se::duplicate (dup), "duplicate: a selection is duplicated");
+        const std::vector<uint8_t> t1 { 0, 1, 2, 3, 4, 2, 3, 4, 5, 6, 7 };
+        const std::vector<uint8_t> t2 { 10, 11, 12, 0x80, 0x80, 12 };   // padded to the end, then its own part
+        check (dup.tracks[0].data == t1, "duplicate: the copy lands right after the selection");
+        check (dup.tracks[1].data == t2, "duplicate: a short track is padded to the selection's end first");
+        check (dup.selSt == 5 && dup.selEnd == 8, "duplicate: the copy is selected");
+        dup.selSt = dup.selEnd = 4;
+        check (! se::duplicate (dup), "duplicate: a caret does nothing");
+    }
 
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());

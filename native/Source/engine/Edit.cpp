@@ -162,6 +162,14 @@ int paste (SoundDocument& doc, const SoundDocument& clip)
     return pasted;
 }
 
+bool duplicate (SoundDocument& doc)
+{
+    auto clip = copy (doc);
+    if (clip == nullptr) return false;
+    doc.selSt = doc.selEnd;
+    return paste (doc, *clip) > 0;
+}
+
 bool crop (SoundDocument& doc)
 {
     if (doc.selSt == doc.selEnd) return false;

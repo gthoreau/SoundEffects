@@ -96,7 +96,7 @@ public:
     enum class Action
     {
         playPause, stop, toggleLoop, toggleAdvance,
-        selectAll, cut, copy, paste, clear, crop, insertSilence,
+        selectAll, cut, copy, paste, duplicate, clear, crop, insertSilence,
         rename
     };
     /** Do it; false when it does not apply right now (nothing to paste, say). */

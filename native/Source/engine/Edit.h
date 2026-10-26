@@ -48,6 +48,11 @@ std::unique_ptr<SoundDocument> cut (SoundDocument& doc);
     Surplus clipboard tracks are dropped. Returns tracks that received audio. */
 int paste (SoundDocument& doc, const SoundDocument& clip);
 
+/** Edit ▸ Duplicate (0.4.0, ⌘D) — a copy of the selection inserted right after it,
+    as Copy then Paste at the selection's end would, but leaving the clipboard alone.
+    The copy ends up selected. A caret does nothing. Returns true if anything changed. */
+bool duplicate (SoundDocument& doc);
+
 /** Edit ▸ Crop — keep the selection, discard the rest (§5, `[INTERPRETED]`).
     Applied to the selected tracks only, consistent with Clear: unselected tracks
     keep their full length and drift out of alignment with the cropped ones.

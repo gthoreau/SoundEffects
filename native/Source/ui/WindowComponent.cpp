@@ -1353,7 +1353,7 @@ bool WindowComponent::canPerform (Action a) const
     {
         case Action::paste:
             return clipboard != nullptr && *clipboard != nullptr;
-        case Action::cut: case Action::copy: case Action::clear:
+        case Action::cut: case Action::copy: case Action::duplicate: case Action::clear:
         case Action::crop: case Action::insertSilence:
             return d->selEnd > d->selSt;   // an insertion point has nothing to act on
         case Action::playPause: case Action::stop: case Action::toggleLoop:
@@ -1387,6 +1387,7 @@ bool WindowComponent::perform (Action a)
         case Action::copy:      *clipboard = se::copy (*d); return true;
         case Action::cut:       *clipboard = se::cut (*d); commit(); resizeToFit(); return true;
         case Action::paste:     se::paste (*d, **clipboard); commit(); resizeToFit(); return true;
+        case Action::duplicate: se::duplicate (*d); commit(); resizeToFit(); return true;        // copy after the selection, clipboard untouched
         case Action::clear:     se::clear (*d); commit(); resizeToFit(); return true;            // splice out, shortens
         case Action::crop:      se::crop (*d); commit(); resizeToFit(); return true;             // keep only the selection
         case Action::insertSilence: se::silenceSelection (*d); commit(); return true;          // zeros in place, same length
