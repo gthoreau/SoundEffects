@@ -822,6 +822,9 @@ private:
         };
         shoot (editpopups::leaveSilence (doc, {}), "popup-leave-silence");
         shoot (editpopups::shiftSound (doc, {}), "popup-shift-sound");
+        shoot (editpopups::selectExactly (doc, {}), "popup-select-exactly");   // a caret: "the insertion point."
+        doc.selEnd = 100;                                                       // a selection: "the selection" radio
+        shoot (editpopups::selectPeak (doc, {}), "popup-select-peak");
         return ok;
     }
 

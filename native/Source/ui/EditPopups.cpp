@@ -23,6 +23,14 @@ Memory& memory()
     return m;
 }
 
+/** Select Peak's margin units, apart: its design opens in Samples, and its value is
+    never remembered. */
+se::Unit& peakUnit()
+{
+    static se::Unit u = se::Unit::Samples;
+    return u;
+}
+
 Os8TextField::Unit fieldUnit (se::Unit u)
 {
     switch (u)
@@ -145,6 +153,7 @@ void remember (const DurationRow& row)
 void resetMemory()
 {
     memory() = Memory();
+    peakUnit() = se::Unit::Samples;
 }
 
 Built leaveSilence (const se::SoundDocument& doc, std::function<void (size_t, bool)> apply)
@@ -201,6 +210,71 @@ Built shiftSound (const se::SoundDocument& doc, std::function<void (size_t, bool
         row->field->commitNow();
         remember (*row);
         if (apply) apply (row->bytes(), right->getToggleState());
+    };
+    return b;
+}
+
+Built selectExactly (const se::SoundDocument& doc, std::function<void (size_t, int)> apply)
+{
+    // 543:8171 — DITL 140: After is the default; the last line is STR# 142.
+    Built b;
+    b.popup = std::make_unique<Os8Popup> ("Select Exactly", 121);
+    auto& p = *b.popup;
+    p.addLabel ("Select", 0.0f, 8.0f);
+    auto row = addDurationRow (p, doc, 39, 4, memory().unit, memory().seconds);
+    p.addLabel ("of sound", 0.0f, 29.0f);
+    auto* after = addRadio (p, "After", 47);
+    auto* centred = addRadio (p, "Centered on", 67);
+    auto* before = addRadio (p, "Before", 87);
+    for (auto* r : { after, centred, before })
+        r->onClick = [r, after, centred, before]
+        {
+            for (auto* o : { after, centred, before }) o->setToggleState (o == r, juce::dontSendNotification);
+        };
+    after->setToggleState (true, juce::dontSendNotification);
+    p.addLabel (doc.selSt != doc.selEnd ? "the selection." : "the insertion point.", 0.0f, 107.0f);
+
+    p.setButtons ("Cancel", "Apply");
+    wireField (p, *row->field);
+    b.field = row->field;
+    p.onDismiss = [row, before, centred, apply] (int result)
+    {
+        if (result != 1) return;
+        row->field->commitNow();
+        remember (*row);
+        const int anchor = before->getToggleState() ? 1 : centred->getToggleState() ? 2 : 3;
+        if (apply) apply (row->bytes(), anchor);
+    };
+    return b;
+}
+
+Built selectPeak (const se::SoundDocument& doc, std::function<void (size_t, bool)> apply)
+{
+    // 543:9266 — DITL 141, its two radios in the design's order.
+    Built b;
+    b.popup = std::make_unique<Os8Popup> ("Select Peak", 102);
+    auto& p = *b.popup;
+    p.addLabel ("Select the peak of", 0.0f, 4.0f);
+    auto* selection = addRadio (p, "the selection", 22);
+    auto* sound = addRadio (p, "the sound", 42);
+    pairRadios (selection, sound);
+    (se::peakScopeIsSound (doc) ? sound : selection)->setToggleState (true, juce::dontSendNotification);
+    p.addLabel ("leaving", 0.0f, 65.0f);
+    auto row = addDurationRow (p, doc, 48, 62, peakUnit(), 0.0);
+    // The sentence is wider than the box: Figma wraps "peak." onto a second line and
+    // centres both on the one-line text box, so they sit 5 px higher than a single line.
+    p.addLabel ("of margin at the left and the right of the", 0.0f, 82.0f);
+    p.addLabel ("peak.", 0.0f, 92.0f);
+
+    p.setButtons ("Cancel", "Apply");
+    wireField (p, *row->field);
+    b.field = row->field;
+    p.onDismiss = [row, sound, apply] (int result)
+    {
+        if (result != 1) return;
+        row->field->commitNow();
+        peakUnit() = row->unit;
+        if (apply) apply (row->bytes(), sound->getToggleState());
     };
     return b;
 }

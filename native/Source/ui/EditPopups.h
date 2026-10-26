@@ -1,5 +1,6 @@
 // EditPopups — the Edit and Selection menus' dialogs, on the Os8Popup frame
-// ("Popups-settings" 543:7841: Leave Silence 543:8056, Shift Sound 543:9335).
+// ("Popups-settings" 543:7841: Leave Silence 543:8056, Shift Sound 543:9335, Select
+// Exactly 543:8171, Select Peak 543:9266).
 //
 // Each builder lays out its Figma variant in the popup's rows, opens with the values
 // 0.9.2's dialog would (disassembly/Edit-Selection-Commands.md) and, when the primary
@@ -35,6 +36,15 @@ Built leaveSilence (const se::SoundDocument&, std::function<void (size_t bytes, 
 /** "Shift [the scope] by: [N units] (• Shift Right / • Shift Left)"; the scope is the
     one se::shiftScope reads from the selection. Shift Right is picked. */
 Built shiftSound (const se::SoundDocument&, std::function<void (size_t bytes, bool right)> apply);
+
+/** "Select [N units] of sound (• After / • Centered on / • Before) the selection. | the
+    insertion point."; After is picked. `anchor` is se::ExactlyAnchor's 1..3. */
+Built selectExactly (const se::SoundDocument&, std::function<void (size_t bytes, int anchor)> apply);
+
+/** "Select the peak of (• the selection / • the sound) leaving [0 units] of margin at
+    the left and the right of the peak."; the radio opens as se::peakScopeIsSound says,
+    the margin at 0 every time (as 0.9.2), its units remembered on their own. */
+Built selectPeak (const se::SoundDocument&, std::function<void (size_t marginBytes, bool wholeSound)> apply);
 
 /** Forget the remembered duration and units (the snapshot renders a fresh app). */
 void resetMemory();

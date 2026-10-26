@@ -92,6 +92,23 @@ bool runEditCommand (const std::string& name, const se::fx::Case& testCase,
         result = 0;
         return true;
     }
+    if (name == "Select Exactly")
+    {
+        se::selectExactly (doc, bytes, static_cast<se::ExactlyAnchor> (se::getInt (testCase.params, "anchor")));
+        result = 0;
+        return true;
+    }
+    if (name == "Select Peak")
+    {
+        se::selectPeak (doc, static_cast<size_t> (se::getInt (testCase.params, "margin")), se::getBool (testCase.params, "sound"));
+        result = 0;
+        return true;
+    }
+    if (name == "Select Silence")
+    {
+        result = se::selectSilence (doc) ? 1 : 0;
+        return true;
+    }
     if (name == "Shift Sound")
     {
         result = se::shiftSound (doc, bytes, se::getBool (testCase.params, "right")) ? 1 : 0;

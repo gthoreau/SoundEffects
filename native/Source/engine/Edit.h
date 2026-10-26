@@ -119,4 +119,27 @@ bool shiftSound (SoundDocument& doc, size_t bytes, bool right);
     them, so they stay aligned. The selection moves with the audio. */
 void leaveSilence (SoundDocument& doc, size_t bytes, bool wholeSound);
 
+// --- Select Exactly… / Select Peak… / Select Silence — disassembled -----------------
+
+enum class ExactlyAnchor { before = 1, centered = 2, after = 3 };
+
+/** Selection ▸ Select Exactly… (CODE 4 @0x2514): N bytes ending at the selection's
+    start, around its midpoint, or starting at its end, clamped to 0 and to the
+    SELECTED tracks' longest end without compensating; both ends frame-snapped. */
+void selectExactly (SoundDocument& doc, size_t bytes, ExactlyAnchor);
+
+/** Select Peak's opening choice: the whole sound iff the selection is a caret or
+    spans the sound, with every track selected. */
+bool peakScopeIsSound (const SoundDocument& doc);
+
+/** Selection ▸ Select Peak… (Select-Silence-Peak.md, CODE 4 @0x2b90): the frame where
+    |the sum of the selected tracks| peaks first, widened by `marginBytes` each side,
+    each end clamped on its own. `wholeSound` searches every track over the whole sound. */
+void selectPeak (SoundDocument& doc, size_t marginBytes, bool wholeSound);
+
+/** Selection ▸ Select Silence (CODE 4 @0x61f8): from a caret, the interior of the run
+    of exact digital zero around it, intersected across the selected tracks. True if
+    the selection changed; a real selection does nothing. */
+bool selectSilence (SoundDocument& doc);
+
 } // namespace se

@@ -7,6 +7,7 @@ import {
   getBytesToProcess,
   setSelection,
   setLoop,
+  peakScopeDefault,
   selectLoop,
   extendToBeginning,
   extendToEnd,
@@ -350,5 +351,41 @@ describe("Set Loop / Select Loop / Extend — CODE 4", () => {
     expect(extendBelow(d)).toBe(true);
     expect(extendBelow(d)).toBe(false);
     expect([d.firstSelCh, d.lastSelCh]).toEqual([1, 3]);
+  });
+});
+
+describe("Select Exactly — CODE 4 @0x2514", () => {
+  it("After runs to the SELECTED channels' end at most", () => {
+    const d = docFrom([new Array(20).fill(0), new Array(10).fill(0)]);
+    d.firstSelCh = d.lastSelCh = 2;
+    setSelection(d, 4, 6);
+    selectExactly(d, 8, "after");
+    expect([d.selSt, d.selEnd]).toEqual([6, 10]);
+  });
+
+  it("Centered on clamps its start at 0 without shifting the end", () => {
+    const d = docFrom([new Array(20).fill(0)]);
+    setSelection(d, 2, 4);
+    selectExactly(d, 10, "centered");
+    expect([d.selSt, d.selEnd]).toEqual([0, 10]);
+  });
+
+  it("Before ends where the selection started", () => {
+    const d = docFrom([new Array(20).fill(0)]);
+    setSelection(d, 10, 14);
+    selectExactly(d, 3, "before");
+    expect([d.selSt, d.selEnd]).toEqual([7, 10]);
+  });
+});
+
+describe("Select Peak's opening radio", () => {
+  it("is the Sound for a caret on every channel, the Selection otherwise", () => {
+    const d = docFrom([[0, 0, 0], [0, 0]]);
+    expect(peakScopeDefault(d)).toBe("sound");
+    setSelection(d, 1, 2);
+    expect(peakScopeDefault(d)).toBe("selection");
+    setSelection(d, 0, 0);
+    d.lastSelCh = 1;
+    expect(peakScopeDefault(d)).toBe("selection");
   });
 });

@@ -1360,7 +1360,8 @@ bool WindowComponent::canPerform (Action a) const
         case Action::extendToEnd:       return d->maxSelectedTrackSize() > 0 && d->selEnd < d->maxSelectedTrackSize();
         case Action::extendAbove:       return d->firstSelTrack > 1;
         case Action::extendBelow:       return d->lastSelTrack < d->numTracks();
-        case Action::shiftSound:
+        case Action::selectSilence:     return d->maxTrackSize() > 0 && d->selSt == d->selEnd;   // needs a caret
+        case Action::shiftSound: case Action::selectExactly: case Action::selectPeak:
             return d->maxTrackSize() > 0;   // "can only be applied to an existing sound"
         case Action::playPause: case Action::stop: case Action::toggleLoop:
         case Action::toggleAdvance: case Action::selectAll: case Action::rename:
@@ -1404,6 +1405,26 @@ bool WindowComponent::perform (Action a)
         case Action::extendToEnd:       se::extendToEnd (*d);       commit(); return true;
         case Action::extendAbove:       se::extendAbove (*d);       commit(); return true;
         case Action::extendBelow:       se::extendBelow (*d);       commit(); return true;
+
+        case Action::selectSilence:
+            if (se::selectSilence (*d)) commit();
+            return true;
+        case Action::selectExactly:
+            openPopup (editpopups::selectExactly (*d, [safe = SafePointer<WindowComponent> (this)] (size_t bytes, int anchor)
+            {
+                if (safe == nullptr || safe->doc() == nullptr) return;
+                se::selectExactly (*safe->doc(), bytes, static_cast<se::ExactlyAnchor> (anchor));
+                safe->commit();
+            }));
+            return true;
+        case Action::selectPeak:
+            openPopup (editpopups::selectPeak (*d, [safe = SafePointer<WindowComponent> (this)] (size_t margin, bool wholeSound)
+            {
+                if (safe == nullptr || safe->doc() == nullptr) return;
+                se::selectPeak (*safe->doc(), margin, wholeSound);
+                safe->commit();
+            }));
+            return true;
 
         case Action::leaveSilence:
             openPopup (editpopups::leaveSilence (*d, [safe = SafePointer<WindowComponent> (this)] (size_t bytes, bool wholeSound)

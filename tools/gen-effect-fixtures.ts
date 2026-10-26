@@ -29,6 +29,7 @@ import { DoExtend } from "../src/runtime/host.js";
 import { doubleToFixed, Unit } from "../src/units.js";
 import { getSample, setSample, frameSizeFor, silentByte } from "../src/samples.js";
 import { leaveSilence, shiftSound } from "../src/edit.js";
+import { selectExactly, selectPeak, selectSilence, type ExactlyAnchor } from "../src/selection.js";
 import { EFFECTS } from "../src/effects/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -1076,6 +1077,19 @@ function silenceTrack(track: number): (doc: SoundDocument) => void {
   return (doc) => doc.channels[track - 1]!.data.fill(silentByte(doc.bps));
 }
 
+/** A caret at `at` bytes (frame-snapped), on tracks first..last. */
+function caretAt(at: number, first?: number, last?: number): (doc: SoundDocument) => void {
+  return (doc) => {
+    const b = at - (at % doc.frameSize);
+    doc.selSt = b;
+    doc.selEnd = b;
+    if (first !== undefined) doc.firstSelCh = first;
+    if (last !== undefined) doc.lastSelCh = last;
+  };
+}
+
+const ANCHORS: ExactlyAnchor[] = ["before", "centered", "after"];
+
 function both(...fs: Array<(doc: SoundDocument) => void>): (doc: SoundDocument) => void {
   return (doc) => fs.forEach((f) => f(doc));
 }
@@ -1132,6 +1146,64 @@ const EDITS: EditCommand[] = [
       { shape: "ragged8", sel: "caret", params: { bytes: 5, right: 1 }, prep: (d) => { d.firstSelCh = 2; } },
       // Zero does nothing.
       { shape: "mono8", sel: "mid", params: { bytes: 0, right: 1 }, expectNoOp: true },
+    ],
+  },
+  {
+    name: "Select Exactly",
+    run: (doc, p) => {
+      selectExactly(doc, Number(p.bytes), ANCHORS[Number(p.anchor) - 1]!);
+      return 0;
+    },
+    cases: [
+      // After (the dialog's default), Centered on and Before around a selection.
+      { shape: "mono8", sel: "mid", params: { bytes: 10, anchor: 3 } },
+      { shape: "mono16", sel: "mid", params: { bytes: 30, anchor: 2 } },
+      { shape: "mono16", sel: "mid", params: { bytes: 30, anchor: 1 } },
+      // Clamped: Before at 0, After at the SELECTED tracks' end (track 2 is shorter).
+      { shape: "ragged8", sel: "secondTrack", params: { bytes: 40, anchor: 1 } },
+      { shape: "ragged8", sel: "secondTrack", params: { bytes: 40, anchor: 3 } },
+      // Centered on a caret near the start: the start clamps, the end does not move back.
+      { shape: "stereo16", sel: "caret", params: { bytes: 41, anchor: 2 }, prep: caretAt(10) },
+      // An odd byte count on 16-bit: N/2 and the ends snap down to frames.
+      { shape: "stereo16", sel: "mid", params: { bytes: 33, anchor: 2 } },
+    ],
+  },
+  {
+    name: "Select Peak",
+    run: (doc, p) => {
+      selectPeak(doc, { scope: p.sound ? "sound" : "selection", marginBytes: Number(p.margin) });
+      return 0;
+    },
+    cases: [
+      { shape: "mono8", sel: "caret", params: { margin: 0, sound: 1 } },
+      { shape: "mono16", sel: "mid", params: { margin: 6, sound: 0 } },
+      // Ragged: short tracks are skipped past their end, the sum is across tracks.
+      { shape: "ragged8", sel: "pastShort", params: { margin: 5, sound: 0 } },
+      { shape: "ragged8", sel: "secondTrack", params: { margin: 0, sound: 1 } },
+      // A margin wider than the room on either side clamps each end on its own.
+      { shape: "stereo16", sel: "firstTrack", params: { margin: 400, sound: 0 } },
+      // A caret with "the Selection": the selected tracks' whole length is searched.
+      { shape: "quietRagged8", sel: "caret", params: { margin: 3, sound: 0 }, prep: caretAt(20, 2, 3) },
+    ],
+  },
+  {
+    name: "Select Silence",
+    run: (doc) => (selectSilence(doc) ? 1 : 0),
+    cases: [
+      // Inside fillChannel's run of exact zeros (40-55 % of each track).
+      { shape: "mono8", sel: "caret", params: {}, prep: caretAt(45) },
+      { shape: "mono16", sel: "caret", params: {}, prep: caretAt(90) },
+      // Three tracks of different lengths, a shared stretch of silence laid over their
+      // own: the per-track runs (each with its own margins) are intersected.
+      { shape: "ragged8", sel: "caret", params: {}, prep: both((d) => { for (const ch of d.channels) ch.data.fill(0x80, 40, 60); }, caretAt(50)) },
+      { shape: "stereo16", sel: "caret", params: {}, prep: caretAt(84) },
+      // Silence running to a track's end takes no margin (Leave Silence's lead-in fixture
+      // shape, reversed: a silent tail).
+      { shape: "mono8", sel: "caret", params: {}, prep: both((d) => { d.channels[0]!.data.fill(0x80, 60); }, caretAt(70)) },
+      // A real selection: insertion point required, nothing happens.
+      { shape: "mono8", sel: "mid", params: {}, expectNoOp: true },
+      // A caret on sound, not silence: no-op.
+      { shape: "mono8", sel: "caret", params: {}, prep: caretAt(10), expectNoOp: true },
     ],
   },
 ];

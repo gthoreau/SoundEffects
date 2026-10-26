@@ -429,4 +429,188 @@ void leaveSilence (SoundDocument& doc, size_t bytes, bool wholeSound)
     }
 }
 
+// --- Select Exactly… / Select Peak… / Select Silence ----------------------------
+
+void selectExactly (SoundDocument& doc, size_t n, ExactlyAnchor anchor)
+{
+    const size_t frameSize = static_cast<size_t> (doc.frameSize());
+    const size_t maxSel = doc.maxSelectedTrackSize();
+    // The original's unsigned "room left": an end already past maxSel wraps round
+    // and reads as plenty (kept 32-bit, as the reference and the 68k compute it).
+    const auto room = [maxSel] (size_t from) { return static_cast<uint32_t> (maxSel - from); };
+    switch (anchor)
+    {
+        case ExactlyAnchor::before:
+            doc.selEnd = doc.selSt;
+            doc.selSt = n < doc.selSt ? doc.selSt - n : 0;
+            break;
+        case ExactlyAnchor::centered:
+        {
+            size_t mid = (doc.selSt + doc.selEnd) / 2;
+            mid -= mid % frameSize;
+            const size_t half = n / 2;
+            doc.selSt = half > mid ? 0 : mid - half;
+            doc.selEnd = room (doc.selSt) > n ? doc.selSt + n : maxSel;
+            break;
+        }
+        case ExactlyAnchor::after:
+            doc.selSt = doc.selEnd;
+            doc.selEnd = room (doc.selEnd) > n ? doc.selEnd + n : maxSel;
+            break;
+    }
+    doc.selSt -= doc.selSt % frameSize;
+    doc.selEnd -= doc.selEnd % frameSize;
+}
+
+bool peakScopeIsSound (const SoundDocument& doc)
+{
+    const bool whole = doc.selSt == doc.selEnd || (doc.selSt == 0 && doc.selEnd == doc.maxTrackSize());
+    return whole && doc.firstSelTrack == 1 && doc.lastSelTrack == doc.numTracks();
+}
+
+namespace {
+
+/** |sum across the selected tracks| per frame, first maximum (CODE 4 @0x3090): 8-bit
+    sums wrap at 16 bits, wider ones at 32; a track shorter than the position is
+    skipped; frames wider than 4 bytes count their first 4. */
+size_t findPeak (const SoundDocument& doc, size_t selSt, size_t selEnd, int firstTrack, int lastTrack)
+{
+    const size_t frameSize = static_cast<size_t> (doc.frameSize());
+    const size_t n = std::min<size_t> (frameSize, 4);
+    int64_t best = 0;
+    size_t peakPos = 0;
+
+    for (size_t pos = selSt; pos < selEnd; pos += frameSize)
+    {
+        int64_t acc = 0;
+        for (int t = firstTrack - 1; t <= lastTrack - 1; ++t)
+        {
+            const auto& buf = doc.tracks[static_cast<size_t> (t)].data;
+            if (pos >= buf.size()) continue;
+            if (frameSize == 1)
+                acc += static_cast<int8_t> (buf[pos] ^ 0x80);
+            else
+            {
+                uint32_t v = 0;
+                for (size_t b = 0; b < n; ++b)
+                    v = (v << 8) | (pos + b < buf.size() ? buf[pos + b] : 0u);
+                const int shift = static_cast<int> ((4 - n) * 8);
+                acc += static_cast<int32_t> (v << shift) >> shift;
+            }
+        }
+        const int64_t wrapped = frameSize == 1 ? static_cast<int16_t> (static_cast<uint16_t> (acc))
+                                               : static_cast<int32_t> (static_cast<uint32_t> (acc));
+        const int64_t metric = wrapped < 0 ? -wrapped : wrapped;
+        if (metric > best) { best = metric; peakPos = pos; }
+    }
+    if (frameSize > 1) peakPos -= peakPos % frameSize;
+    return peakPos;
+}
+
+bool silentFrameAt0 (const std::vector<uint8_t>& buf, size_t frameSize)
+{
+    if (buf.size() < frameSize) return false;
+    if (frameSize == 1) return buf[0] == 0x80;
+    for (size_t b = 0; b < frameSize; ++b)
+        if (buf[b] != 0x00) return false;
+    return true;
+}
+
+} // namespace
+
+void selectPeak (SoundDocument& doc, size_t marginBytes, bool wholeSound)
+{
+    const size_t frameSize = static_cast<size_t> (doc.frameSize());
+    if (wholeSound)
+    {
+        doc.firstSelTrack = 1;
+        doc.lastSelTrack = doc.numTracks();
+        doc.selSt = 0;
+        doc.selEnd = doc.maxTrackSize();
+    }
+    else if (doc.selSt == doc.selEnd)
+    {
+        doc.selSt = 0;
+        doc.selEnd = doc.maxSelectedTrackSize();
+    }
+
+    const size_t peakPos = findPeak (doc, doc.selSt, doc.selEnd, doc.firstSelTrack, doc.lastSelTrack);
+    const auto maxSelLen = static_cast<int64_t> (doc.maxSelectedTrackSize());
+    const auto margin = static_cast<int64_t> (marginBytes);
+
+    int64_t start = static_cast<int64_t> (peakPos);
+    int64_t end = start + static_cast<int64_t> (frameSize);
+    start = margin < start ? start - margin : 0;
+    end = maxSelLen - end > margin ? end + margin : maxSelLen;
+    doc.selSt = static_cast<size_t> (start);
+    doc.selEnd = static_cast<size_t> (end);
+}
+
+bool selectSilence (SoundDocument& doc)
+{
+    if (doc.selSt != doc.selEnd) return false;   // an insertion point is required
+    const auto fs = static_cast<int64_t> (doc.frameSize());
+    const auto caret = static_cast<int64_t> (doc.selSt);
+    int64_t selSt = 0;
+    int64_t selEnd = static_cast<int64_t> (doc.maxSelectedTrackSize());
+
+    for (int t : doc.selectedTrackIndices())
+    {
+        const auto& buf = doc.tracks[static_cast<size_t> (t)].data;
+        const auto size = static_cast<int64_t> (buf.size());
+        const auto at = [&buf] (int64_t i) { return buf[static_cast<size_t> (i)]; };
+
+        int64_t w = caret;
+        bool adjusted = false;
+        if (w == size) { w -= fs; adjusted = true; }
+        if (size <= w) continue;   // too short: skipped
+
+        // Forward: the right edge, one silent frame left out as margin.
+        int64_t q = w;
+        if (fs == 1) while (q < size && at (q) == 0x80) ++q;
+        else
+        {
+            while (q < size && at (q) == 0x00) ++q;
+            q -= q % fs;
+        }
+        int64_t endChan = q - fs;
+        if (endChan < w) endChan = w;
+        if (adjusted) endChan += fs;
+
+        // Silence running to the track's end takes no margin. (The multi-byte test
+        // walks DOWN from the last frame's first byte: the original's quirk.)
+        if (endChan == size - fs && size >= fs)
+        {
+            bool lastSilent = true;
+            if (fs == 1) lastSilent = at (size - 1) == 0x80;
+            else
+                for (int64_t i = 0; i < fs; ++i)
+                    if (at (size - fs - i) != 0x00) { lastSilent = false; break; }
+            if (lastSilent) endChan = size;
+        }
+
+        // Backward: the left edge.
+        int64_t p = w;
+        if (fs == 1) while (p >= 0 && at (p) == 0x80) --p;
+        else
+        {
+            while (p >= 0 && at (p) == 0x00) --p;
+            p += p % fs;   // C's signed remainder, as the original
+        }
+        int64_t startChan = p + 2 * fs;
+
+        if (endChan < startChan) { startChan = caret; endChan = caret; }
+        if (startChan > caret + fs) startChan = caret;
+        if (startChan == fs && size >= fs && silentFrameAt0 (buf, static_cast<size_t> (fs))) startChan = 0;
+
+        selSt = std::max (selSt, startChan);
+        selEnd = std::min (selEnd, endChan);
+    }
+
+    if (selSt == caret && selEnd == caret) return false;
+    doc.selSt = static_cast<size_t> (selSt);
+    doc.selEnd = static_cast<size_t> (selEnd);
+    return true;
+}
+
 } // namespace se

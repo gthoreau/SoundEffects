@@ -2,7 +2,8 @@
  * Selection semantics — SPEC §2.4 and §5.
  *
  * The basics are `[SOURCE: Gain.c]`. Select Peak and Select Silence are
- * `[BINARY: disassembly/Select-Silence-Peak.md]` and are ported instruction-for-
+ * `[BINARY: disassembly/Select-Silence-Peak.md]`, Select Exactly, Select Loop and the
+ * Extend commands `[BINARY: disassembly/Edit-Selection-Commands.md]` and are ported instruction-for-
  * instruction, quirks included — see the notes at each quirk. This module is
  * pure selection maths: no dialogs, no option-key handling, no redraw. The UI
  * shell (step 6) supplies the parameters those dialogs collect.
@@ -140,20 +141,25 @@ export function extendBelow(doc: SoundDocument): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Select Exactly… — DITL 140. `[RES/DOC]`, not byte-verified.
+// Select Exactly… — CODE 4 @0x2514. `[BINARY: disassembly/Edit-Selection-Commands.md]`
 // ---------------------------------------------------------------------------
 
 export type ExactlyAnchor = "before" | "centered" | "after";
 
 /**
- * "Select exactly [N units] of sound • Before / • Centered on / • After
- * {the selection | the insertion point}" `[RES: DITL 140]`
+ * "Select exactly [N units] of sound • Before / • Centered on / • After {the selection |
+ * the insertion point}" `[BINARY: CODE 4 @0x2514]`
  *
- * `[DOC]` — the dialog's items are known from the resource fork but the routine
- * was not disassembled, so the anchoring maths below is a reading of the words,
- * not a port. "Before" ends where the selection starts; "After" begins where it
- * ends; "Centered on" straddles the selection's midpoint. Clamped to the
- * document and frame-snapped like any other selection.
+ * - **Before:** ends where the selection started; starts N earlier, or at 0.
+ * - **Centered on:** the selection's midpoint, snapped down to a frame; starts N/2
+ *   before it (or at 0) and runs N from there, or to the selected channels' end.
+ * - **After:** starts where the selection ended; runs N, or to the selected channels'
+ *   end (`maxRelChSize`, not the sound's).
+ *
+ * Then both ends are snapped down to a frame. A clamped end is not compensated, so
+ * "exactly" is at most N. The channel range is untouched. The comparisons are the
+ * original's unsigned ones (an end already past `maxRelChSize` reads as "plenty of
+ * room").
  */
 export function selectExactly(
   doc: SoundDocument,
@@ -161,22 +167,36 @@ export function selectExactly(
   anchor: ExactlyAnchor,
 ): void {
   const frameSize = doc.frameSize;
-  let len = lengthBytes - (lengthBytes % frameSize);
-  let start: number;
+  const n = lengthBytes;
+  const maxSel = doc.maxRelChSize();
+  const room = (from: number) => (maxSel - from) >>> 0;
   switch (anchor) {
     case "before":
-      start = doc.selSt - len;
-      break;
-    case "after":
-      start = doc.selEnd;
+      doc.selEnd = doc.selSt;
+      doc.selSt = n < doc.selSt ? doc.selSt - n : 0;
       break;
     case "centered": {
-      const mid = doc.selSt + Math.floor((doc.selEnd - doc.selSt) / 2);
-      start = mid - Math.floor(len / 2);
+      let mid = Math.floor((doc.selSt + doc.selEnd) / 2);
+      mid -= mid % frameSize;
+      const half = Math.floor(n / 2);
+      doc.selSt = half > mid ? 0 : mid - half;
+      doc.selEnd = room(doc.selSt) > n ? doc.selSt + n : maxSel;
       break;
     }
+    case "after":
+      doc.selSt = doc.selEnd;
+      doc.selEnd = room(doc.selEnd) > n ? doc.selEnd + n : maxSel;
+      break;
   }
-  setSelection(doc, start, start + len);
+  doc.selSt -= doc.selSt % frameSize;
+  doc.selEnd -= doc.selEnd % frameSize;
+}
+
+/** Select Peak's opening radio: "the Sound" iff the selection is a caret or spans the
+ * whole sound, with every channel selected. `[BINARY: CODE 4 @0x2b90]` */
+export function peakScopeDefault(doc: SoundDocument): PeakScope {
+  const whole = doc.selSt === doc.selEnd || (doc.selSt === 0 && doc.selEnd === doc.maxChSize());
+  return whole && doc.firstSelCh === 1 && doc.lastSelCh === doc.numChans ? "sound" : "selection";
 }
 
 // ---------------------------------------------------------------------------

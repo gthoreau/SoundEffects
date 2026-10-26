@@ -100,6 +100,8 @@ public:
         selectAll, cut, copy, paste, duplicate, clear, crop, insertSilence,
         leaveSilence, shiftSound,   // open their popup; the edit happens on Apply
         extendToBeginning, extendToEnd, extendAbove, extendBelow,
+        selectExactly, selectPeak,  // popups too
+        selectSilence,
         rename
     };
     /** Do it; false when it does not apply right now (nothing to paste, say). */
