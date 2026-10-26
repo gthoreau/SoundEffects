@@ -404,8 +404,8 @@ const std::map<std::string, std::vector<Preset>>& presetTable()
         t["Difference"] = { { "destination", 1, I }, { "normalize", 1, I } };
         t["Dither"] = { { "mode", 1, I }, { "percent", 5, I }, { "points", 1, I } };
         t["Downsample Bits"] = { { "newBps", 4, I }, { "expert", 1, I }, { "expertMode", 1, I }, { "ditherLSB", 0.333, R } };
-        t["Fade In"] = { { "time", 1000, D }, { "units", 3, I } };
-        t["Fade Out"] = { { "time", 1000, D }, { "units", 3, I } };
+        t["Fade In"] = { { "units", 3, I } };   // the time prefills from the selection
+        t["Fade Out"] = { { "units", 3, I } };
         for (const char* n : { "High Pass IIR", "Low Pass IIR", "Shelving" }) t[n] = { { "a", 0.5, R }, { "b", 0.5, R } };
         t["Flanger"] = { { "flangePercent", 80, I }, { "feedback", 0, I }, { "delay", 5, D }, { "width", 5, D },
                          { "period", 800, D }, { "delayUnits", 3, I }, { "modulation", 1, I },
@@ -425,7 +425,8 @@ const std::map<std::string, std::vector<Preset>>& presetTable()
         t["Zero Crosser"] = { { "action", 2, I }, { "side", 3, I } };
 
         auto hose = std::vector<Preset> { { "units", 3, I }, { "newLength", 5000, D }, { "stereo", 1, I } };
-        for (auto p : { "rate", "gain", "pan" }) for (auto& x : hoseGroup (p, 100, I)) hose.push_back (x);
+        for (auto p : { "rate", "gain" }) for (auto& x : hoseGroup (p, 100, I)) hose.push_back (x);
+        for (auto& x : hoseGroup ("pan", 50, I)) hose.push_back (x);   // centre, not Figma's 100
         for (auto p : { "bite", "period" })      for (auto& x : hoseGroup (p, 1000, D)) hose.push_back (x);
         t["Sample Hose"] = std::move (hose);
         return t;
