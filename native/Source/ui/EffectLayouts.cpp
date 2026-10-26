@@ -1,5 +1,7 @@
 #include "EffectLayouts.h"
 
+#include "effects/Units.h"
+
 #include <map>
 
 namespace fxlayout {
@@ -234,7 +236,6 @@ std::map<string, Layout> build()
     // Not in the design: the same two controls the fades have, over Draw Line's key.
     m["Draw Line"] = spanLayout ("Draw Line", "Length:", "length");
 
-    m["Bandpass IIR"] = iirLayout ("Bandpass IIR");
     m["High Pass IIR"] = iirLayout ("High-Pass IIR");
     m["Low Pass IIR"] = iirLayout ("Low-Pass IIR");
     m["Shelving"] = iirLayout ("Shelving");
@@ -260,14 +261,17 @@ std::map<string, Layout> build()
         row (25, { label (0, 7.5f, "Time Unit:"), units ("units", 79, 4) }),
         row (24, { label (0, 7, "New Length:"), field ("newLength", 79, 4, 60, "units") }),
         gap (8),
-        row (24, { label (0, 7, "Length:"), label (79, 7, "Initial"), field ("initialGrainLength", 115, 4, 50, "units"),
+        row (24, { label (0, 7, "Grain Length:"), label (79, 7, "Initial"), field ("initialGrainLength", 115, 4, 50, "units"),
                    label (169, 7, "Final"), field ("finalGrainLength", 200, 4, 50, "units") }),
-        row (24, { label (0, 7, "Density:"), label (79, 7, "Initial"), field ("initialDensity", 115, 4, 30),
-                   label (149, 7, "%"), label (170, 7, "Final"), field ("finalDensity", 201, 4, 30), label (235, 7, "%") }),
-        row (24, { label (0, 7, "Variance \xC2\xB1:"), field ("variance", 79, 4, 50, "units") }),
         row (25, { label (0, 7.5f, "Curvature:"), curve ("curvature", 79, 4), field ("curvature", 183, 4.5f, 30),
                    label (217, 7.5f, "%") }),
+        row (24, { label (0, 7, "Variance \xC2\xB1:"), field ("variance", 79, 4, 50, "units") }),
         row (24, { label (0, 7, "Fade Level:"), field ("fadeLevel", 79, 4, 50), label (133, 7, "%") }),
+        gap (8),
+        row (24, { label (0, 7, "Density:"), label (79, 7, "Initial"), field ("initialDensity", 115, 4, 30),
+                   label (149, 7, "%"), label (170, 7, "Final"), field ("finalDensity", 201, 4, 30), label (235, 7, "%") }),
+        row (25, { label (0, 7.5f, "Curvature:"), curve ("densityCurvature", 79, 4), field ("densityCurvature", 183, 4.5f, 30),
+                   label (217, 7.5f, "%") }),
     });
 
     m["Iterative Crossfade"] = with (setupRows (8), "Iterative Crossfade", {
@@ -362,6 +366,92 @@ Layout oneClickLayout (const std::string& effectName, int warningLines)
     // read BEFORE the irreversible click.
     for (int i = 0; i < warningLines; ++i) l.rows.push_back (row (12));
     return l;
+}
+
+namespace {
+
+enum class As { integer, real, durationMs, fixedHz };
+struct Preset { std::string key; double value; As as; };
+
+constexpr As I = As::integer, R = As::real, D = As::durationMs;
+
+// Figma's Effect-settings variants (329:6501), read off the fields, popups, boxes and
+// radios as the author set them.
+const std::map<std::string, std::vector<Preset>>& presetTable()
+{
+    static const auto hoseGroup = [] (const char* p, double value, As as) -> std::vector<Preset>
+    {
+        const std::string k = p;
+        std::vector<Preset> v;
+        for (const char* suffix : { ".on", ".initialValue", ".initialVariance", ".finalValue", ".finalVariance", ".curvature" })
+        {
+            const std::string sfx = suffix;
+            const double val = sfx == ".on" ? 1.0 : sfx == ".curvature" ? 100.0
+                             : (sfx == ".initialValue" || sfx == ".finalValue") ? value : 0.0;
+            const As a = sfx == ".on" || sfx == ".curvature" ? I
+                       : (sfx == ".initialValue" || sfx == ".finalValue") ? as : (as == D ? D : R);
+            v.push_back ({ k + suffix, val, a });
+        }
+        return v;
+    };
+
+    static const std::map<std::string, std::vector<Preset>> table = [&]
+    {
+        std::map<std::string, std::vector<Preset>> t;
+        t["Amplify"] = { { "gain", 75, I } };
+        t["Delay"] = { { "delay", 250, D }, { "units", 3, I }, { "strength", 60, I } };
+        t["Echo"] = { { "delay", 250, D }, { "units", 3, I }, { "strength", 65, I }, { "onlyOn", 0, I }, { "onlyCount", 3, I } };
+        t["Difference"] = { { "destination", 1, I }, { "normalize", 1, I } };
+        t["Dither"] = { { "mode", 1, I }, { "percent", 5, I }, { "points", 1, I } };
+        t["Downsample Bits"] = { { "newBps", 4, I }, { "expert", 1, I }, { "expertMode", 1, I }, { "ditherLSB", 0.333, R } };
+        t["Fade In"] = { { "time", 1000, D }, { "units", 3, I } };
+        t["Fade Out"] = { { "time", 1000, D }, { "units", 3, I } };
+        for (const char* n : { "High Pass IIR", "Low Pass IIR", "Shelving" }) t[n] = { { "a", 0.5, R }, { "b", 0.5, R } };
+        t["Flanger"] = { { "flangePercent", 80, I }, { "feedback", 0, I }, { "delay", 5, D }, { "width", 5, D },
+                         { "period", 800, D }, { "delayUnits", 3, I }, { "modulation", 1, I },
+                         { "envelopeFollower", 0, I }, { "depth", 1.9, D }, { "depthUnits", 3, I }, { "louderMeans", 1, I } };
+        t["Granular Synthesis"] = { { "units", 3, I }, { "newLength", 5000, D }, { "initialGrainLength", 50, D },
+                                    { "finalGrainLength", 50, D }, { "curvature", 100, I }, { "variance", 50, D },
+                                    { "fadeLevel", 0, I }, { "initialDensity", 50, I }, { "finalDensity", 50, I },
+                                    { "densityCurvature", 100, I } };
+        t["Iterative Crossfade"] = { { "iterations", 10, I }, { "silenceLength", 1000, D }, { "units", 3, I } };
+        t["Quick Mix"] = { { "destination", 1, I }, { "use", 2, I }, { "usePan", 1, I } };
+        t["Replicate"] = { { "copies", 3, I }, { "gapMode", 1, I }, { "gapDivisor", 2, I }, { "gapMultiplier", 2, I },
+                           { "gapLength", 500, D }, { "units", 3, I } };
+        t["Resample Rate"] = { { "newRate", 44100, As::fixedHz } };
+        t["Upsample Bits"] = { { "newBps", 16, I } };
+        t["Waveform Generator"] = { { "length", 1000, D }, { "units", 3, I }, { "frequency", 440.0, R },
+                                    { "amplitude", 100, I }, { "waveType", 1, I } };
+        t["Zero Crosser"] = { { "action", 2, I }, { "side", 3, I } };
+
+        auto hose = std::vector<Preset> { { "units", 3, I }, { "newLength", 5000, D }, { "stereo", 1, I } };
+        for (auto p : { "rate", "gain", "pan" }) for (auto& x : hoseGroup (p, 100, I)) hose.push_back (x);
+        for (auto p : { "bite", "period" })      for (auto& x : hoseGroup (p, 1000, D)) hose.push_back (x);
+        t["Sample Hose"] = std::move (hose);
+        return t;
+    }();
+    return table;
+}
+
+} // namespace
+
+void applyPresets (const std::string& moduleName, se::Settings& s, double rateHz, int bps,
+                   std::set<std::string>* touchedKeys)
+{
+    const auto it = presetTable().find (moduleName);
+    if (it == presetTable().end()) return;
+
+    for (const auto& p : it->second)
+    {
+        switch (p.as)
+        {
+            case As::integer:    s[p.key] = se::Value ((int64_t) p.value); break;
+            case As::real:       s[p.key] = se::Value (p.value); break;
+            case As::durationMs: s[p.key] = se::Value ((int64_t) se::unitToBytes (p.value, se::Unit::Milliseconds, rateHz, bps)); break;
+            case As::fixedHz:    s[p.key] = se::Value ((int64_t) se::doubleToFixed (p.value)); break;
+        }
+        if (touchedKeys != nullptr) touchedKeys->insert (p.key);
+    }
 }
 
 } // namespace fxlayout

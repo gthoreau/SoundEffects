@@ -38,6 +38,9 @@ public:
         why it cannot do its job (an effect that cannot run on this Window). */
     void setGreyed (bool g)                     { greyed = g; repaint(); }
 
+    /** Show the Active look while something this button opened stays open (a tray). */
+    void setLatched (bool l)                    { latched = l; repaint(); }
+
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 
 private:
@@ -48,6 +51,7 @@ private:
     juce::String appliedText { "Done!" };
     bool applied = false;
     bool greyed = false;
+    bool latched = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8Button)
 };
@@ -207,6 +211,11 @@ public:
     void setSelectedIndex (int, juce::NotificationType = juce::dontSendNotification);
     int getSelectedIndex() const noexcept { return selected; }
 
+    /** One item that shows what the value is but cannot be picked ("Custom"), and a
+        rule under an item; -1 for none. */
+    void setDisabledItem (int index) noexcept    { disabledItem = index; }
+    void setSeparatorAfter (int index) noexcept  { separatorAfter = index; }
+
     std::function<void (int)> onChange;
 
     /** For the mini style: the button plus a 4 px gap plus the label. */
@@ -224,6 +233,7 @@ private:
     Style style;
     juce::StringArray items, shortLabels;
     int selected = -1;
+    int disabledItem = -1, separatorAfter = -1;
     bool menuOpen = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8Dropdown)

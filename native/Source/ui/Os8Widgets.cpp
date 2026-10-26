@@ -28,7 +28,7 @@ void Os8Button::paintButton (juce::Graphics& g, bool, bool down)
 {
     using os8::ButtonState;
     const auto state = (! isEnabled() || greyed) ? ButtonState::disabled
-                     : down          ? ButtonState::active
+                     : (down || latched) ? ButtonState::active
                      : applied       ? ButtonState::applied
                                      : ButtonState::normal;
 
@@ -438,7 +438,10 @@ void Os8Dropdown::showMenu()
     juce::PopupMenu menu;
     menu.setLookAndFeel (&Os8LookAndFeel::instance());
     for (int i = 0; i < items.size(); ++i)
-        menu.addItem (i + 1, items[i], true, i == selected);
+    {
+        menu.addItem (i + 1, items[i], i != disabledItem, i == selected);
+        if (i == separatorAfter) menu.addSeparator();
+    }
 
     menuOpen = true;
     repaint();

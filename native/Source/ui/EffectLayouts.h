@@ -11,6 +11,9 @@
 
 #pragma once
 
+#include "effects/Settings.h"
+
+#include <set>
 #include <string>
 #include <vector>
 
@@ -76,6 +79,17 @@ const Layout* layoutFor (const std::string& moduleName);
 
 /** The 1-click tray (543:9781) — a title, one sentence, and the buttons row. */
 Layout oneClickLayout (const std::string& effectName, int warningLines);
+
+/**
+ * The values a tray opens with — the author's own, as the Effect-settings variants in
+ * Figma show them. They sit on top of the module's `defaults()` (which stay what the
+ * golden vectors and the recovered binary say) and only in the panel.
+ *
+ * Durations are written in milliseconds and converted to bytes at the target
+ * Window's rate when the tray opens, so "250" means 250 ms whatever the sound is.
+ */
+void applyPresets (const std::string& moduleName, se::Settings&, double rateHz, int bps,
+                   std::set<std::string>* touchedKeys = nullptr);
 
 inline constexpr int kTitleH = 19;
 inline constexpr int kSpacerH = 8;

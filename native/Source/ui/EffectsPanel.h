@@ -100,6 +100,7 @@ private:
     void layoutAll();
     void openEffect (const se::EffectModule* module);
     void closeTray();
+    void updateLatchedButtons();
     /** A group button was pressed. */
     void effectClicked (Entry&);
     void applyOpen();
@@ -143,7 +144,9 @@ private:
     fxlayout::Layout openLayout;             // where the open tray's controls sit
     bool openIsOneClick = false;             // the "Apply X." tray of a parameterless effect
     std::vector<juce::String> warningLines;  // Weird Tempo's apology, wrapped to the tray
+    std::set<std::string> presetKeys;        // keys the author's starting values (or last time's) set
     std::set<std::string> touchedKeys;       // scope-defaulted fields the user typed over
+    bool reformatFields = false;             // a commit is settling: re-seat every field's text
     bool allowExtend = false;                // answers AskDoExtend() for modules that grow
     std::map<std::string, se::Settings> remembered;   // last-used values, per module, this session
     se::Applicability openApplicability = se::Applicability::NoWindow;

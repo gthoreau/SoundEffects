@@ -41,7 +41,7 @@ const Spec kMisc[] = {
 };
 const Spec kEchoes[] = { { "Echo", "Echo", 44 }, { "Delay", "Delay", 49 }, { "Flanger", "Flanger", 64 } };
 const Spec kIir[] = {
-    { "Bandpass IIR", "Bandpass IIR", 96 }, { "Hi-Pass IIR", "High Pass IIR", 82 },
+    { "Hi-Pass IIR", "High Pass IIR", 82 },
     { "Low-Pass IIR", "Low Pass IIR", 97 }, { "Shelving", "Shelving", 68 },
 };
 const Spec kMike[] = {
@@ -89,11 +89,11 @@ constexpr int kTrayInset = 9;                  // the tray frame → its Effect-
 const juce::Colour kShadowGrey { 0xff808080 };
 
 /** Frames / 103:8685 and Sound-info: #dddddd with a white and a grey inner bevel. */
-void paintBevelFrame (Graphics& g, Rectangle<int> r, bool strokeOutside)
+void paintBevelFrame (Graphics& g, Rectangle<int> r, bool strokeOutside, juce::Colour fill = colour::gray100)
 {
     juce::Path shape;
     shape.addRectangle (r.toFloat());
-    g.setColour (colour::gray100);
+    g.setColour (fill);
     g.fillRect (r);
     os8::innerShadow (g, shape, 2.0f, 2.0f, 0, colour::white);
     os8::innerShadow (g, shape, -2.0f, -2.0f, 0, kShadowGrey);
@@ -507,6 +507,19 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     working = kept != remembered.end() ? kept->second
                                        : (module->defaults ? module->defaults() : se::Settings{});
     openSchema = module->schema ? module->schema() : se::SettingsSchema{};
+    presetKeys.clear();
+    if (kept != remembered.end())
+    {
+        for (const auto& item : openSchema) presetKeys.insert (item.key);   // theirs from last time
+    }
+    else
+    {
+        // The author's starting values sit on the module's own defaults (see
+        // EffectLayouts); a field they set is theirs, so the scope prefill leaves it be.
+        const se::SoundDocument* d0 = targetDoc();
+        fxlayout::applyPresets (module->name, working, d0 != nullptr ? d0->rateHz : 44100.0,
+                                d0 != nullptr ? d0->bps : 16, &presetKeys);
+    }
     openIsOneClick = ! module->schema;
     warningLines.clear();
     if (openIsOneClick)
@@ -535,7 +548,7 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     else
         openLayout = fxlayout::Layout { module->name, {} };
     openApplicability = runner.check (targetId, *module);
-    touchedKeys.clear();
+    touchedKeys = presetKeys;
 
     applyButton = std::make_unique<Os8Button> ("Apply", os8::ButtonKind::primary);
     applyButton->setWantsKeyboardFocus (false);
@@ -553,6 +566,9 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
         if (openIsOneClick) { closeTray(); return; }
         working = openModule->defaults ? openModule->defaults() : se::Settings{};
         touchedKeys.clear();
+        const se::SoundDocument* d0 = targetDoc();
+        fxlayout::applyPresets (openModule->name, working, d0 != nullptr ? d0->rateHz : 44100.0,
+                                d0 != nullptr ? d0->bps : 16, &touchedKeys);
         prefillSpanFields();
         refreshTray();
         content->repaint();
@@ -563,6 +579,7 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     prefillSpanFields();
     refreshTray();
     layoutAll();
+    updateLatchedButtons();
     content->repaint();
 }
 
@@ -581,6 +598,14 @@ juce::Rectangle<int> EffectsPanelComponent::groupFrame (int index) const
                                                                  : juce::Rectangle<int>();
 }
 
+void EffectsPanelComponent::updateLatchedButtons()
+{
+    // The group button whose tray is open reads as pressed.
+    for (auto& g : groups)
+        for (auto& e : g->entries)
+            e.button->setLatched (openModule != nullptr && e.module == openModule);
+}
+
 void EffectsPanelComponent::closeTray()
 {
     if (openModule != nullptr) remembered[openModule->name] = working;
@@ -588,6 +613,7 @@ void EffectsPanelComponent::closeTray()
     openModule = nullptr;
     applyButton.reset();
     resetButton.reset();
+    updateLatchedButtons();
     layoutAll();
     content->repaint();
 }
@@ -822,7 +848,9 @@ void EffectsPanelComponent::buildTray()
                         }
 
                         touchedKeys.insert (key);
+                        reformatFields = true;      // what was typed settles into the field's own format
                         refreshTray();
+                        reformatFields = false;
                         (void) fp;
                     };
                     fp->onReturn = [this] { applyFromKeyboard(); };
@@ -840,7 +868,13 @@ void EffectsPanelComponent::buildTray()
                             const auto bytes = (size_t) std::max<int64_t> (0, se::getInt (working, key));
                             shown = doc != nullptr ? se::bytesToUnit (bytes, unit, doc->rateHz, doc->bps) : (double) bytes;
                             step = Os8TextField::stepFor (fieldUnit (unit));
-                            places = Os8TextField::decimalsFor (fieldUnit (unit));
+                            // A duration is a whole number of samples, so 5000 ms at 22.25 kHz is
+                            // really 4999.97: anything within one sample of a round number reads
+                            // as that number ("250", not "250.00").
+                            const double oneSample = doc != nullptr
+                                ? se::bytesToUnit ((size_t) doc->frameSize(), unit, doc->rateHz, doc->bps) : 0.0;
+                            if (std::abs (shown - std::round (shown)) <= oneSample) shown = std::round (shown);
+                            places = shown == std::floor (shown) ? 0 : Os8TextField::decimalsFor (fieldUnit (unit));
                             lo = 0.0;
                         }
                         else if (flags & fxlayout::fixed16)
@@ -870,7 +904,8 @@ void EffectsPanelComponent::buildTray()
                         fp->setNumeric (step, places, lo, hi);
                         // Re-seating the text would drop a caret or a selection the user is
                         // using; only touch a field whose number actually moved.
-                        if (fp->getText().isEmpty() || std::abs (fp->getValue() - shown) > 0.5 * std::pow (10.0, -places))
+                        if (reformatFields || fp->getText().isEmpty()
+                            || std::abs (fp->getValue() - shown) > 0.5 * std::pow (10.0, -places))
                             fp->setValue (shown);
                         fp->setEnabled (gateOn (gate));
                     });
@@ -903,7 +938,7 @@ void EffectsPanelComponent::buildTray()
                     else if (c.kind == Kind::setup)
                         items.add ("Custom");   // step 6 fills this with the saved setups
                     else if (c.kind == Kind::curvePreset)
-                        items = { "Linear - 100%", "Custom" };
+                        items = { "Custom", "Expo - 0%", "Linear - 100%", "Log - 200%" };
                     else if (c.kind == Kind::ratePreset)
                     {
                         for (const auto& r : kRates) items.add (r.label);
@@ -915,6 +950,7 @@ void EffectsPanelComponent::buildTray()
                         for (int o = 0; o <= 9; ++o) items.add ("Oct." + juce::String (o));
 
                     dd->setItems (items);
+                    if (c.kind == Kind::curvePreset) { dd->setDisabledItem (0); dd->setSeparatorAfter (0); }
                     auto* dp = static_cast<Os8Dropdown*> (add (std::move (dd), { x, y, c.w, os8::kDropdownHeight }));
                     const Kind kind = c.kind;
 
@@ -930,8 +966,8 @@ void EffectsPanelComponent::buildTray()
                     {
                         if (kind == Kind::choice)
                             working[key] = se::Value ((int64_t) (i + 1));
-                        else if (kind == Kind::curvePreset && i == 0)
-                            working[key] = se::Value ((int64_t) 100);
+                        else if (kind == Kind::curvePreset && i >= 1)
+                            working[key] = se::Value ((int64_t) (i == 1 ? 0 : i == 2 ? 100 : 200));
                         else if (kind == Kind::ratePreset && i < (int) std::size (kRates))
                             working[key] = se::Value ((int64_t) se::doubleToFixed (kRates[i].hz));
                         else if (kind == Kind::notePick || kind == Kind::octavePick)
@@ -950,7 +986,10 @@ void EffectsPanelComponent::buildTray()
                         if (kind == Kind::choice)
                             sel = (int) se::getInt (working, key, 1) - 1;
                         else if (kind == Kind::curvePreset)
-                            sel = se::getInt (working, key, 100) == 100 ? 0 : 1;
+                        {
+                            const auto v = se::getInt (working, key, 100);
+                            sel = v == 0 ? 1 : v == 100 ? 2 : v == 200 ? 3 : 0;
+                        }
                         else if (kind == Kind::ratePreset)
                         {
                             sel = (int) std::size (kRates);
@@ -1046,10 +1085,11 @@ void EffectsPanelComponent::buildTray()
 
 void EffectsPanelComponent::Content::paintHeader (Graphics& g)
 {
-    paintBevelFrame (g, { 0, 0, kFrameW, kHeaderH }, false);
-
     const se::SoundDocument* doc = owner.targetDoc();
     auto* w = owner.targetId != 0 ? owner.engine.windowById (owner.targetId) : nullptr;
+
+    // The header wears the selected Window's theme, as its mixer strip does.
+    paintBevelFrame (g, { 0, 0, kFrameW, kHeaderH }, false, w != nullptr ? os8::themeColour (w->tint) : colour::gray100);
 
     // The mixer slot, boxed, as in the Sound window's own status row.
     const Rectangle<int> box (9, 27, 16, 16);
