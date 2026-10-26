@@ -727,6 +727,12 @@ void Os8ComboPlay::openMenu()
     // The menu's right edge sits on the play face's right edge (x = 26).
     const auto anchor = top->getLocalPoint (this, juce::Point<int> (kStripX - 1 - os8::kDirectionMenuWidth, 0));
     menu->setTopLeftPosition (anchor);
+    // The menu lives on the top-level component, outside the canvas's zoomed world,
+    // so it must wear the zoom the combo is drawn at (its position already follows).
+    const float zoom = (float) (top->getLocalPoint (this, juce::Point<int> (1000, 0)).x
+                                - top->getLocalPoint (this, juce::Point<int> (0, 0)).x) / 1000.0f;
+    if (zoom > 0.0f && ! juce::approximatelyEqual (zoom, 1.0f))
+        menu->setTransform (juce::AffineTransform::scale (zoom));
     top->addAndMakeVisible (*menu);
     menu->enterModalState (true);
     repaint();
