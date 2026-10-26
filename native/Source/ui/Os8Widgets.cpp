@@ -732,7 +732,12 @@ void Os8ComboPlay::openMenu()
     const float zoom = (float) (top->getLocalPoint (this, juce::Point<int> (1000, 0)).x
                                 - top->getLocalPoint (this, juce::Point<int> (0, 0)).x) / 1000.0f;
     if (zoom > 0.0f && ! juce::approximatelyEqual (zoom, 1.0f))
+    {
+        // A transform scales the component's position as well as its size (it is
+        // applied to the parent-space point), so seat it at anchor / zoom.
         menu->setTransform (juce::AffineTransform::scale (zoom));
+        menu->setTopLeftPosition (juce::roundToInt ((float) anchor.x / zoom), juce::roundToInt ((float) anchor.y / zoom));
+    }
     top->addAndMakeVisible (*menu);
     menu->enterModalState (true);
     repaint();
