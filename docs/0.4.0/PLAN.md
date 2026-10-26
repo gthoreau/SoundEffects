@@ -143,7 +143,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - UI: capture the running standalone at 1× and compare it with the Figma node capture. Drive-test the feature in the app.
 
 ## Open questions
-- **"Set Loop" (spec) or "Loop Selection" (Figma menu, 569:13068)?** The menus use the spec's wording for now. Same question for "Audio/Midi Settings" (spec) and "Audio/Midi Setup" (Figma): the menu uses Figma's.
+- ~~**"Set Loop" (spec) or "Loop Selection" (Figma menu, 569:13068)?**~~ Settled: "Set Loop" (the author fixed Figma). Open: same question for "Audio/Midi Settings" (spec) and "Audio/Midi Setup" (Figma): the menu uses Figma's.
 - **The top bar's black outline and 18 px top corners** (700:14311) are not drawn: in the standalone the real window supplies its own border and corners, and in a plugin the host window does. Say so if the outline is wanted anyway.
 
 ## How to compare with Figma, pixel by pixel
@@ -169,6 +169,8 @@ Rules learned this way, all in `ui/Os8.cpp`:
 - **Mixer (4.2):** slots live in the engine (`Window::slot`, `Engine::lowestFreeSlot/windowInSlot/highestSlot/moveToSlot/normaliseSlots`); `applyEngineState` normalises them, so a v1 canvas comes up seated in creation order. The Active strip is 2 px taller, as in Figma, so the rows below it move down when the selection changes. A strip silenced by somebody else's solo wears the muted look with its M box unlit (Figma has no such state). `--mixer-snapshot <dir>` renders every strip state, the five tinted example strips and the panel for the pixel diff.
 - **The state blob is already v2** (4.1): `kEngineStateVersion` = 2 appends each Window's `balance` and mixer `slot`; v1 blobs parse with balance 0 and no slot. Step 10's project folder must therefore write **v3**, not "v2".
 - **The tokens live in `ui/Os8.h`, not in a separate `ui/Theme`**: the System colours, `kThemes[24]`, `themeColour()` and `themeName()`. `sys7::tintFromPalette` and `kNumTints` forward there until Sys7 is gone.
+
+- **Step 7 left (found by the author after 7.3):** Set Loop does not take effect during looping playback: `Transport::play` snapshots the loop range when playback starts (selection or Set Loop region), so changing the region, or the selection, mid-loop does nothing until Stop and Play. 8.1/8.2 rework that mapping (per-track phase, selection-loop aware, glitch-free switching): make the loop range live there. Figma's menu now says "Set Loop" (the author fixed it), settling the open question above.
 
 ## Journal
 One line per finished sub-step: date · sub-step · what was verified · commit.
