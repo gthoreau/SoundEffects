@@ -40,6 +40,21 @@ struct DocumentInit
     size_t sizeBytes = 0;         // initial length of each track, in bytes
 };
 
+/** What File > New Sound (and the Sound a fresh canvas opens with) makes: one empty
+    Track at 44.1 kHz, 16 bit (0.4.0 spec, File menu note 1). DocumentInit's own
+    defaults stay the 0.9.2 ones (22254.5454 Hz, 8 bit) for the effects and fixtures
+    that build documents without saying. The colour is not chosen here: the canvas
+    draws a random theme nobody on the board is wearing when it first sees a Window. */
+inline DocumentInit newSoundInit()
+{
+    DocumentInit init;
+    init.name = "untitled sound";
+    init.rateHz = 44100.0;
+    init.bps = 16;
+    init.numTracks = 1;
+    return init;
+}
+
 class SoundDocument
 {
 public:

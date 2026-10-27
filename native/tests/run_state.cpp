@@ -399,6 +399,16 @@ int main()
         check (! se::readSefx (dir / "Evil.sefx", back, err), "project: an asset path that climbs out of Assets/ is refused");
     }
 
+    // --- New Sound defaults (10.4) --------------------------------------------------
+    {
+        se::SoundDocument fresh (se::newSoundInit());
+        check (fresh.numTracks() == 1 && fresh.rateHz == 44100.0 && fresh.bps == 16
+                 && fresh.tracks[0].data.empty() && fresh.name == "untitled sound",
+               "new Sound: one empty Track, 44.1 kHz, 16 bit");
+        se::DocumentInit legacy;
+        check (legacy.rateHz == 22254.5454 && legacy.bps == 8, "DocumentInit's own defaults are untouched");
+    }
+
     // --- Export Sound / Import Sound -----------------------------------------------
     {
         std::string err;

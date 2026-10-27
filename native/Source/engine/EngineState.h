@@ -116,6 +116,9 @@ bool parseEngineState (const void* data, size_t sizeBytes, EngineState& out);
 
 // --- Engine <-> state (message thread only) ---------------------------------
 
+/** One Window's state (Export Sound). False if `id` is not open. Message thread only. */
+bool captureWindowState (Engine& engine, uint64_t id, WindowState& out);
+
 /** Snapshot every open Window from its UI document and mixer atomics. */
 EngineState captureEngineState (Engine& engine);
 

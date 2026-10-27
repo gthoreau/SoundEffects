@@ -57,6 +57,8 @@ public:
     void newWindow();
     /** Import an audio file into a new sound Window. */
     void openFile();
+    void exportSound();   // File > Export Sound...
+    void importSound();   // File > Import Sound...
     /** Throw the focused Window away. No-op when nothing is focused; there is no
         undo in this program, but a Window is cheap to remake and the close box has
         always done this without asking. */

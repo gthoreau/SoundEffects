@@ -365,6 +365,44 @@ bool parseEngineState (const void* data, size_t sizeBytes, EngineState& out)
 
 // ============================ Engine <-> state ==============================
 
+bool captureWindowState (Engine& engine, uint64_t id, WindowState& w)
+{
+    auto* window = engine.windowById (id);
+    const auto* doc = engine.editDoc (id);   // the UI document: ours to read
+    if (window == nullptr || doc == nullptr) return false;
+
+    w = WindowState();
+    w.name     = doc->name;
+    w.rateHz   = doc->rateHz;
+    w.bps      = doc->bps;
+    w.baseFreq = doc->baseFreq;
+    w.tracks   = doc->tracks;
+
+    w.selSt         = doc->selSt;
+    w.selEnd        = doc->selEnd;
+    w.firstSelTrack = doc->firstSelTrack;
+    w.lastSelTrack  = doc->lastSelTrack;
+    w.loopSt        = doc->loopSt;
+    w.loopEnd       = doc->loopEnd;
+    w.chunks        = doc->chunks;
+
+    w.x       = window->x;
+    w.y       = window->y;
+    w.width   = window->width;
+    w.height  = window->height;
+    w.gridCol = window->gridCol;
+    w.gridRow = window->gridRow;
+    w.tint    = window->tint;
+
+    w.gain   = window->gain.load (std::memory_order_relaxed);
+    w.muted  = window->muted.load (std::memory_order_relaxed);
+    w.soloed = window->soloed.load (std::memory_order_relaxed);
+    w.balance = window->balance.load (std::memory_order_relaxed);
+    w.slot    = window->slot;
+    w.direction = window->direction.load (std::memory_order_relaxed);
+    return true;
+}
+
 EngineState captureEngineState (Engine& engine)
 {
     EngineState state;
@@ -372,41 +410,9 @@ EngineState captureEngineState (Engine& engine)
 
     for (uint64_t id : engine.windowIds())
     {
-        auto* window = engine.windowById (id);
-        const auto* doc = engine.editDoc (id);   // the UI document: ours to read
-        if (window == nullptr || doc == nullptr) continue;
-
         WindowState w;
-        w.name     = doc->name;
-        w.rateHz   = doc->rateHz;
-        w.bps      = doc->bps;
-        w.baseFreq = doc->baseFreq;
-        w.tracks   = doc->tracks;
-
-        w.selSt         = doc->selSt;
-        w.selEnd        = doc->selEnd;
-        w.firstSelTrack = doc->firstSelTrack;
-        w.lastSelTrack  = doc->lastSelTrack;
-        w.loopSt        = doc->loopSt;
-        w.loopEnd       = doc->loopEnd;
-        w.chunks        = doc->chunks;
-
-        w.x       = window->x;
-        w.y       = window->y;
-        w.width   = window->width;
-        w.height  = window->height;
-        w.gridCol = window->gridCol;
-        w.gridRow = window->gridRow;
-        w.tint    = window->tint;
-
-        w.gain   = window->gain.load (std::memory_order_relaxed);
-        w.muted  = window->muted.load (std::memory_order_relaxed);
-        w.soloed = window->soloed.load (std::memory_order_relaxed);
-        w.balance = window->balance.load (std::memory_order_relaxed);
-        w.slot    = window->slot;
-        w.direction = window->direction.load (std::memory_order_relaxed);
-
-        state.windows.push_back (std::move (w));
+        if (captureWindowState (engine, id, w))
+            state.windows.push_back (std::move (w));
     }
 
     return state;

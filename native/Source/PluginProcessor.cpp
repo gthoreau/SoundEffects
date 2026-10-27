@@ -9,10 +9,7 @@ SoundEffectsAudioProcessor::SoundEffectsAudioProcessor()
 {
     // Seed the desktop with one window so there is something to hear/see. The UI
     // will let the user spawn, move, mosaic and trash windows on the canvas.
-    se::DocumentInit init;
-    init.name = "untitled sound #1";
-    init.numTracks = 1;
-    engineImpl.addWindow (std::make_unique<se::SoundDocument> (init));
+    engineImpl.addWindow (std::make_unique<se::SoundDocument> (se::newSoundInit()));
 
     // Reclaim Windows the audio thread retires (deletes happen here, msg thread).
     startTimerHz (30);   // retired Windows, and the recorder drains the capture ring

@@ -2,7 +2,9 @@
 
 #include "engine/Import.h"
 #include "ui/AppCommands.h"
+#include "engine/Project.h"
 #include "ui/AppPrefs.h"
+#include "ui/FilePopups.h"
 #include "ui/Os8Icons.h"
 
 namespace {
@@ -205,6 +207,8 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
     {
         case cmd::newSound: case cmd::openSound: active = true; break;
         case cmd::closeSound:    active = w != nullptr; break;
+        case cmd::importSound:   active = true; break;
+        case cmd::exportSound:   active = w != nullptr; break;
 
         case cmd::cut:           active = can (WindowComponent::Action::cut); break;
         case cmd::copy:          active = can (WindowComponent::Action::copy); break;
@@ -297,6 +301,8 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         case cmd::newSound:      newWindow(); return true;
         case cmd::openSound:     openFile(); return true;
         case cmd::closeSound:    closeFocusedWindow(); return true;
+        case cmd::importSound:   importSound(); return true;
+        case cmd::exportSound:   exportSound(); return true;
 
         case cmd::cut:           return act (WindowComponent::Action::cut);
         case cmd::copy:          return act (WindowComponent::Action::copy);
@@ -646,10 +652,7 @@ void SoundEffectsAudioProcessorEditor::setKeyboardShown (bool shown)
 
 void SoundEffectsAudioProcessorEditor::newWindow()
 {
-    se::DocumentInit init;
-    init.name = "untitled sound";
-    init.numTracks = 1;
-    processorRef.engine().addWindow (std::make_unique<se::SoundDocument> (init));
+    processorRef.engine().addWindow (std::make_unique<se::SoundDocument> (se::newSoundInit()));
 }
 
 void SoundEffectsAudioProcessorEditor::closeFocusedWindow()
@@ -694,6 +697,85 @@ void SoundEffectsAudioProcessorEditor::openFile()
         auto doc = se::makeDocumentFromFloat (channels, reader->sampleRate, bps,
                                               file.getFileNameWithoutExtension().toStdString());
         processorRef.engine().addWindow (std::move (doc));
+    });
+}
+
+namespace {
+
+void showFileFailure (const juce::String& title, const juce::String& message)
+{
+    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, title, message);
+}
+
+} // namespace
+
+void SoundEffectsAudioProcessorEditor::exportSound()
+{
+    const auto id = canvas.selectedWindowId();
+    auto* wc = canvas.windowComponentFor (id);
+    se::WindowState sound;
+    if (wc == nullptr || ! se::captureWindowState (processorRef.engine(), id, sound)) return;
+
+    auto popup = filepopups::exportSound (sound);
+    popup->onDismiss = [safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this),
+                        sound = std::make_shared<se::WindowState> (std::move (sound))] (int result)
+    {
+        if (result != 1 || safe == nullptr) return;
+
+        const auto start = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                               .getChildFile (juce::String (se::safeFileName (sound->name)) + se::kEngineStateFileSuffix);
+        safe->chooser = std::make_unique<juce::FileChooser> ("Export Sound", start,
+                                                             "*" + juce::String (se::kEngineStateFileSuffix));
+        safe->chooser->launchAsync (juce::FileBrowserComponent::saveMode
+                                        | juce::FileBrowserComponent::canSelectFiles
+                                        | juce::FileBrowserComponent::warnAboutOverwriting,
+                                    [sound] (const juce::FileChooser& fc)
+        {
+            const auto file = fc.getResult();
+            if (file == juce::File()) return;
+
+            std::string err;
+            if (! se::writeSoundExport (file.getFullPathName().toStdString(), *sound, err))
+                showFileFailure ("Couldn't export the Sound", err);
+        });
+    };
+    auto* raw = popup.release();
+    raw->showOver (*wc, { (wc->getWidth() - raw->getWidth()) / 2, (wc->getHeight() - raw->getHeight()) / 2 });
+}
+
+void SoundEffectsAudioProcessorEditor::importSound()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Import Sound",
+        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+        "*" + juce::String (se::kEngineStateFileSuffix));
+
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this)]
+                          (const juce::FileChooser& fc)
+    {
+        const auto file = fc.getResult();
+        if (file == juce::File() || safe == nullptr) return;
+
+        auto state = std::make_shared<se::EngineState>();
+        std::string err;
+        if (! se::readSefx (file.getFullPathName().toStdString(), *state, err))
+        {
+            showFileFailure ("Couldn't import from " + file.getFileName(), err);
+            return;
+        }
+
+        auto popup = filepopups::importSound (file.getFileName(), state->windows,
+            [safe, state] (std::vector<size_t> picked)
+            {
+                if (safe == nullptr) return;
+                se::EngineState chosen;
+                for (size_t i : picked) chosen.windows.push_back (std::move (state->windows[i]));
+                if (! safe->processorRef.importState (chosen))
+                    showFileFailure ("Couldn't import every Sound", "The canvas has no room for them all.");
+            });
+        auto* raw = popup.release();
+        raw->showOver (safe->canvas, { (safe->canvas.getWidth() - raw->getWidth()) / 2,
+                                       (safe->canvas.getHeight() - raw->getHeight()) / 2 });
     });
 }
 
