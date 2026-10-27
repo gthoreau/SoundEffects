@@ -45,6 +45,11 @@ void SoundEffectsAudioProcessor::setStateInformation (const void* data, int size
     if (! se::parseEngineState (data, static_cast<size_t> (sizeInBytes), state))
         return;   // not ours, or damaged: keep the canvas the user already has
 
+    loadState (std::move (state));
+}
+
+void SoundEffectsAudioProcessor::loadState (se::EngineState state)
+{
     {
         const std::lock_guard<std::mutex> lock (pendingStateLock);
         pendingState = std::move (state);
@@ -62,6 +67,16 @@ void SoundEffectsAudioProcessor::setStateInformation (const void* data, int size
     {
         triggerAsyncUpdate();
     }
+}
+
+se::EngineState SoundEffectsAudioProcessor::captureState()
+{
+    return se::captureEngineState (engineImpl);
+}
+
+bool SoundEffectsAudioProcessor::importState (const se::EngineState& state)
+{
+    return se::importEngineState (engineImpl, state);
 }
 
 void SoundEffectsAudioProcessor::handleAsyncUpdate()

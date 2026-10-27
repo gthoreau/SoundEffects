@@ -85,6 +85,8 @@ add_executable(state-tests
     run_state.cpp
     ${ENGINE_DIR}/engine/Engine.cpp
     ${ENGINE_DIR}/engine/EngineState.cpp
+    ${ENGINE_DIR}/engine/Project.cpp
+    ${ENGINE_DIR}/engine/Wav.cpp
     ${ENGINE_DIR}/engine/Transport.cpp
     ${ENGINE_DIR}/engine/Mixer.cpp
     ${ENGINE_SOURCES})

@@ -13,7 +13,12 @@
 #include "engine/EngineState.h"
 #include "engine/SampleFormat.h"
 
+#include "engine/Project.h"
+#include "engine/Wav.h"
+
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -77,6 +82,7 @@ void buildCanvas (se::Engine& engine)
     wa->gridCol = -2; wa->gridRow = 3; wa->tint = 7;
     wa->gain = 0.25f; wa->muted = true; wa->soloed = false;
     wa->balance = -0.5f; wa->slot = 4;
+    engine.setDirection (a, se::PlayDirection::pingPong);
 
     auto* wb = engine.windowById (b);
     wb->x = 900.0f; wb->y = 128.0f; wb->width = 240.0f; wb->height = 180.0f;
@@ -132,6 +138,9 @@ void checkRestored (se::Engine& engine)
     check (wb->gain.load() == 1.75f && wb->soloed.load(), "mixer channel: solo");
     check (wa->balance.load() == -0.5f && wb->balance.load() == 1.0f, "mixer channel: balance (v2)");
     check (wa->slot == 4 && wb->slot == 0, "mixer slot (v2)");
+    check (wa->direction.load() == (uint8_t) se::PlayDirection::pingPong
+             && wb->direction.load() == (uint8_t) se::PlayDirection::forward,
+           "playback direction per Window (v3)");
 }
 
 /** A blob the reader must refuse — without reading past it and without crashing. */
@@ -196,23 +205,38 @@ int main()
         engine.collectRetired();
     }
 
-    // --- a v1 blob (0.3.x) still opens -----------------------------------------
-    // v2 only APPENDS balance + slot to each Window. With one Window those are the
-    // blob's last 8 bytes, so dropping them and stamping version 1 gives exactly
-    // what 0.3 wrote; it must come back centred and unseated.
+    // --- v1 (0.3.x) and v2 (0.4 dev) blobs still open ---------------------------
+    // v2 appended balance + slot to each Window, v3 a header byte (audio mode) and
+    // the direction. With one Window those are at known places, so cutting them and
+    // stamping the older version gives exactly what the older writer produced.
+    se::EngineState one;
+    one.windows.push_back (state.windows[0]);
+    const auto v3 = se::serializeState (one);
+    auto toV2 = [] (std::vector<uint8_t> b)
     {
-        se::EngineState one;
-        one.windows.push_back (state.windows[0]);
-        auto v1 = se::serializeState (one);
+        b.pop_back();              // direction
+        b.erase (b.begin() + 8);   // audio mode
+        b[4] = 2;
+        return b;
+    };
+    {
+        auto v2 = toV2 (v3);
+        se::EngineState old;
+        check (se::parseEngineState (v2.data(), v2.size(), old) && old.windows.size() == 1,
+               "a v2 blob parses");
+        check (! old.windows.empty() && old.windows[0].balance == -0.5f && old.windows[0].slot == 4
+                 && old.windows[0].direction == 0 && ! old.externalAudio,
+               "v2: balance and slot kept, direction Forward");
+
+        auto v1 = v2;
         v1.resize (v1.size() - 8);
         v1[4] = 1;
-
-        se::EngineState old;
-        check (se::parseEngineState (v1.data(), v1.size(), old) && old.windows.size() == 1,
+        se::EngineState older;
+        check (se::parseEngineState (v1.data(), v1.size(), older) && older.windows.size() == 1,
                "a v1 blob parses");
-        check (! old.windows.empty() && old.windows[0].balance == 0.0f
-                 && old.windows[0].slot == se::Window::kNoSlot
-                 && old.windows[0].gain == 0.25f,
+        check (! older.windows.empty() && older.windows[0].balance == 0.0f
+                 && older.windows[0].slot == se::Window::kNoSlot
+                 && older.windows[0].gain == 0.25f && older.sourceVersion == 1,
                "v1: centred balance, no slot, the rest intact");
     }
 
@@ -239,12 +263,12 @@ int main()
         // A length field claiming more than the blob could possibly hold must be
         // refused BEFORE anything is resized to match it.
         auto huge = blob;
-        for (int i = 0; i < 8; ++i) huge[12 + (size_t) i] = 0xff;   // the first name's length
+        for (int i = 0; i < 8; ++i) huge[13 + (size_t) i] = 0xff;   // the first name's length
         checkRejects (huge, "an absurd length field");
     }
     {
         auto header = blob;
-        header.resize (12);   // header promising windows that are not there
+        header.resize (13);   // header promising windows that are not there
         checkRejects (header, "a header with no Windows behind it");
     }
 
@@ -275,6 +299,141 @@ int main()
         }
         check (survived, "4000 damaged blobs: refused or sane, never in between");
     }
+
+    // --- WAV assets: lossless at every depth ---------------------------------------
+    {
+        bool all = true;
+        for (int bps : { 1, 8, 12, 16, 17, 24, 32 })
+        {
+            const int fs = se::frameSizeFor (bps);
+            se::Track t;
+            for (size_t i = 0; i < (size_t) fs * 97 + 1; ++i)      // a ragged tail on purpose
+                t.data.push_back ((uint8_t) (i * 37 + 11));
+            std::vector<uint8_t> wav, back;
+            se::encodeTrackWav (t, 22254.5454, bps, wav);
+            all = all && se::decodeTrackWav (wav.data(), wav.size(), bps, t.data.size(), back) && back == t.data;
+            all = all && ! se::decodeTrackWav (wav.data(), wav.size(), bps, t.data.size() + 1, back);
+            if (fs != 3) all = all && ! se::decodeTrackWav (wav.data(), wav.size(), fs == 1 ? 16 : 8, t.data.size(), back);
+        }
+        check (all, "wav: every depth round-trips byte for byte; a wrong length or depth is refused");
+
+        se::Track empty;
+        std::vector<uint8_t> wav, back { 1 };
+        se::encodeTrackWav (empty, 44100.0, 16, wav);
+        check (se::decodeTrackWav (wav.data(), wav.size(), 16, 0, back) && back.empty(), "wav: an empty Track");
+        check (wav[24] == 0x44 && wav[25] == 0xac, "wav: the header says 44100 Hz");
+    }
+
+    // --- the project folder, through a real directory ------------------------------
+    namespace fsys = std::filesystem;
+    const fsys::path root = fsys::temp_directory_path() / "se-state-tests-project";
+    fsys::remove_all (root);
+    {
+        se::EngineState canvas = state;
+        canvas.windows[0].rateHz = 22254.5454;                // not an integer
+        canvas.windows[1].bps = 12;                            // a depth with a padded container
+        canvas.windows[1].tracks[0].data.resize (128 * 2);
+        for (size_t i = 0; i < canvas.windows[1].tracks[0].data.size(); ++i)
+            canvas.windows[1].tracks[0].data[i] = (uint8_t) (i * 5 + 3);
+
+        const fsys::path dir = root / "My Canvas";
+        std::string err;
+        check (se::writeProject (dir, "My Canvas", canvas, err), "project: written (" + err + ")");
+        check (fsys::exists (dir / "My Canvas.sefx") && fsys::is_directory (dir / "Assets"),
+               "project: <Name>/<Name>.sefx and Assets/");
+        size_t wavs = 0;
+        for (auto& e : fsys::directory_iterator (dir / "Assets")) wavs += e.path().extension() == ".wav";
+        check (wavs == 3, "project: one WAV per Track (2 + 1)");
+        check (se::isProjectFile (dir / "My Canvas.sefx"), "project: recognised as a project");
+        check (fsys::file_size (dir / "My Canvas.sefx") < 1000, "project: the .sefx holds no audio");
+
+        se::EngineState back;
+        check (se::readSefx (dir / "My Canvas.sefx", back, err), "project: read back (" + err + ")");
+        bool same = back.windows.size() == canvas.windows.size();
+        for (size_t i = 0; same && i < back.windows.size(); ++i)
+        {
+            const auto& a = canvas.windows[i];
+            const auto& b = back.windows[i];
+            same = same && a.name == b.name && a.rateHz == b.rateHz && a.bps == b.bps
+                 && a.tracks.size() == b.tracks.size() && a.direction == b.direction
+                 && a.slot == b.slot && a.tint == b.tint && a.gain == b.gain;
+            for (size_t t = 0; same && t < a.tracks.size(); ++t)
+                same = a.tracks[t].data == b.tracks[t].data && a.tracks[t].volume == b.tracks[t].volume
+                    && a.tracks[t].outRight == b.tracks[t].outRight;
+        }
+        check (same, "project: exact rate, true depth, ragged lengths, audio bytes and mixer all identical");
+
+        // Saving again under a new Sound name replaces its stems and removes the old ones.
+        canvas.windows[1].name = "snare";
+        check (se::writeProject (dir, "My Canvas", canvas, err), "project: saved over itself");
+        bool old = false, fresh = false;
+        for (auto& e : fsys::directory_iterator (dir / "Assets"))
+        {
+            old = old || e.path().filename().string().find ("hat") != std::string::npos;
+            fresh = fresh || e.path().filename().string().find ("snare") != std::string::npos;
+        }
+        check (! old && fresh, "project: a renamed Sound's old stem is removed, the new one written");
+        { std::ofstream(dir / "Assets" / "mine.wav") << "x"; }
+        se::writeProject (dir, "My Canvas", canvas, err);
+        check (fsys::exists (dir / "Assets" / "mine.wav"), "project: a file it did not write is left alone");
+
+        // Damaged projects say so instead of opening empty.
+        const fsys::path any = dir / "Assets" / "01 kick loop - track 1.wav";
+        fsys::remove (any);
+        check (! se::readSefx (dir / "My Canvas.sefx", back, err) && err.find ("missing") != std::string::npos,
+               "project: a missing asset is reported");
+        se::writeProject (dir, "My Canvas", canvas, err);
+        { std::ofstream (any, std::ios::binary | std::ios::trunc) << "RIFF"; }
+        check (! se::readSefx (dir / "My Canvas.sefx", back, err), "project: a damaged asset is refused");
+
+        // A hand-edited .sefx pointing out of Assets/ is not followed.
+        se::EngineState evil = canvas;
+        evil.externalAudio = true;
+        for (auto& w : evil.windows)
+        {
+            w.assetPaths.assign (w.tracks.size(), "Assets/../../secret.wav");
+            w.assetBytes.assign (w.tracks.size(), 0);
+        }
+        const auto eb = se::serializeState (evil);
+        { std::ofstream f (dir / "Evil.sefx", std::ios::binary); f.write ((const char*) eb.data(), (std::streamsize) eb.size()); }
+        check (! se::readSefx (dir / "Evil.sefx", back, err), "project: an asset path that climbs out of Assets/ is refused");
+    }
+
+    // --- Export Sound / Import Sound -----------------------------------------------
+    {
+        std::string err;
+        const fsys::path file = root / "kick.sefx";
+        check (se::writeSoundExport (file, state.windows[0], err), "export: written");
+        check (! se::isProjectFile (file), "export: not a project (audio embedded)");
+
+        se::EngineState ex;
+        check (se::readSefx (file, ex, err) && ex.windows.size() == 1, "export: reads as a one-Sound .sefx");
+        check (ex.windows[0].tracks[1].data.size() == 211 && ex.windows[0].slot == se::Window::kNoSlot
+                 && ! ex.windows[0].soloed && ex.windows[0].direction == state.windows[0].direction,
+               "export: audio embedded, slot and solo dropped, direction kept");
+
+        // Import onto a canvas whose slots 0 and 2 are taken.
+        se::Engine engine;
+        engine.prepare (kRate, kBlock);
+        const uint64_t p = engine.addWindow (rampDocument ("p", 1, 16));
+        const uint64_t q = engine.addWindow (rampDocument ("q", 1, 16));
+        const uint64_t r = engine.addWindow (rampDocument ("r", 1, 16));
+        (void) q;
+        engine.windowById (p)->slot = 0;
+        engine.windowById (q)->slot = 2;
+        engine.windowById (r)->slot = 3;
+
+        se::EngineState two = ex;
+        two.windows.push_back (ex.windows[0]);
+        two.windows[1].name = "kick 2";
+        check (se::importEngineState (engine, two), "import: applied");
+        check (engine.windowIds().size() == 5, "import: added to the canvas, nothing replaced");
+        auto* a = engine.windowById (engine.windowIds()[3]);
+        auto* b = engine.windowById (engine.windowIds()[4]);
+        check (a && b && a->slot == 1 && b->slot == 4, "import: lands in the first free slots (1, then 4)");
+        check (a && a->x == 0.0f && a->gridCol == se::Window::kNoCell, "import: unplaced, the canvas places it");
+    }
+    fsys::remove_all (root);
 
     // --- effect setups (step 6): a duration is a time, not a byte count ---------------
     // 0.9.2 saved durations as bytes, so a setup changed speed with the sound's rate and

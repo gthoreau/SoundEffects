@@ -44,6 +44,7 @@
 #include "ui/MacWindowChrome.h"
 #include "ui/Os8Gallery.h"
 #include "engine/Import.h"
+#include "engine/Project.h"
 
 #include <memory>
 
@@ -187,13 +188,16 @@ public:
         when there is not one yet. */
     void saveCanvas()
     {
-        if (! canvasFile.existsAsFile())
+        // Only a project this version wrote is rewritten in place. A 0.3 / 0.4-dev
+        // single file, or an exported Sound, goes through Save As: that makes it a
+        // project folder next to it and leaves the original untouched. [NATIVE]
+        if (! canvasFile.existsAsFile() || ! se::isProjectFile (canvasFile.getFullPathName().toStdString()))
         {
             saveCanvasAs();
             return;
         }
 
-        writeCanvasTo (canvasFile);
+        writeProject (canvasFile.getParentDirectory(), canvasFile.getFileNameWithoutExtension());
     }
 
     /** Write the canvas to a file the user picks. The suffix makes this a document
@@ -205,16 +209,17 @@ public:
                                                            canvasFileOrDefault(),
                                                            canvasWildcard());
 
+        // No overwrite warning from the panel: it would speak about <Name>.sefx
+        // while what is replaced is the folder <Name>/. saveAsProject asks itself.
         const auto flags = juce::FileBrowserComponent::saveMode
-                         | juce::FileBrowserComponent::canSelectFiles
-                         | juce::FileBrowserComponent::warnAboutOverwriting;
+                         | juce::FileBrowserComponent::canSelectFiles;
 
         fileChooser->launchAsync (flags, [this] (const juce::FileChooser& fc)
         {
             const auto file = fc.getResult();
 
             if (file != juce::File())
-                writeCanvasTo (file);
+                saveAsProject (file);
         });
     }
 
@@ -283,26 +288,16 @@ public:
         told it is damaged. */
     bool loadCanvasFile (const juce::File& file)
     {
-        juce::MemoryBlock data;
+        se::EngineState state;
+        std::string err;
 
-        if (! file.loadFileAsData (data))
+        if (! se::readSefx (file.getFullPathName().toStdString(), state, err))
         {
-            showFailure ("Couldn't open the canvas",
-                         file.getFileName() + " could not be read.");
+            showFailure ("Couldn't open the canvas", err);
             return false;
         }
 
-        se::EngineState probe;
-
-        if (! se::parseEngineState (data.getData(), data.getSize(), probe))
-        {
-            showFailure ("Not a SoundEffects canvas",
-                         file.getFileName() + " is damaged, or was written by "
-                         "a newer version of SoundEffects than this one.");
-            return false;
-        }
-
-        pluginHolder->processor->setStateInformation (data.getData(), (int) data.getSize());
+        processor().loadState (std::move (state));
         setCanvasFile (file);
         return true;
     }
@@ -346,17 +341,43 @@ private:
             e->commands().commandStatusChanged();   // Revert may have just become available
     }
 
-    void writeCanvasTo (const juce::File& file)
+    SoundEffectsAudioProcessor& processor() const
     {
-        juce::MemoryBlock data;
-        pluginHolder->processor->getStateInformation (data);
+        return static_cast<SoundEffectsAudioProcessor&> (*pluginHolder->processor);
+    }
 
-        if (file.replaceWithData (data.getData(), data.getSize()))
-            setCanvasFile (file);
+    /** Save As: the panel hands back where and under what name; the canvas becomes
+        the folder `<Name>/` with `<Name>.sefx` and `Assets/` inside. Picked from
+        inside a folder already called <Name> it is written there, not nested. */
+    void saveAsProject (const juce::File& chosen)
+    {
+        const auto name = chosen.getFileNameWithoutExtension();
+        const auto parent = chosen.getParentDirectory();
+        const auto dir = parent.getFileName() == name ? parent : parent.getChildFile (name);
+        const auto target = dir.getChildFile (name + se::kEngineStateFileSuffix);
+
+        if (! target.existsAsFile())
+        {
+            writeProject (dir, name);
+            return;
+        }
+
+        askThenDo ("Replace the project \"" + name + "\"?",
+                   "The folder " + dir.getFileName() + " already holds a canvas with that name. "
+                   "Saving replaces it. This cannot be undone.",
+                   "Replace",
+                   [this, dir, name] { writeProject (dir, name); });
+    }
+
+    void writeProject (const juce::File& dir, const juce::String& name)
+    {
+        std::string err;
+
+        if (se::writeProject (dir.getFullPathName().toStdString(), name.toStdString(),
+                              processor().captureState(), err))
+            setCanvasFile (dir.getChildFile (name + se::kEngineStateFileSuffix));
         else
-            showFailure ("Couldn't save the canvas",
-                         "Nothing could be written to " + file.getFileName()
-                             + ". Check that the disk is not full and that the file is not locked.");
+            showFailure ("Couldn't save the canvas", err);
     }
 
     /** "*.sefx" — the chooser's filter, and on macOS the save panel's allowed file

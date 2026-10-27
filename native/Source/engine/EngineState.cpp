@@ -184,6 +184,7 @@ std::vector<uint8_t> serializeState (const EngineState& state)
 
     out.insert (out.end(), kMagic, kMagic + 4);
     putU32 (out, kEngineStateVersion);
+    putU8 (out, state.externalAudio ? 1 : 0);
     putU32 (out, static_cast<uint32_t> (state.windows.size()));
 
     for (const auto& w : state.windows)
@@ -216,7 +217,19 @@ std::vector<uint8_t> serializeState (const EngineState& state)
             putU8 (out, t.outLeft ? 1 : 0);
             putU8 (out, t.outRight ? 1 : 0);
             putI32 (out, t.volume);
-            putBytes (out, t.data);
+            if (state.externalAudio)
+            {
+                // A reader refuses a project whose references do not line up, so
+                // a writer that forgot them produces an unreadable file at once,
+                // not a silently empty Track later.
+                const size_t i = static_cast<size_t> (&t - w.tracks.data());
+                putString (out, i < w.assetPaths.size() ? w.assetPaths[i] : std::string());
+                putU64 (out, i < w.assetBytes.size() ? w.assetBytes[i] : 0);
+            }
+            else
+            {
+                putBytes (out, t.data);
+            }
         }
 
         putF32 (out, w.x);
@@ -232,6 +245,7 @@ std::vector<uint8_t> serializeState (const EngineState& state)
         putU8 (out, w.soloed ? 1 : 0);
         putF32 (out, w.balance);
         putI32 (out, w.slot);
+        putU8 (out, w.direction);
     }
 
     return out;
@@ -250,6 +264,13 @@ bool parseEngineState (const void* data, size_t sizeBytes, EngineState& out)
     if (! r.ok || version == 0 || version > kEngineStateVersion) return false;
 
     EngineState parsed;
+    parsed.sourceVersion = version;
+    if (version >= 3)
+    {
+        const uint8_t mode = r.u8();
+        if (! r.ok || mode > 1) return false;
+        parsed.externalAudio = mode == 1;
+    }
 
     // A Window costs far more than 8 bytes, but the floor only has to be non-zero
     // to stop a bogus count from reserving the world; the reads do the rest.
@@ -295,7 +316,15 @@ bool parseEngineState (const void* data, size_t sizeBytes, EngineState& out)
             tr.outLeft  = r.u8() != 0;
             tr.outRight = r.u8() != 0;
             tr.volume   = r.i32();
-            tr.data     = r.bytes();
+            if (parsed.externalAudio)
+            {
+                w.assetPaths.push_back (r.str());
+                w.assetBytes.push_back (r.u64());
+            }
+            else
+            {
+                tr.data = r.bytes();
+            }
             w.tracks.push_back (std::move (tr));
         }
 
@@ -314,6 +343,11 @@ bool parseEngineState (const void* data, size_t sizeBytes, EngineState& out)
         {
             w.balance = r.f32();
             w.slot    = r.i32();
+        }
+        if (version >= 3)
+        {
+            w.direction = r.u8();
+            if (w.direction > 2) return false;
         }
 
         // A depth outside 1..32 would make frameSize/getSample nonsense, so a blob
@@ -370,12 +404,73 @@ EngineState captureEngineState (Engine& engine)
         w.soloed = window->soloed.load (std::memory_order_relaxed);
         w.balance = window->balance.load (std::memory_order_relaxed);
         w.slot    = window->slot;
+        w.direction = window->direction.load (std::memory_order_relaxed);
 
         state.windows.push_back (std::move (w));
     }
 
     return state;
 }
+
+namespace {
+
+bool addFromState (Engine& engine, const WindowState& w, bool restore)
+{
+    DocumentInit init;
+    init.name      = w.name;
+    init.rateHz    = w.rateHz;
+    init.bps       = w.bps;
+    init.baseFreq  = w.baseFreq;
+    init.numTracks = 0;          // the saved tracks go in below, lengths intact
+
+    auto doc = std::make_unique<SoundDocument> (init);
+    doc->tracks = w.tracks;
+    doc->selSt = w.selSt;
+    doc->selEnd = w.selEnd;
+    doc->loopSt = w.loopSt;
+    doc->loopEnd = w.loopEnd;
+    doc->chunks = w.chunks;
+
+    // Clamp rather than trust: the track selection is a 1-based closed range
+    // and everything downstream indexes with it.
+    const int numTracks = doc->numTracks();
+    doc->firstSelTrack = std::max (1, std::min (w.firstSelTrack, numTracks));
+    doc->lastSelTrack  = std::max (doc->firstSelTrack, std::min (w.lastSelTrack, numTracks));
+
+    const uint64_t id = engine.addWindow (std::move (doc));
+    if (id == 0) return false;   // full: keep what we can
+
+    auto* window = engine.windowById (id);
+    if (window == nullptr) return false;
+
+    if (restore)
+    {
+        window->x       = w.x;
+        window->y       = w.y;
+        window->gridCol = w.gridCol;
+        window->gridRow = w.gridRow;
+    }
+    // else: unplaced (0, 0, no cell), so the canvas cascades it
+
+    window->width   = w.width;
+    window->height  = w.height;
+    window->tint    = w.tint;
+
+    window->gain.store (w.gain, std::memory_order_relaxed);
+    window->muted.store (w.muted, std::memory_order_relaxed);
+    window->soloed.store (restore && w.soloed, std::memory_order_relaxed);
+    window->balance.store (std::clamp (w.balance, -1.0f, 1.0f), std::memory_order_relaxed);
+    if (restore && w.slot >= 0) window->slot = w.slot;   // else the lowest free one addWindow gave it
+
+    if (w.direction != 0)
+    {
+        const auto dir = static_cast<PlayDirection> (w.direction);
+        engine.setDirection (id, dir);
+    }
+    return true;
+}
+
+} // namespace
 
 bool applyEngineState (Engine& engine, const EngineState& state)
 {
@@ -391,48 +486,17 @@ bool applyEngineState (Engine& engine, const EngineState& state)
         complete = engine.removeWindow (id) && complete;
 
     for (const auto& w : state.windows)
-    {
-        DocumentInit init;
-        init.name      = w.name;
-        init.rateHz    = w.rateHz;
-        init.bps       = w.bps;
-        init.baseFreq  = w.baseFreq;
-        init.numTracks = 0;          // the saved tracks go in below, lengths intact
+        complete = addFromState (engine, w, true) && complete;
 
-        auto doc = std::make_unique<SoundDocument> (init);
-        doc->tracks = w.tracks;
-        doc->selSt  = w.selSt;
-        doc->selEnd = w.selEnd;
-        doc->loopSt = w.loopSt;
-        doc->loopEnd = w.loopEnd;
-        doc->chunks = w.chunks;
+    engine.normaliseSlots();
+    return complete;
+}
 
-        // Clamp rather than trust: the track selection is a 1-based closed range
-        // and everything downstream indexes with it.
-        const int numTracks = doc->numTracks();
-        doc->firstSelTrack = std::max (1, std::min (w.firstSelTrack, numTracks));
-        doc->lastSelTrack  = std::max (doc->firstSelTrack, std::min (w.lastSelTrack, numTracks));
-
-        const uint64_t id = engine.addWindow (std::move (doc));
-        if (id == 0) { complete = false; continue; }   // full: keep what we can
-
-        auto* window = engine.windowById (id);
-        if (window == nullptr) { complete = false; continue; }
-
-        window->x       = w.x;
-        window->y       = w.y;
-        window->width   = w.width;
-        window->height  = w.height;
-        window->gridCol = w.gridCol;
-        window->gridRow = w.gridRow;
-        window->tint    = w.tint;
-
-        window->gain.store (w.gain, std::memory_order_relaxed);
-        window->muted.store (w.muted, std::memory_order_relaxed);
-        window->soloed.store (w.soloed, std::memory_order_relaxed);
-        window->balance.store (std::clamp (w.balance, -1.0f, 1.0f), std::memory_order_relaxed);
-        if (w.slot >= 0) window->slot = w.slot;   // else keep the lowest free one addWindow gave it
-    }
+bool importEngineState (Engine& engine, const EngineState& state)
+{
+    bool complete = true;
+    for (const auto& w : state.windows)
+        complete = addFromState (engine, w, false) && complete;
 
     engine.normaliseSlots();
     return complete;

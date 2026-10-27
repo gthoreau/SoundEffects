@@ -47,6 +47,13 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
+    /** The canvas as a value, for the standalone's project files (message thread). */
+    se::EngineState captureState();
+    /** Replace the canvas with `state` (any thread, applied on the message thread). */
+    void loadState (se::EngineState state);
+    /** Add the Sounds of `state` to the canvas, replacing nothing (message thread). */
+    bool importState (const se::EngineState& state);
+
     /** The engine the editor draws and edits. */
     se::Engine& engine() noexcept { return engineImpl; }
     /** The recorder: owned here so a take outlives the editor window being closed. */
