@@ -100,7 +100,15 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
                          [this] (uint64_t window) { return recordReadyFor (window); });
     p.recorder().onChanged = [this] (uint64_t window)
     {
-        if (auto* wc = canvas.windowComponentFor (window)) wc->invalidateWaveform();
+        // Every tick of a take: redraw only the frames it wrote. Anything else the
+        // recorder changes (a take starting: tracks added or cleared) redraws all.
+        auto* wc = canvas.windowComponentFor (window);
+        if (wc == nullptr) return;
+        size_t from = 0, to = 0;
+        if (processorRef.recorder().takeWrittenFrames (from, to))
+            wc->invalidateWaveformFrames (processorRef.recorder().targetTracks(), from, to);
+        else
+            wc->invalidateWaveform();
     };
     p.recorder().onFinished = [this] (uint64_t window)
     {

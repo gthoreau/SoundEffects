@@ -85,6 +85,9 @@ public:
         that rewrote every sample without changing the length. Amplify is exactly
         that, and without this the window keeps drawing the old waveform. */
     void invalidateWaveform();
+    /** A take wrote frames [fromFrame, toFrame) of `tracks` and changed nothing else:
+        only those blocks of the summary are re-read (Recorder::takeWrittenFrames). */
+    void invalidateWaveformFrames (const std::vector<int>& tracks, size_t fromFrame, size_t toFrame);
 
     /** The recorder the editor owns, and how a take is set up for this Window (its
         audio source and conversion). Null in a build with no recording. */
@@ -171,11 +174,14 @@ private:
     se::Window* engineWindow() const noexcept { return engine.windowById (id); }
     // Publish the edit AND invalidate the waveform cache (content may have changed
     // without a size change, e.g. silence — the size-based cache wouldn't notice).
-    void commit()   { engine.commitEdit (id); cachedWidth = -1; repaint(); }
+    void commit()   { engine.commitEdit (id); cachedWidth = -1; summaryStale = true; repaint(); }
     void resizeToFit();
     /** Show one of the Edit/Selection popups centred over this Window, field focused. */
     void openPopup (editpopups::Built);
     void ensurePeaks (se::SoundDocument& d);
+    /** Re-read blocks [fromBlock, toBlock) of track `t` into the summary (growing it
+        to the track's length first). */
+    void summariseBlocks (const se::SoundDocument& d, int t, size_t fromBlock, size_t toBlock);
     /** Mouse position in canvas ("world") coordinates — stable while this window
         moves or the canvas is zoomed, unlike local or screen coordinates. */
     juce::Point<int> parentPos (const juce::MouseEvent&) const;
@@ -293,6 +299,17 @@ private:
     size_t cachedMax = 0;
     double cachedStartFrac = -1.0, cachedSpanFrac = -1.0;
     std::vector<std::vector<juce::Range<float>>> peaks;
+
+    // Under it, per track, the min/max of every kSummaryFrames frames of the WHOLE
+    // track, so a column wider than a block reads blocks rather than samples (perf
+    // audit P1: zoomed out on a 10-minute take, 66 ms per rebuild → about 1 ms, and a
+    // recording no longer re-reads everything it has taken every tick). It is
+    // rebuilt when the content may have changed (summaryStale, or a track whose size
+    // it does not know); a view change, a resize or a take's new frames reuse it.
+    static constexpr size_t kSummaryFrames = 256;
+    std::vector<std::vector<juce::Range<float>>> summary;
+    std::vector<size_t> summarySizes;
+    bool summaryStale = true;
 
     bool hovered = false;
     bool selected = false;

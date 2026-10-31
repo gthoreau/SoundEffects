@@ -208,6 +208,7 @@ void WindowComponent::resizeToFit()
     // Keep the rendered width (the grid owns it); only the height follows the tracks.
     setSize (getWidth() > 0 ? getWidth() : desiredW, preferredHeight());
     cachedWidth = -1;
+    summaryStale = true;
     storeGeometry();
     if (onGeometryChanged) onGeometryChanged();
     repaint();
@@ -436,6 +437,65 @@ int WindowComponent::insertionAtY (int y, int n) const noexcept
 
 // --- waveform peaks (shared byte axis over the longest track) ---------------
 
+namespace {
+/** A sample as the waveform draws it: -1..1, the same float either way it is read. */
+float peakSample (const uint8_t* data, size_t byte, int bps, double divisor) noexcept
+{
+    return (float) (se::getSample (data, byte, bps) / divisor);
+}
+
+double peakDivisor (int bps) noexcept
+{
+    return std::pow (2.0, std::min (se::frameSizeFor (bps), 4) * 8 - 1);
+}
+} // namespace
+
+void WindowComponent::summariseBlocks (const se::SoundDocument& d, int t, size_t fromBlock, size_t toBlock)
+{
+    const auto& data = d.tracks[(size_t) t].data;
+    const size_t fs = (size_t) d.frameSize();
+    const size_t frames = data.size() / fs;
+    auto& blocks = summary[(size_t) t];
+    blocks.resize ((frames + kSummaryFrames - 1) / kSummaryFrames);
+    toBlock = std::min (toBlock, blocks.size());
+
+    const double divisor = peakDivisor (d.bps);
+    for (size_t k = fromBlock; k < toBlock; ++k)
+    {
+        const size_t f0 = k * kSummaryFrames, f1 = std::min (frames, f0 + kSummaryFrames);
+        float lo = peakSample (data.data(), f0 * fs, d.bps, divisor), hi = lo;
+        for (size_t f = f0 + 1; f < f1; ++f)
+        {
+            const float s = peakSample (data.data(), f * fs, d.bps, divisor);
+            lo = std::min (lo, s);
+            hi = std::max (hi, s);
+        }
+        blocks[k] = { lo, hi };
+    }
+}
+
+void WindowComponent::invalidateWaveformFrames (const std::vector<int>& tracks, size_t fromFrame, size_t toFrame)
+{
+    auto* d = doc();
+    if (d == nullptr || summaryStale || (int) summary.size() != d->numTracks()) { invalidateWaveform(); return; }
+
+    // Only the take's tracks changed, and only there (plus whatever it appended):
+    // re-read those blocks, and let the columns follow from the summary.
+    for (int t : tracks)
+    {
+        if (t < 0 || t >= d->numTracks()) continue;
+        const size_t had = summary[(size_t) t].size();
+        const size_t from = std::min (fromFrame / kSummaryFrames, had > 0 ? had - 1 : 0);
+        summariseBlocks (*d, t, from, (toFrame + kSummaryFrames - 1) / kSummaryFrames);
+        summariseBlocks (*d, t, had > 0 ? had - 1 : 0, summary[(size_t) t].size());   // the grown tail
+        summarySizes[(size_t) t] = d->tracks[(size_t) t].data.size();
+    }
+
+    cachedWidth = -1;
+    if (getHeight() != preferredHeight()) { resizeToFit(); return; }
+    repaint();
+}
+
 void WindowComponent::ensurePeaks (se::SoundDocument& d)
 {
     const int n = d.numTracks();
@@ -450,22 +510,39 @@ void WindowComponent::ensurePeaks (se::SoundDocument& d)
             if (cachedSizes[(size_t) t] != d.tracks[(size_t) t].data.size()) { changed = true; break; }
     if (! changed) return;
 
+    // The summary first: whole tracks whose content may have changed.
+    if (summaryStale || (int) summary.size() != n)
+    {
+        summary.assign ((size_t) n, {});
+        summarySizes.assign ((size_t) n, (size_t) -1);
+        summaryStale = false;
+    }
+    for (int t = 0; t < n; ++t)
+        if (summarySizes[(size_t) t] != d.tracks[(size_t) t].data.size())
+        {
+            summary[(size_t) t].clear();
+            summariseBlocks (d, t, 0, (size_t) -1);
+            summarySizes[(size_t) t] = d.tracks[(size_t) t].data.size();
+        }
+
     cachedWidth = w; cachedMax = maxSize;
     cachedStartFrac = viewStartFrac; cachedSpanFrac = viewSpanFrac;
     cachedSizes.assign ((size_t) n, 0);
     peaks.assign ((size_t) n, {});
 
     const int bps = d.bps;
-    const int frameSize = se::frameSizeFor (bps);
-    const double divisor = std::pow (2.0, std::min (frameSize, 4) * 8 - 1);
+    const size_t fs = (size_t) se::frameSizeFor (bps);
+    const double divisor = peakDivisor (bps);
 
     for (int t = 0; t < n; ++t)
     {
         const auto& track = d.tracks[(size_t) t];
+        const auto& blocks = summary[(size_t) t];
         cachedSizes[(size_t) t] = track.data.size();
         auto& cols = peaks[(size_t) t];
         cols.assign ((size_t) w, juce::Range<float> (0.0f, 0.0f));
         if (maxSize == 0 || track.data.empty()) continue;
+        const size_t frames = track.data.size() / fs;
 
         for (int x = 0; x < w; ++x)
         {
@@ -474,17 +551,48 @@ void WindowComponent::ensurePeaks (se::SoundDocument& d)
             const double f1 = viewStartFrac + (double) (x + 1) / w * viewSpanFrac;
             size_t b0 = (size_t) (std::clamp (f0, 0.0, 1.0) * (double) maxSize);
             size_t b1 = (size_t) (std::clamp (f1, 0.0, 1.0) * (double) maxSize);
-            b0 -= b0 % (size_t) frameSize;
+            b0 -= b0 % fs;
             // Zoomed right in a column can be narrower than one frame, and a column
             // that reads no samples draws as a gap. Always take at least one.
-            if (b1 <= b0) b1 = b0 + (size_t) frameSize;
+            if (b1 <= b0) b1 = b0 + fs;
+
+            // The frames the column reads: [a, e), cut at the track's own end.
+            const size_t a = b0 / fs;
+            const size_t e = std::min (frames, a + (b1 - b0 + fs - 1) / fs);
+            if (a >= e) continue;
+
+            // Samples up to the first block boundary, whole blocks from the summary,
+            // samples after the last one. Min and max do not care how they are
+            // grouped, so this is the same column the samples alone would give.
             float lo = 0.0f, hi = 0.0f; bool any = false;
-            for (size_t b = b0; b < b1 && b + (size_t) frameSize <= track.data.size(); b += (size_t) frameSize)
+            const auto take = [&lo, &hi, &any] (float l, float h)
             {
-                const float s = (float) (se::getSample (track.data.data(), b, bps) / divisor);
-                lo = any ? std::min (lo, s) : s;
-                hi = any ? std::max (hi, s) : s;
+                lo = any ? std::min (lo, l) : l;
+                hi = any ? std::max (hi, h) : h;
                 any = true;
+            };
+            const size_t k0 = (a + kSummaryFrames - 1) / kSummaryFrames, k1 = e / kSummaryFrames;
+            if (k0 < k1)
+            {
+                for (size_t f = a; f < k0 * kSummaryFrames; ++f)
+                {
+                    const float s = peakSample (track.data.data(), f * fs, bps, divisor);
+                    take (s, s);
+                }
+                for (size_t k = k0; k < k1; ++k) take (blocks[k].getStart(), blocks[k].getEnd());
+                for (size_t f = k1 * kSummaryFrames; f < e; ++f)
+                {
+                    const float s = peakSample (track.data.data(), f * fs, bps, divisor);
+                    take (s, s);
+                }
+            }
+            else
+            {
+                for (size_t f = a; f < e; ++f)
+                {
+                    const float s = peakSample (track.data.data(), f * fs, bps, divisor);
+                    take (s, s);
+                }
             }
             if (any) cols[(size_t) x] = { lo, hi };
         }
@@ -956,6 +1064,7 @@ void WindowComponent::mouseExit  (const juce::MouseEvent&) { updateHover(); }
 void WindowComponent::invalidateWaveform()
 {
     cachedWidth = -1;
+    summaryStale = true;
 
     // A module that ADDS tracks leaves this Window laid out for the count it had a
     // moment ago, and the new lanes would be drawn under the zoom bar. Every sizing

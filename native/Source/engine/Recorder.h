@@ -76,6 +76,17 @@ public:
     /** The 0-based tracks this take writes into. */
     const std::vector<int>& targetTracks() const noexcept { return targets; }
 
+    /** The frames of the target tracks written since the last call, as [from, to);
+        false when none were. Lets the waveform redraw only what a tick recorded
+        rather than re-read the whole take (a 10-minute take is 66 ms to re-read). */
+    bool takeWrittenFrames (size_t& from, size_t& to) noexcept
+    {
+        if (dirtyTo <= dirtyFrom) return false;
+        from = dirtyFrom; to = dirtyTo;
+        dirtyFrom = static_cast<size_t> (-1); dirtyTo = 0;
+        return true;
+    }
+
     /** The take ended on its own (a punch-out reached the selection's end) or by stop(). */
     std::function<void (uint64_t window)> onFinished;
     /** The document changed under the Window (its waveform needs redrawing). */
@@ -101,6 +112,7 @@ private:
     size_t spanFrames = 0;       // selection: its length
     size_t cursor = 0;           // frames written into the take (selection: modulo the span when looping)
     size_t written = 0;
+    size_t dirtyFrom = static_cast<size_t> (-1), dirtyTo = 0;   // see takeWrittenFrames()
     bool punchedOut = false;
     int waitTicks = 0;
     std::vector<float> bufL, bufR, tmpL, tmpR;

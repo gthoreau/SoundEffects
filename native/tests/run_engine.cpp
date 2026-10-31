@@ -945,6 +945,10 @@ void recordTests()
         check (at (*d, 0, 0) == quarter && at (*d, 0, 639) == quarter, "record mono: the samples are the input at 16 bit");
         check (rec.state() == se::Recorder::State::idle, "record: idle after Stop");
         check (! e.captureRunning(), "record: the audio thread has stopped capturing");
+        size_t from = 99, to = 0;
+        check (rec.takeWrittenFrames (from, to) && from == 0 && to == (size_t) (10 * kBlock),
+               "record: the written frames are reported, [0, end)");
+        check (! rec.takeWrittenFrames (from, to), "record: and only once");
     }
 
     // Stereo source: two new tracks after the existing ones, routed to L and R; the
@@ -1065,6 +1069,9 @@ void recordTests()
         check (at (*d, 0, 99) == 0 && at (*d, 0, 300) == 0, "punch: nothing outside the selection");
         check (at (*d, 0, 100) == 12288 && at (*d, 0, 299) == 12288, "punch: inside it, left + right summed to mono (0.375)");
         check (! e.captureRunning(), "punch: the audio thread stopped capturing");
+        size_t from = 0, to = 0;
+        check (rec.takeWrittenFrames (from, to) && from == 100 && to == 300,
+               "punch: the written frames are the selection's");
         check (e.windowById (w)->transport->uiState() == se::TransportState::stopped, "punch: the transport is stopped");
     }
 

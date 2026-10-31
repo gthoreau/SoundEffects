@@ -29,6 +29,7 @@ bool Recorder::start (uint64_t window, const RecordSetup& s)
     win = window;
     targets.clear();
     written = cursor = 0;
+    dirtyFrom = static_cast<size_t> (-1); dirtyTo = 0;
     punchedOut = false;
     sumToMono = false;
     const size_t fs = static_cast<size_t> (doc->frameSize());
@@ -159,6 +160,8 @@ void Recorder::write (const std::vector<int32_t>& l, const std::vector<int32_t>&
             if (d.size() < (frame + 1) * fs) d.resize ((frame + 1) * fs, silentByte (bps));
             setSample (d.data(), frame * fs, k == 0 ? l[i] : r[i], bps);
         }
+        dirtyFrom = std::min (dirtyFrom, frame);
+        dirtyTo = std::max (dirtyTo, frame + 1);
         ++cursor; ++written;
     }
 }
