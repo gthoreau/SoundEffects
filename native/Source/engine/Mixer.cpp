@@ -5,19 +5,6 @@
 
 namespace se {
 
-double volumeScalar (int step) noexcept
-{
-    const int s = std::clamp (step, 0, 7);
-    return VOLUME_STEPS[static_cast<size_t> (s)];
-}
-
-bool isAudible (const TrackMonitor& monitor, int track) noexcept
-{
-    if (monitor.muted.count (track) > 0) return false;
-    if (! monitor.soloed.empty())        return monitor.soloed.count (track) > 0;
-    return true;
-}
-
 /** The float divisor for a bit depth: 2^(min(frameSize,4)*8 - 1). */
 static double floatDivisor (int bps) noexcept
 {
@@ -124,25 +111,17 @@ double phaseToRead (PlayDirection dir, size_t span, size_t frameInSpan, bool up,
     return (static_cast<double> (u) + 0.25) * static_cast<double> (fs) - pos;
 }
 
-StereoFrame mixFrame (const SoundDocument& doc, size_t pos,
-                      const PlayContext& ctx, const MixOptions& opts) noexcept
-{
-    return mixFrameAt (doc, static_cast<double> (pos), ctx, opts);
-}
-
 StereoFrame mixFrameAt (const SoundDocument& doc, double pos,
                         const PlayContext& ctx, const MixOptions& opts) noexcept
 {
     const int    frameSize = doc.frameSize();
     const size_t fs        = static_cast<size_t> (frameSize);
     const double divisor   = floatDivisor (doc.bps);
-    const double master    = volumeScalar (opts.volume);
 
     double left = 0.0, right = 0.0;
 
     for (int t = 0; t < doc.numTracks(); ++t)
     {
-        if (opts.monitor != nullptr && ! isAudible (*opts.monitor, t)) continue;
         if (t < 64 && ((opts.excludeMask >> t) & 1u) != 0) continue;
 
         const Track& track = doc.tracks[static_cast<size_t> (t)];
@@ -158,15 +137,6 @@ StereoFrame mixFrameAt (const SoundDocument& doc, double pos,
         const double s = (getSample (track.data.data(), rp, doc.bps) / divisor) * vol;
         if (track.outLeft)  left  += s;
         if (track.outRight) right += s;
-    }
-
-    left  *= master;
-    right *= master;
-
-    if (opts.forceMono)
-    {
-        const double m = left + right;
-        left = right = m;
     }
 
     return { clampFloat (left), clampFloat (right) };

@@ -69,10 +69,10 @@ struct Window
     std::atomic<float> gain  { 1.0f };
     std::atomic<bool>  muted { false };
 
-    // Solo is CUMULATIVE and, like the per-track solo in Mixer.h, a filter rather
-    // than a flag: if ANY Window is soloed, only the soloed ones sound. Mute still
-    // wins over solo on the same Window — an explicit "off" outranks an implicit
-    // "on", so soloing does not resurrect a channel you deliberately shut.
+    // Solo is CUMULATIVE and a filter rather than a flag: if ANY Window is soloed,
+    // only the soloed ones sound. Mute still wins over solo on the same Window — an
+    // explicit "off" outranks an implicit "on", so soloing does not resurrect a
+    // channel you deliberately shut.
     //
     // None of gain / muted / soloed stops a Window's transport: an unheard channel
     // is still rendered and thrown away, so it stays in phase with the ones you can

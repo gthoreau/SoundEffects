@@ -198,17 +198,10 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
     }
     else
     {
-        // Play once, through one span: the selection; else the whole sound, or — from
-        // the insertion point — what lies ahead of it (behind it, going backward).
+        // Play once, through one span: the selection, else the whole sound.
         ctx.mode = LoopMode::once;
-        const size_t maxSize = doc.maxTrackSize();
-        size_t a = 0, b = maxSize;
-        if (hasSelection)                                   { a = doc.selSt; b = doc.selEnd; }
-        else if (playFrom == PlayFrom::insertionPoint)
-        {
-            if (dir == PlayDirection::backward) { a = 0;        b = std::min (doc.selSt, maxSize); }
-            else                                { a = doc.selSt; b = maxSize; }
-        }
+        size_t a = 0, b = doc.maxTrackSize();
+        if (hasSelection) { a = doc.selSt; b = doc.selEnd; }
         if (b < a) b = a;
         b = a + (b - a) - (b - a) % fs;
         ctx.selSt = a; ctx.selEnd = b;
@@ -219,8 +212,6 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
         regionSt = a; regionEnd = b;
     }
     ctx.phase.fill (phase);
-
-    if (opts.soloTrack >= 0) { monitor.soloed.clear(); monitor.soloed.insert (opts.soloTrack); }
 
     uiLoopModeCode.store (static_cast<uint8_t> (ctx.mode), std::memory_order_relaxed);
     publishRegion (regionSt, regionEnd, regionFirst, regionLast);
@@ -302,12 +293,8 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
 
     const double s         = step (doc);
     const bool   playOnce  = ctx.mode == LoopMode::once;
-    const bool   forceMono = ! supportsStereo;
 
     MixOptions mix;
-    mix.volume    = masterVolume;
-    mix.monitor   = &monitor;
-    mix.forceMono = forceMono;
     mix.excludeMask = excludeMask;
 
     int written = 0;

@@ -29,15 +29,11 @@ namespace se {
 
 enum class TransportState { stopped, playing, paused };
 
-/** "Start playing from Beginning / Insertion Point" — Preferences page 1. */
-enum class PlayFrom { beginning = 1, insertionPoint = 2 };
-
 struct PlayOptions
 {
     bool   loop = false;            // loop button: loops the selection
     bool   useLoopRegion = false;   // loop the Set Loop region, when one is set, not the selection
     double rateScale = 1.0;         // Keyboard's chromatic auditioning (§8 #18)
-    int    soloTrack = -1;          // F1..Fn soloing (0-based); -1 = none
 };
 
 class Transport
@@ -123,10 +119,6 @@ public:
         return true;
     }
 
-    int  masterVolume = VOLUME_FULL;   // 0..7
-    TrackMonitor monitor;
-    PlayFrom playFrom = PlayFrom::beginning;
-    bool supportsStereo = true;        // false collapses L/R routing to a mono sum
     /** Tracks that stay silent while they are being recorded into (bit t = track t,
         0-based). Audio thread, set by the record commands. */
     uint64_t excludeMask = 0;

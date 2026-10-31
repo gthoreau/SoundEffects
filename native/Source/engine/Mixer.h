@@ -11,34 +11,11 @@
 
 #include <array>
 #include <cstdint>
-#include <set>
 
 namespace se {
 
-/** The 8-step volume popup: Off, 1..7. Linear ladder to unity. */
-constexpr std::array<double, 8> VOLUME_STEPS { 0.0, 1.0/7, 2.0/7, 3.0/7, 4.0/7, 5.0/7, 6.0/7, 1.0 };
-constexpr int VOLUME_OFF  = 0;
-constexpr int VOLUME_FULL = 7;
-
-double volumeScalar (int step) noexcept;
-
-/**
- * Per-track monitoring, driven by the function keys: F1..Fn = solo track n,
- * option-Fn = mute track n. Solo is a filter, not a per-track flag.
- */
-struct TrackMonitor
-{
-    std::set<int> muted;
-    std::set<int> soloed;   // if non-empty, ONLY these tracks sound
-};
-
-bool isAudible (const TrackMonitor& monitor, int track) noexcept;
-
 struct MixOptions
 {
-    int  volume = VOLUME_FULL;   // 0..7
-    const TrackMonitor* monitor = nullptr;
-    bool forceMono = false;      // a backend that mixes stereo down to mono
     uint64_t excludeMask = 0;    // tracks (bit t = track t, 0-based) that do not sound: the ones being recorded into
 };
 
@@ -106,16 +83,12 @@ double phaseToRead (PlayDirection dir, size_t span, size_t frameInSpan, bool up,
 struct StereoFrame { float left = 0.0f; float right = 0.0f; };
 
 /**
- * Mix one frame at monotonic transport position `pos` into a stereo frame, each
- * track mapped through `ctx` to its own read position (independent per-track
- * looping). Absence (past a track's end) contributes nothing — the rest play on.
- * Per-track 8.8 volume (over-unity overdrives), L/R routing, no count scaling,
- * clamp at the edge.
+ * Mix one frame at monotonic transport position `pos` (fractional, the transport's
+ * own) into a stereo frame, each track mapped through `ctx` to its own read
+ * position (independent per-track looping). Absence (past a track's end)
+ * contributes nothing — the rest play on. Per-track 8.8 volume (over-unity
+ * overdrives), L/R routing, no count scaling, clamp at the edge.
  */
-StereoFrame mixFrame (const SoundDocument& doc, size_t pos,
-                      const PlayContext& ctx, const MixOptions& opts) noexcept;
-
-/** The same, at a fractional position (the transport's own). */
 StereoFrame mixFrameAt (const SoundDocument& doc, double pos,
                         const PlayContext& ctx, const MixOptions& opts) noexcept;
 
