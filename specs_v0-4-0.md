@@ -1,7 +1,9 @@
 <!--
   Local snapshot of the Figma Specs block "SoundEffects V.0.4.0 - Specifications"
   (file QmG2Chvizn1QXGPwQVBgnn, node 752:9475). Figma is the source of truth;
-  re-sync this file whenever the Figma spec changes. Last sync: 2026-10-25.
+  re-sync this file whenever the Figma spec changes. Last sync: 2026-10-31
+  (compared line by line with Figma: content unchanged since 2026-10-25; the
+  differences are this file's plain-text links and table line breaks).
 -->
 
 # SoundEffects V.0.4.0 - Specifications

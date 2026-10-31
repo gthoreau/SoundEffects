@@ -95,6 +95,18 @@ Three horizontal zones (Intro):
    - Zoom: Zoom In (⌘=), Zoom Out (⌘-), Fit in Window, Fit Selection; option-Zoom-In = max zoom; option-Fit = fit selection.
 3. **Transport (bottom)** — tape-recorder buttons: Record, Stop, Pause, Play, Fast Forward, Loop toggle, Volume popup (Off, 1–7).
 
+> `[NATIVE]` (0.4.0) Every sound is a **Window on a canvas**, and all of them can
+> play at once, mixed together (§6). The window keeps its three zones in the
+> Mac OS 8 look of the 0.4.0 design system: each Window wears one of 24 theme
+> colours, the waveform bed stays white, and the info strip carries the slot
+> number, the format and three live selection fields (start, length, end) in
+> seconds, milliseconds or samples. The selection-position indicator becomes an
+> overview bar with zoom buttons under the lanes. Each track draws its **own
+> playhead**, at its own phase. The transport is Record (with a **Source**
+> button beside it, §6), Stop, Pause, a combined Play button whose strip picks
+> **Forward / Backward / Ping-pong**, Fast Forward and Loop. The **Volume popup
+> is gone**: loudness is the Window's fader in the Mixer.
+
 ### Other windows `[RES]`
 
 | Window | Template | Notes |
@@ -107,6 +119,17 @@ Three horizontal zones (Intro):
 | Play Clipboard | WIND 138, 220×61 | tiny window with Stop Playing button — the clipboard is a first-class playable sound |
 | Effect Progress | WIND 130, 328×58 | progress bar + **Pause/Resume** + **Stop**; module may display its own PICT/TEXT ad inside |
 | Effect Info | WIND 131 | per-effect about/help box (shift-choose an effect) |
+
+> `[NATIVE]` (0.4.0) The unfinished **Mixer** is built for real, as a side panel
+> on the left (270 px, collapsible): one strip per Sound, in numbered slots 1..N
+> with no gaps, each with a volume fader that carries a stereo VU, a linear
+> balance (unity at centre, the far side attenuated) and Mute / Solo boxes.
+> Solo is cumulative and a filter, and Mute outranks it. Neither stops a
+> transport, so loops of different lengths stay in phase while unheard. A strip
+> wears its Window's theme colour and is dragged to reorder. Effects live in a
+> right-hand side panel (§7.1).
+> The Level meter, Spectrum, Chunk List, Play Clipboard, Effect Progress and
+> Effect Info are not part of 0.4.0.
 
 ---
 
@@ -145,9 +168,34 @@ Three horizontal zones (Intro):
 
 **Windows**: Sound Level Meter · ——— · *(open document list, dynamic)*
 
+> `[NATIVE]` (0.4.0) The menu bar is drawn inside the app (the macOS bar keeps only
+> the application menu) and reads **File / Edit / Selection / Transport / Window**.
+> **Edit**: Undo is still there and still always disabled (§1.2); **Duplicate ⌘D**
+> is new (a copy after the selection), so ⌘D no longer means Select None; Zoom
+> moves to Window, and Play Clipboard is gone. **Selection** gains **Extend Above /
+> Extend Below** (⌘↑ / ⌘↓) and **Insert Silence**, Extend to Beginning / End take
+> ⌘← / ⌘→, and Selection Info is replaced by the info strip's live fields.
+> **Sound** becomes **Transport**: Record, Select Audio Source…, Stop, Play / Pause,
+> Loop, Fast Forward, the three directions (Play Forward, Play Backward, Play
+> Ping-pong) and Mute / Solo for the selected Window; its Volume submenu is gone
+> with the Volume popup. There is **no Effects menu** (the panel, §7.1) and **no
+> Special menu**. **Windows** becomes **Window**: Change Name…, a Color submenu of
+> the 24 themes, Hide Side Panels ⌘., Hide Keyboard, Grid / Free Canvas, Zoom 100%
+> ⌘0, Zoom to Fit ⌘1, and the list of Sounds by mixer slot.
+
 ### Keyboard map `[DOC: Intro]`
 
 space = play/pause toggle · F1–Fn = solo-play channel n · option-Fn = mute channel n · arrows = move insertion point · shift-arrows = extend selection · delete = clear selection · option-Play = loop using the Set Loop region instead of the selection · option-Record = quick record (new doc + record window).
+
+> `[NATIVE]` (0.4.0) Space still plays and pauses, and Delete still clears. Single
+> keys act on the selected Window when no text field has focus: **R** record,
+> **L** loop, **F** fast forward, **D** cycles Forward → Backward → Ping-pong, **M**
+> mute, **S** solo, **K** keyboard, **G** grid / free canvas, **1…9, 0** select the
+> Sound in that mixer slot; **Esc** stops, **⌥Space** plays ping-pong, **⌘⇧R**
+> opens Select Audio Source. ⌘Space and ⌃Space belong to macOS, so the three
+> directions stay in the menu. The F-key channel solo and mute are gone: solo
+> and mute are per Window, in the mixer. Option-Play is gone because the **Loop
+> button loops the Set Loop region whenever one is set**, else the selection.
 
 ---
 
@@ -172,12 +220,40 @@ space = play/pause toggle · F1–Fn = solo-play channel n · option-Fn = mute c
 
 **Playback**: Play from beginning or insertion point (preference). Loop button loops the selection; option-Play loops the Set Loop region. Volume in 8 steps (Off, 1–7). Function keys solo individual channels; option-F mutes. Per-channel L/R speaker enables route output. 16-bit playback requires capable hardware, else: "There is not enough hardware to play the selected sound. You may want to downsample it before playing."
 
+> `[NATIVE]` (0.4.0) Every Window has its own transport, and all of them play at
+> once, summed into one output. Each transport has a **direction**: Forward,
+> Backward or Ping-pong, changeable mid-play without a jump (every track keeps
+> the frame it is on, under a ~2 ms crossfade). A running **loop follows the
+> document**: move the selection or Set Loop while it plays and it re-aims at the
+> next block, and a deselected track picks up the frame of the topmost track
+> that was selected. Playback always starts from the beginning of what it plays
+> (the selection, or the whole sound); the insertion-point preference is not
+> offered. Volume is the mixer's per-Window fader and balance instead of the
+> 8-step popup; per-track speakers still route L/R.
+
 **Recording** `[RES + DOC]`: Record window shows live mini-waveform — **green when monitoring, red while recording**. Buttons: Save (insert into document) / Cancel / Device Settings…; popups: Use (Mono/Stereo), Sampling Rate, Sampling Size, Play-Through Volume (Off,1–7); Auto Gain checkbox.
 
 - Rates offered: 5, 7, 11, 11.1, 22.050, 22.254 ("Standard"), 24 ("Voice Recognition"), 32, 44.1 ("CD"), 48 kHz ("DAT") `[RES: MENU 155]`.
 - Active-channels matrix (Preferences): Mono+both = mix L/R inputs; Mono+1 = left only; Mono+2 = right only; Stereo = two separate channels `[DOC: Intro table]`.
 - **VOX (voice-activated) recording** `[RES: CNTL 307–313]`: recording start trigger On/Off with threshold slider (0–255), independent stop trigger with threshold and **stop-delay** slider. A destructive weirdo sampler wants this.
 - Insertion policy preference: "Insert the whole recorded sound" vs **"Constrain the recorded sound to the selection"** (record *into* a hole).
+
+> `[NATIVE]` (0.4.0) There is no Record window. A take is set up in the **Select
+> Audio Source** popup (the Source button, ⌘⇧R) and runs from the Window's own
+> Record button. The source is **External** (a device input channel or pair),
+> **Canvas** (the main mix without the Window being recorded into, or one other
+> Window's own post-fader output, which ignores its mute) or, in a plugin,
+> **DAW**. It has an input gain and an optional monitor. Audio is captured at the
+> device rate and converted to the Sound's own rate and depth: **Raw** by default
+> (zero-order hold, truncation, the same mangling Resample does) or **Clean**
+> (band-limited, dithered). Record is also Play, always Forward. Where it lands
+> replaces the insertion-policy preference: with **no selection**, one or two new
+> tracks (mono or stereo source) appended and starting at 0 (blank tracks are
+> reused first); with a selection over **one track**, the input summed to mono;
+> over **two**, left and right; three or more cannot be recorded into. With Loop
+> off the take is a punch-in/out that ends at the selection's end; with Loop on it
+> records round and round inside it. VOX, Auto Gain and the size limit are not
+> part of 0.4.0.
 - Record cap preference: "Record no more than [1000] K (☐ only if virtual memory is active)".
 - "Beep when clipping occurs" while recording.
 
@@ -200,6 +276,19 @@ At launch, scan the **Effects Folder** (next to the app, or in Preferences). Eac
 - **Top level**: Amplify, Dither, Fade In, Fade Out, Keyboard, Noise, Normalize, Quick Mix, Replicate, Reverse, Robotize, Selection to Channel, Silence, Smooth, Waveform Generator, Weird Tempo
 
 Menu templating: "<Name> Options…", "About <Name>…" `[RES: STR# 140]`.
+
+> `[NATIVE]` (0.4.0) The modules are not in a menu: they are buttons in an
+> **Effects** side panel on the right (270 px, collapsible), grouped as the `Grup`
+> strings group them, with the modules that have no settings collected under
+> **1-Click Effects**. A module with settings opens its settings **inline** in a
+> tray under its button, laid out after the recovered dialog, rather than in a
+> modal dialog. The tray offers the module's **setups** (Setup dropdown, Custom
+> resets to defaults), Cancel and Apply. Apply flashes *Done!* for about half a
+> second. **Auto-apply** (on by default, remembered) makes a 1-click button apply
+> at once; turned off, a tray asks first. Weird Tempo's warning is shown in its
+> tray. Return applies the open effect from anywhere in the editor. The effect
+> applies to the selection in the selected Window, or to all of it when nothing
+> is selected (§7.3).
 
 ### 7.2 Module entry point & messages `[SOURCE: Glue.h]`
 
@@ -418,6 +507,11 @@ Five pages (popup: General / Window Setup / Recording - Sound Input Device / Rec
 
 First launch shows the **Welcome** alert: "This is a preliminary release of SoundEffects. It still lacks some features, like Undo. However, it is fully functional and tested, and a complete version will be ready soon. … (This dialog will not be shown again.)" — keep verbatim; it's the founding document of the no-undo religion.
 
+> `[NATIVE]` (0.4.0) The five pages are still the second pass. What 0.4.0 keeps is
+> app-wide and remembered: the audio device (Audio/Midi Setup ⌘,), the selection
+> fields' unit (seconds / ms / samples), Auto-apply, and the effect setups. Play
+> always starts at the beginning (§6).
+
 ---
 
 ## 10. File formats
@@ -426,6 +520,15 @@ First launch shows the **Welcome** alert: "This is a preliminary release of Soun
 - **Save**: System 7 Sound File or AIFF (format popup in the save dialog). Warning when saving >2 channels as sfil: the Finder can't play it.
 - Chunk list exports as tab-separated text; registration form saves as TeachText document.
 - For the re-creation: treat AIFF as the canonical interchange (it round-trips arbitrary rates; sample sizes 8/16 naturally; nonstandard bps needs care). Web prototype should also import WAV for convenience — but keep the alert for unknown types, reworded only if unavoidable.
+
+> `[NATIVE]` (0.4.0) The document is the **canvas**, saved as a visible project
+> folder `<Name>/` holding `<Name>.sefx` (format v2, which stores each Sound's
+> exact non-integer rate, its place, colour and mixer slot) and `Assets/` with one
+> mono WAV per track, because tracks have independent lengths. v1 canvases still
+> open, and saving one goes through Save As. **Export Sound** writes one
+> self-contained `.sefx` with one Sound and its audio embedded, and **Import
+> Sound** accepts both kinds. Open Sound reads the common audio formats into a
+> new Window.
 
 ---
 
