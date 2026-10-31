@@ -124,6 +124,26 @@ private:
     struct World : juce::Component
     {
         World() { setInterceptsMouseClicks (false, true); }
+        void paint (juce::Graphics&) override;
+        /** In grid mode, while a Window is dragged: the cell it would drop into. */
+        juce::Rectangle<int> dropTarget;
+    };
+
+    /** A see-through layer over the board that claims a press only while the RIGHT
+        button is down: a right-button drag pans from anywhere, over Windows too, and
+        the Windows never see it. Every other event falls through to what is below. */
+    struct RightPan : juce::Component
+    {
+        explicit RightPan (CanvasComponent& c) : owner (c)
+        {
+            setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+            setMouseClickGrabsKeyboardFocus (false);   // panning leaves focus where it was
+        }
+        bool hitTest (int, int) override { return juce::ModifierKeys::currentModifiers.isRightButtonDown(); }
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
+        CanvasComponent& owner;
+        juce::Point<float> start, panAtStart;
     };
 
     /** One column of the virtual grid: its Windows top-to-bottom, its virtual column
@@ -164,6 +184,7 @@ private:
     /** Lay every Window out; `floating` (if any) keeps its position, but still
         takes up its slot, so the gap it would drop into stays open. */
     void layoutGrid (WindowComponent* floating = nullptr);
+    void setDropTarget (juce::Rectangle<int>);
     void applyViewTransform();
     /** The pan that parks the world origin just inside the viewport's top-left. */
     juce::Point<float> originPan() const noexcept;
@@ -173,6 +194,7 @@ private:
 
     se::Engine& engine;
     World world;
+    RightPan rightPan { *this };
     std::vector<std::unique_ptr<WindowComponent>> windows;
     se::Recorder* recorder = nullptr;
     std::function<bool (uint64_t, se::RecordSetup&)> recordSetupFor;

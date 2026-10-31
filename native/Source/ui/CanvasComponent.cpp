@@ -33,6 +33,7 @@ CanvasComponent::CanvasComponent (se::Engine& e) : engine (e)
     setWantsKeyboardFocus (true);
     addAndMakeVisible (world);
     world.setBounds (0, 0, kWorldSize, kWorldSize);
+    addAndMakeVisible (rightPan);   // above the world, so it is asked first
     pan = originPan();
     applyViewTransform();
 }
@@ -145,7 +146,7 @@ void CanvasComponent::refresh()
             retargetCell (*raw, topLeft);
             layoutGrid (raw);                 // reflow around the gap it will drop into
         };
-        wc->onDropped = [this] { if (mosaicEnabled) layoutGrid(); };
+        wc->onDropped = [this] { if (mosaicEnabled) layoutGrid(); setDropTarget ({}); };
         wc->onSelected = [this] (uint64_t wid) { selectWindow (wid); };
         wc->onSourceRequested = [this] (uint64_t wid) { if (onSourceRequested) onSourceRequested (wid); };
         wc->recordReady = recordReady;
@@ -450,6 +451,14 @@ void CanvasComponent::retargetCell (WindowComponent& dragged, juce::Point<int> t
     }
 }
 
+void CanvasComponent::setDropTarget (juce::Rectangle<int> r)
+{
+    if (world.dropTarget == r) return;
+    world.repaint (world.dropTarget.expanded (2));
+    world.dropTarget = r;
+    world.repaint (r.expanded (2));
+}
+
 void CanvasComponent::layoutGrid (WindowComponent* floating)
 {
     // Anything without a cell yet (freshly opened) gets one first.
@@ -465,6 +474,7 @@ void CanvasComponent::layoutGrid (WindowComponent* floating)
             // Every window in the column is stretched to the column's width; the
             // cell is exactly as tall as the window. No padding: they touch.
             if (w != floating) w->setBounds (col.x, y, col.width, w->getHeight());
+            else               setDropTarget ({ col.x, y, col.width, w->getHeight() });
             w->storeGeometry();
             y += w->getHeight();
         }
@@ -573,6 +583,32 @@ void CanvasComponent::mouseUp (const juce::MouseEvent&)
     panDragging = false;
 }
 
+void CanvasComponent::RightPan::mouseDown (const juce::MouseEvent& e)
+{
+    // A view gesture: the selection and the Windows are left alone.
+    start = e.position;
+    panAtStart = owner.pan;
+}
+
+void CanvasComponent::RightPan::mouseDrag (const juce::MouseEvent& e)
+{
+    owner.setPan (panAtStart + (e.position - start));
+}
+
+void CanvasComponent::World::paint (juce::Graphics& g)
+{
+    if (dropTarget.isEmpty()) return;
+    // PROVISIONAL (no Figma node yet; the author is asked to design it): the cell
+    // the dragged Window will drop into, outlined in dashes.
+    juce::Path outline;
+    outline.addRectangle (dropTarget.reduced (2).toFloat());
+    juce::Path dashed;
+    const float dashes[] = { 4.0f, 3.0f };
+    juce::PathStrokeType (2.0f).createDashedStroke (dashed, outline, dashes, 2);
+    g.setColour (os8::colour::selectedMenuItem);
+    g.fillPath (dashed);
+}
+
 void CanvasComponent::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
     // A trackpad / Magic Mouse sends pixel-precise deltas, which JUCE hands us
@@ -615,6 +651,7 @@ bool CanvasComponent::keyPressed (const juce::KeyPress& k)
 
 void CanvasComponent::resized()
 {
+    rightPan.setBounds (getLocalBounds());
     if (mosaicEnabled) layoutGrid();
     setPan (pan);   // re-clamp against the new viewport
 }
