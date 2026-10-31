@@ -206,8 +206,20 @@ Os8TextField::~Os8TextField()
 
 void Os8TextField::setText (const juce::String& t, juce::NotificationType n)
 {
+    // A refresh must not trample what the user is typing, nor drop the caret at 0
+    // in a field that has focus: while focused, only an untouched field follows,
+    // and it stays selected as a whole.
+    const bool focused = editor.hasKeyboardFocus (true);
+    if (focused && editor.getText() != committed)
+    {
+        committed = t;
+        return;
+    }
+
     committed = t;
     editor.setText (t, false);
+    if (focused) editor.selectAll();
+    else         clearSelection();
     if (n != juce::dontSendNotification && onCommit) onCommit (t);
     restyle();
 }
@@ -267,6 +279,7 @@ int Os8TextField::decimalsFor (Unit u) noexcept
 bool Os8TextField::step (int direction, bool big)
 {
     if (! numeric) return false;
+    committed = editor.getText();   // what is typed is what the step starts from
     const double next = getValue() + (double) direction * stepSize * (big ? 10.0 : 1.0);
     setValue (next, juce::sendNotification);
     editor.selectAll();
@@ -322,7 +335,27 @@ void Os8TextField::textEditorReturnKeyPressed (juce::TextEditor&)
     restyle();
     if (onReturn) onReturn();
 }
-void Os8TextField::textEditorFocusLost (juce::TextEditor&)         { commit(); }
+void Os8TextField::Editor::focusLost (FocusChangeType cause)
+{
+    // Commit now, not in textEditorFocusLost: JUCE posts that one, so a click that
+    // takes focus away and also refreshes this field (deselecting the Window the
+    // tray works on) would overwrite what was typed before it was committed.
+    juce::TextEditor::focusLost (cause);
+    owner.commit();
+    owner.clearSelection();
+}
+
+void Os8TextField::textEditorFocusLost (juce::TextEditor&) {}
+
+void Os8TextField::clearSelection()
+{
+    // JUCE keeps an unfocused editor's selection and still paints it, half
+    // transparent, in the highlighted ink: the stray highlights and the white
+    // text of a field that is no longer selected. A field without focus shows none.
+    editor.setHighlightedRegion ({});
+    editor.setCaretPosition (0);
+    restyle();
+}
 void Os8TextField::globalFocusChanged (juce::Component*)           { restyle(); }
 
 void Os8TextField::textEditorEscapeKeyPressed (juce::TextEditor&)
@@ -351,9 +384,12 @@ void Os8TextField::restyle()
 
     // The selection is drawn in the field's own Highlighted fill, so "everything
     // selected" and "the Highlighted state" are one and the same picture.
+    // Only a focused field shows a selection at all.
+    const bool focused = editor.hasKeyboardFocus (true) || forcedState == os8::FieldState::highlighted;
     const auto selection = size == os8::FieldSize::xSmall ? os8::colour::gray600 : os8::colour::selectedTextField;
-    editor.setColour (juce::TextEditor::highlightColourId, selection);
-    editor.setColour (juce::TextEditor::highlightedTextColourId, os8::fieldTextColour (size, os8::FieldState::highlighted));
+    editor.setColour (juce::TextEditor::highlightColourId, focused ? selection : juce::Colours::transparentBlack);
+    editor.setColour (juce::TextEditor::highlightedTextColourId,
+                      focused ? os8::fieldTextColour (size, os8::FieldState::highlighted) : ink);
     editor.applyColourToAllText (ink, true);
     editor.setColour (juce::TextEditor::textColourId, ink);
 
@@ -376,6 +412,7 @@ void Os8TextField::resized()
 void Os8TextField::enablementChanged()
 {
     editor.setEnabled (isEnabled());
+    if (! isEnabled()) clearSelection();
     restyle();
 }
 

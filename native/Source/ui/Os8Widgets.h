@@ -181,6 +181,7 @@ private:
         explicit Editor (Os8TextField& f) : owner (f) {}
         bool keyPressed (const juce::KeyPress&) override;
         void focusGained (FocusChangeType) override;
+        void focusLost (FocusChangeType) override;
         Os8TextField& owner;
     };
 
@@ -192,6 +193,7 @@ private:
 
     bool step (int direction, bool big);
     void commit();
+    void clearSelection();
     void restyle();
     juce::String format (double) const;
 
