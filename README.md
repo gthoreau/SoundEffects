@@ -20,8 +20,8 @@ unsynchronised loopers you arrange spatially.
 
 ## Download
 
-**SoundEffects 0.3.0** — universal (Apple Silicon + Intel), macOS 11 Big Sur or
-later, about 4.6 MB.
+**SoundEffects 0.4.0** — universal (Apple Silicon + Intel), macOS 11 Big Sur or
+later, about 5.5 MB.
 
 This repository is private, so there's no public download page. **The app is
 handed out directly — ask me and I'll send it.** It arrives one of two ways, and
@@ -29,8 +29,8 @@ they install identically:
 
 | | |
 |---|---|
-| `SoundEffects-0.3.0-macOS.dmg` | A disk image. Open it and drag the app into Applications. |
-| `SoundEffects-0.3.0-macOS.zip` | The app in an archive, for when it came by email. Unzip and move the app into Applications. |
+| `SoundEffects-0.4.0-macOS.dmg` | A disk image. Open it and drag the app into Applications. |
+| `SoundEffects-0.4.0-macOS.zip` | The app in an archive, for when it came by email. Unzip and move the app into Applications. |
 
 <details>
 <summary>Why two formats?</summary>
