@@ -1,92 +1,113 @@
 # SoundEffects — native (JUCE)
 
 The native rebuild of SoundEffects 0.9.2: a **standalone app** and a **DAW plugin**
-(VST3 / AU / AAX) from one codebase — the VCV Rack Pro delivery model. Loadable in
-a host as either an audio effect or an instrument.
+(VST3 / AU) from one codebase, on the VCV Rack Pro delivery model. Only the
+standalone is released today; the plugin builds from the same sources but is
+frozen until it is hardened (see *Known gaps*).
 
 The TypeScript project in the repo root is the **reference spec** (byte-accurate
 model, effects, file formats, tests). This `native/` tree ports the engine to C++
 and wraps it in JUCE. Where behaviour is subtle, the C++ cites the TS file it came
-from.
+from. The 0.4.0 work, its settled decisions and its journal are in
+[`docs/0.4.0/PLAN.md`](../docs/0.4.0/PLAN.md); departures from the original are
+marked `[NATIVE]` in the [SPEC](../SoundEffects-0.9.2-SPEC.md).
 
 ## Layout
 
 ```
 native/
-  CMakeLists.txt            JUCE via FetchContent → Standalone + VST3 + AU
+  CMakeLists.txt             JUCE via FetchContent → Standalone (+ VST3 / AU)
+  packaging/                 package.sh (universal DMG + zip), DocumentTypes.plist
+  tests/                     JUCE-free test builds: effect-fixtures, engine-tests, state-tests
   Source/
-    PluginProcessor.{h,cpp} the ONLY JUCE/host boundary; owns the engine
-    PluginEditor.{h,cpp}    hosts the canvas + mixer + toolbar (Mosaic, zoom reset,
-                            and the zoom / grid / pan readout); New/Open live at the
-                            top of the mixer panel
-    ui/                     JUCE UI (message thread); reads engine UI-safe snapshots
-      CanvasComponent       the board: the Window grid, zoom/pan, tint palette
-      WindowComponent       one System-7 sound Window: info strip, track lanes
-                            (waveform + the L / L+R / R output selector), navigator
-                            (zoom in / out / whole sound, ◀ ▶, and a well showing
-                            the view in blue over the selection in black),
-                            transport wired to engine, inline rename, grow box
-      MixerComponent        main mixer: New/Open, then one HORIZONTAL strip per
-                            Window (name · mute · one trough carrying both the dB
-                            fader and the VU meter), ≤250px wide, scrolling
-    engine/                 host-agnostic core — ZERO JUCE includes
-      SampleFormat.h        packed offset-binary / big-endian sample access
-      Track.h               one lane: independent buffer + output channel + volume
-      SoundDocument.{h,cpp}  the document model; add/move/trash tracks
-      Mixer.{h,cpp}         per-frame sum, L/R routing, solo/mute, volume steps
-      Transport.{h,cpp}     per-window free-running playhead + loop + Advance(2×)
-                            + atomic UI snapshot (uiPlayhead / uiState)
-      Import.{h,cpp}        build a document/tracks from decoded float audio
-      SpscQueue.h           lock-free single-producer/consumer ring buffer
-      Engine.{h,cpp}        multi-window ADDITIVE sum + per-window mixer channel
-                            + the lock-free UI↔audio window hand-off
-      EngineState.{h,cpp}   the whole canvas as bytes: save / load / host state
+    PluginProcessor.{h,cpp}  the ONLY JUCE/host boundary; owns the engine and the recorder
+    PluginEditor.{h,cpp}     menu bar, side panels, canvas, palettes; the app's commands
+    StandaloneApp.cpp        our own JUCEApplication: the window, files, the settings file
+    engine/                  host-agnostic core — ZERO JUCE includes
+      SampleFormat.h, Track.h, SoundDocument   the document: independent byte buffers per track
+      Edit                   cut / paste / duplicate / silence / Select Exactly, Peak, Silence…
+      Mixer                  per-frame read mapping (directions, loops) and the track sum
+      Transport              one Window's playhead, loop, Advance, direction, live re-aim
+      Engine                 every Window summed, per-Window mixer, the UI↔audio hand-off
+      Recorder, CaptureRing, RecordConvert, Resample   recording: capture, drain, convert
+      EngineState, Project, Wav, Import   the canvas as bytes, as a project folder, WAV I/O
+      SpscQueue.h            lock-free single-producer/consumer ring
+    effects/                 the module host (the original's Glue ABI), registry, setups,
+                             and modules/: the 37 effects
+    ui/                      JUCE UI (message thread); reads engine UI-safe snapshots
+      Os8, Os8Widgets, Os8Icons, Os8Popup   the Mac OS 8 design system: tokens, painters,
+                             widgets, icons, popup frame (`--gallery` shows them all)
+      AppMenuBar, AppCommands   the in-app menu bar and the one table of commands and keys
+      CanvasComponent        the board: grid / free placement, zoom / pan, themes
+      WindowComponent        one Sound Window: info strip, selection fields, track lanes,
+                             overview, transport
+      MixerComponent         the Mixer panel: one strip per Window, in slots
+      EffectsPanel, EffectLayouts   the Effects panel and each effect's tray
+      SidePanel              the frame of both side panels (270 px, collapsible)
+      ViewPalette, KeyboardPalette, KeyboardArt   the canvas palettes
+      EditPopups, FilePopups, AudioSourcePopup   the popups
+      Reorder.h              drag-to-reorder: lift, sliding neighbours, glide in or home
+      AppPrefs               app-wide preferences (unit, Auto-apply, setups, panels)
 ```
 
 ## Threading (UI ↔ audio)
 
-The **audio thread** solely owns the *live* Window set. The **message thread**
-(UI) never touches it directly — it posts commands (add / remove / transport)
-into a lock-free SPSC queue (`SpscQueue`), and reads/writes per-Window mixer
-params (`gain`, `muted`) which are atomics. `render()` drains the queue at the
-top of each block. Removed Windows are handed BACK to the message thread via a
-retirement queue and freed there (`collectRetired()`, driven by a 5 Hz timer in
-the processor), so **no allocation or deallocation ever happens on the audio
-thread**. All message-thread API must be called from one thread (single
-producer); `render()` is the single consumer.
+The **audio thread** solely owns the *live* Window set and each Window's audio
+document. The **message thread** never touches them: it posts commands (add /
+remove / transport / record / document swap) into a lock-free SPSC queue, drained
+at the top of every `render()`, and reads and writes the per-Window mixer values
+(gain, balance, mute, solo), which are atomics.
+
+**Editing is RCU.** The UI owns its own copy of each document and edits it freely.
+`commitEdit()` publishes an immutable clone, which the audio thread swaps in with
+one pointer store; the old one goes back through a retirement queue and is freed
+on the message thread (`collectRetired()`, on a 30 Hz timer in the processor). A
+change of selection, Set Loop region or speakers needs no samples, so
+`commitMeta()` sends just those values and the audio thread writes them into its
+document in place. Either way **nothing is allocated or freed on the audio
+thread**, and an edit lands mid-loop without a glitch.
+
+**Recording** runs the other way: the audio thread pushes the chosen source into a
+`CaptureRing` of float frames, and the `Recorder` drains it on the message thread,
+converts it to the Sound's rate and depth and writes it into the UI document.
+
+All message-thread API must be called from one thread (single producer);
+`render()` is the single consumer. `engine-tests` covers these paths, and is run
+under ThreadSanitizer for every engine change.
 
 ## Vocabulary
 
 Canvas › **Window** › **Tracks** › **Track** › *Audio sample* (with a **Selection
-area** and an **Output channel** L/R/L+R) · plus a **Transport** and an
-**Audio Output → Mixer channel**. NB the original app and the TS reference call a
-lane a "channel"; the rebuild renames that to **Track** and reserves "channel"
-for output routing and the mixer.
+area** and its **Output channels**, L and R) · plus a **Transport** and a **Mixer
+channel**. NB the original app and the TS reference call a lane a "channel"; the
+rebuild renames that to **Track** and reserves "channel" for output routing and
+the mixer.
 
 ## The model (what makes it SoundEffects)
 
 - **Independent tracks = rudimentary per-track samplers.** Each track is its own
   buffer, and in a playing window each track loops over ITS OWN length
-  independently (`pos % len` per track, not one shared playhead) — so tracks
-  phase against each other within a window, and windows phase against each other.
-- **Loops.** Loop + no selection → every track loops its own length; loop +
-  selection → the selected span loops (selected tracks); no loop → each track
-  plays once to its end.
-- **Silence vs absence.** Silence = real silent samples (audio: selectable,
-  erasable, insertable via Insert Silence), drawn as a SOLID line and part of the
-  loop length. Absence = past a track's end, drawn as a DOTTED line, contributes
-  nothing.
+  independently, so tracks phase against each other within a window, and windows
+  phase against each other.
+- **Loops.** Loop with no selection: every track loops its own length. Loop with a
+  selection: the selected span loops in the selected tracks. Loop with a Set Loop
+  region: that region, across every track. No loop: one pass. A running loop
+  **follows the document**: change the selection or the region while it plays and
+  it re-aims at the next block, each track keeping the frame it is on.
+- **Directions.** Forward, Backward or Ping-pong, per Window. The transport's
+  position is one monotonic clock and each track reads it through its own phase, so
+  a direction change only re-anchors the phases, under a ~2 ms crossfade.
+- **Silence vs absence.** Silence = real silent samples, drawn as a SOLID line and
+  part of the loop length. Absence = past a track's end, drawn as a DOTTED line,
+  contributes nothing.
 - **Global additive playback.** `Engine` sums *every open window* at once. The
-  infinite canvas is the spatial view of a bank of unsynchronised loopers.
-- **Per-window mixer.** Each `Window` has a `gain` + `mute` — the real "Level"
-  fader the original only stubbed out — plus a `meter` the audio thread publishes
-  (its own post-gain peak, decaying ~-60 dB in 300 ms so the UI may sample it at
-  any rate). In the panel the fader and the meter share ONE dB trough on ONE
-  scale, so a strip reads out and set-point in a single glance: the fill is what
-  the channel is putting out, the cap is where its gain sits, and the tick between
-  them is 0 dB — which is also 0 dBFS, so fill past the tick is clipping.
-- **Destructive edits, declared rate obeyed even when it lies** — carried over
-  from the TS core (edits/effects still to be ported).
+  canvas is the spatial view of a bank of unsynchronised loopers.
+- **Mixer.** Each Window has a gain, a linear balance (unity at centre, the far side
+  attenuated), mute and solo. Solo is cumulative and a filter; mute outranks it.
+  None of them stops a transport: an unheard Window is still rendered and thrown
+  away, so it stays in phase. The audio thread publishes each Window's post-fader
+  stereo peaks for the strip's VU, decaying on their own.
+- **Destructive edits, declared rate obeyed even when it lies.** As the original.
 
 ## The canvas: grid, size, colour, view
 
@@ -134,23 +155,21 @@ it is already alone in that end column, or it would drift outwards for ever). A 
 Window opens a fresh column while the row of columns still fits the viewport, and
 drops into the shortest column once it doesn't.
 
-**Mosaic** toggles the grid off: Windows stay where they are and drag moves them
-freely. Toggling it back on re-packs them.
+**Grid or free.** `G`, or the layout toggle on the View palette, turns the grid
+off: Windows stay where they are and a drag moves them freely. Turning it back on
+re-packs them. In the grid a dragged Window is *carried* (`Reorder.h`): it lifts
+past a 4 px threshold, floats translucent on a shadow, its neighbours slide out of
+the way, and on release it glides into its gap, or home if dropped off the board.
 
 **Resizing a Window** never scales its chrome. Total height is always
-`chrome + numTracks × laneHeight`, so a vertical drag changes the height of one
-track lane and the title bar, info strip, transport, output-channel selector and
-up/down/trash controls keep their fixed size. Only the waveforms grow.
+`chrome + numTracks × laneHeight`, so a vertical drag changes the height of the
+track lanes, and the title bar, info strip, overview and transport keep their
+fixed size. Only the waveforms grow.
 
-**Output channel.** Each track carries one three-way selector at the head of its
-lane — `L` / `L+R` / `R`, stacked top to bottom, the chosen cell inverted. It is a
-selector, not two independent switches, because those are the only three routings
-worth having: the old pair of toggles could also be set to *neither*, which is a
-silent track dressed up as a routing. (A document that arrives that way still
-draws honestly — no cell lit.) **A stereo file routes itself**: two tracks in from
-one file ARE the two output channels, so `makeDocumentFromFloat` sends track 1
-left and track 2 right rather than folding both to both. Mono, and anything with
-more than two tracks, keeps the `L+R` default.
+**Output channels.** Each track has two speaker toggles at the head of its lane,
+left and right, so a track goes left, right, both or nowhere. **A stereo file routes
+itself**: `makeDocumentFromFloat` sends track 1 left and track 2 right rather than
+both to both.
 
 **Renaming.** Double-click a Window's title bar for an inline editor; `Return` or
 clicking away commits, `Esc` cancels, and an empty box keeps the old name. The
@@ -159,38 +178,24 @@ through `commitEdit()`, which would clone every sample to publish a string. The
 mixer strip polls `uiDoc->name` on the editor's timer, since nothing else would
 tell it that its channel had been renamed.
 
-**Tint.** Each new Window is painted in one of twelve pastels, chosen at random
-but never the same as the one before it, persisted as an index in `Window::tint`.
-The palette is explicit hex in `kTints` (even hue spacing, HSL ~ *h*/55%/84%) so a
-single entry can be nudged without disturbing the rest. The whole surface takes
-the colour; the waveform bed is the same hue washed 72% toward white so the trace
-stays readable.
+**Theme.** Each Window wears one of the 24 named themes of the design system
+(`os8::kThemes`), persisted as an index in `Window::tint`. A new Window gets one at
+random from those no open Window is wearing. The theme fills the Window, its
+speaker buttons and its mixer strip; the waveform bed stays white.
 
-**Highlight.** A Window's border weight carries its state: 1px plain, 2px hovered,
-4px active. "Active" means *holding keyboard focus* — the Window that ⌘X/⌘C/⌘V
-and Delete actually act on — rather than a separate notion of selection, so the
-highlight makes an otherwise invisible state visible. Clicking bare canvas moves
-focus to the canvas and clears it. The border is painted last so the highlight is
-never partly overdrawn, and it grows inwards, so a thick border never disturbs the
-neighbours it touches in the grid.
+**Highlight.** The border is 2 px at rest, 3 px under the pointer and 5 px on the
+**selected** Window, always outside the body so it never disturbs a neighbour.
+"Selected" is the canvas's choice (a click), not keyboard focus, on purpose: focus
+moves the moment a side panel is used, and the Window the panels act on must not
+evaporate under them.
 
-**Transport.** Five square buttons, centred as a group at the foot of the Window:
-record · stop · play/pause · 2× · loop. The symbols are drawn as paths inside one
-shared box rather than as text — `●■▶↻` have wildly different metrics at any one
-point size, so glyphs cannot be made to match — and the strip's height derives
-from the button size (`kBtnSize`), not the other way round. Play and pause are **one toggle** —
-`Transport::pause()` already flips playing↔paused, so only a *stopped* transport
-calls `play()` (calling it while paused would restart from the top). 2× is a
-toggle too, and because `Transport::advance()` starts playback when the transport
-isn't rolling, engaging it also starts it; `play()` resets `advanceScale` to 1.0,
-so anything that (re)starts playback clears the 2× state with it. The record dot
-is red but **not wired up yet** — recording is a later increment.
+**Transport.** Record (with **Source** beside it), Stop, Pause, a combined Play
+button whose strip opens the direction menu, Fast Forward (2×) and Loop. `play()`
+resets the 2× state, so anything that restarts playback clears it. Recording forces
+Forward and greys the direction menu.
 
-**Keyboard.** `Space` plays/pauses the ACTIVE Window — the one holding keyboard
-focus, which is the one the thick border is already pointing at — through the same
-toggle the play button calls, so the two can never disagree. `⌘N` / `⌘O` (`Ctrl`
-elsewhere) make a Window and open a file; they are handled on the editor, reached
-by bubbling, because neither the focused Window nor the canvas claims them.
+**Keys.** Every shortcut lives in one table, `ui/AppCommands`, routed to the selected
+Window. Single keys (`R F L M S K G D 1…0`) work only when no text field has focus.
 
 **View controls.**
 
@@ -198,38 +203,29 @@ by bubbling, because neither the focused Window nor the canvas claims them.
 |---|---|
 | `Ctrl`/`⌘` + wheel, or pinch | zoom about the pointer, 20%–400% |
 | wheel / `⇧`+wheel | scroll the board vertically / horizontally |
-| `H` | enter pan mode — hand cursor, drag anywhere pans (Windows stop taking clicks) |
+| right-button drag | pan, from anywhere, over Windows too |
+| `H` | pan mode: hand cursor, drag anywhere pans (Windows stop taking clicks) |
 | `V` or `Esc` | leave pan mode |
 | `0` | reset zoom, and put the origin back at the viewport's top-left |
 | `+` / `-` | zoom about the viewport centre |
+| ⌘0 / ⌘1 | Zoom 100% / Zoom to Fit (Window menu) |
 
-## The File menu, and the canvas as a document
+## The menus, and the canvas as a document
 
-`StandaloneApp.cpp` puts one menu in the bar, and it is the original's File menu
-(SPEC §4) with a second group added. The top group is Window-level and means what
-it always meant — New ⌘N, Open… ⌘O, Close ⌘W make, import into and throw away a
-sound Window, and all three call straight into the editor. The bottom group is the
-canvas: New Canvas, Open Canvas…, Save Canvas ⌘S, Save Canvas As… ⇧⌘S, Revert
-Canvas. Preferences ▸ holds Audio/MIDI Settings ⌘,. The departures from the
-recovered menu are marked `[NATIVE]` in the SPEC beside it.
-
-They are **commands**, not plain menu items (`CommandIDs`, `MainWindow` as an
-`ApplicationCommandTarget`). That is what gets real ⌘-equivalents onto the macOS
-menu — JUCE only sets an `NSMenuItem` key equivalent for an item that carries a
-command manager — and it puts the name, the key and the greying of each item in
-one `getCommandInfo` switch. Two traps live here: a command item is dispatched by
-the manager AND then reported to `menuItemSelected`, so that override must stay
-empty or every item runs twice; and because the menu owns ⌘N/⌘O in the standalone,
-`PluginEditor::keyPressed` no longer sees them there — it is still the path in a
-VST3/AU, which has no menu of ours.
+The menu bar is drawn inside the app (`AppMenuBar`), so the standalone and the
+plugin get the same **File / Edit / Selection / Transport / Window** menus; the
+macOS bar keeps only the application menu. Every item is a command in
+`AppCommands`, carrying its name, its keys and (through the editor's
+`getCommandInfo`) its greying, so a menu row and its shortcut can never disagree.
+The departures from the recovered menus are marked `[NATIVE]` in the SPEC.
 
 What makes the canvas a *document* is one field, `MainWindow::canvasFile`. The
 canvas's NAME is that file's, and "Untitled Canvas" when there is not one yet —
 deliberately not stored in the blob, so renaming the file in the Finder renames
 the canvas and there is no second copy of the name to disagree with the first.
-It is what the title bar shows, what ⌘S writes to without a dialog, what Revert
+It is what the in-app menu bar shows at its left, what ⌘S writes to without a dialog, what Revert
 goes back to, and it is remembered in the settings file (`canvasFile`) so the
-title still says what you were working on after a relaunch.
+name still says what you were working on after a relaunch.
 
 New Canvas and Revert Canvas confirm first. Nothing else here does, and the
 Window close box still does not: one Window is cheap to remake, a canvas is not,
@@ -239,19 +235,25 @@ and this program has no undo by design.
 
 There is one notion of "saved" here, and the host's word for it is *plugin state*.
 A state blob holds the whole canvas: every open Window, its name, its cell / place
-/ size / tint, its mixer channel (gain, mute, solo), and each track's audio bytes,
-output channel and volume. Selection, loop region and chunks travel with it. What
-does NOT travel is the transport — a restored canvas comes up stopped — and the
-Window ids, which are per-session handles.
+/ size / theme, its mixer channel (gain, balance, mute, solo, slot), its direction,
+and each track's audio, output channels and volume. Selection, loop region and
+chunks travel with it. What does NOT travel is the transport (a restored canvas
+comes up stopped) and the Window ids, which are per-session handles.
 
-That one blob is behind all four of these:
+That one format is behind all of these:
 
 | Where | What happens |
 | --- | --- |
-| File ▸ Save Canvas / Save Canvas As… / Open Canvas… | writes / reads it as a `.sefx` file |
-| double-clicking a `.sefx`, or a path on the command line | same read, routed through `MainWindow::loadCanvasFile` |
-| quitting and relaunching the standalone | it goes into `SoundEffects.settings`, so the canvas comes back |
+| File ▸ Save Canvas / Save Canvas as… | a **project folder**: `<Name>/<Name>.sefx` plus `Assets/`, one mono WAV per track |
+| File ▸ Export Sound… | one Sound as a self-contained `.sefx`, audio embedded |
+| File ▸ Open Canvas… / Import Sound…, double-click, command line | any `.sefx`: a project, an export, or a 0.3 single file |
+| quitting and relaunching the standalone | the canvas goes into `SoundEffects.settings` and comes back |
 | a DAW session with the plugin in it | the host saves it with the session |
+
+The format is versioned (`kEngineStateVersion`, now 3) and readers accept every
+older version; the project folder logic is in `engine/Project`, JUCE-free and
+tested through a real folder. A 0.3 canvas opens, and its first save goes through
+Save As, which turns it into a project.
 
 The settings file is named after the app, so correcting the name to the plural
 would have orphaned every existing canvas — the autosave lives *inside* that file.
@@ -266,9 +268,6 @@ Format and threading live in `engine/EngineState.h`. Three steps on purpose:
 set). The processor decodes wherever the host called it and marshals only the apply,
 via `AsyncUpdater`. Round trip, refusal of damaged blobs, and a 4000-case mutation
 sweep are asserted in `tests/run_state.cpp` — `state-tests`, JUCE-free like the rest.
-
-NB this is our own blob, not an interchange format; byte-accurate AIFF/WAV save
-(extended-80 rate, offset-binary payload) is still to come — see `Import.h`.
 
 On disk it is `.sefx`, declared to the Finder as the exported UTI
 `com.SoundEffects.canvas` (conforming to `public.data`) with the app claiming it at
@@ -301,109 +300,38 @@ open build/SoundEffects_artefacts/Debug/Standalone/SoundEffects.app
 
 Artifacts land under `build/SoundEffects_artefacts/` (Standalone `.app`, `.vst3`,
 `.component`). Verified building & running on macOS arm64 (AppleClang, CLT-only,
-JUCE 8.0.4) 2026-07-18.
+JUCE 8.0.4) 2026-07-18; still the toolchain for 0.4.0.
 
 ## Status
 
-- **Engine core**: done and verified (see the two checks below).
-- **UI/UX increment 1** (this pass): canvas hosting draggable System-7 Windows,
-  each drawing its tracks' waveforms + a working transport (play/stop/pause/
-  advance/loop) wired to the engine; a per-Window main mixer (dB fader + mute);
-  File > Open via JUCE decoders; New; Mosaic. **Builds and runs** (Standalone,
-  macOS arm64, JUCE 8.0.4) — multiple windows, per-track waveforms, transport, and
-  the per-window mixer all render and work. Engine additions it relies on
-  (uiPlayhead/uiState atomics, Import, window-id enumeration) are also verified via
-  smoke + ThreadSanitizer.
-- **UI/UX increment 2**: interactive tracks + selection + clipboard, on an RCU
-  editing foundation (the UI mutates a UI-authoritative doc and publishes an
-  immutable snapshot to the audio thread — edits apply mid-loop, no glitch, no
-  audio-thread alloc). Add/move/trash track, L/R output toggle, selection drag,
-  and ⌘X/⌘C/⌘V. Engine layer verified (ASan/UBSan + ThreadSanitizer incl.
-  concurrent edits during playback); UI drive-tested (add/trash track, selection,
-  cut/paste with the independent-track shortening all confirmed on real audio).
-- **UI/UX increment 3**: the canvas proper — resizable Windows (corner grow box,
-  chrome fixed, waveforms stretch), the virtual column grid described above with
-  drag-to-cell and live reflow, the 12-pastel tint palette, and zoom/pan
-  (`Ctrl`+wheel, pinch, `H`/`V`). **Builds and runs** (Standalone, macOS arm64,
-  JUCE 8.0.4); drive-tested end to end — grid packing, column resize (both ways),
-  drag between columns and out into a new one either side, drag above a column's
-  top so it climbs past the origin line, tints, zoom, pan, and the grid/free toggle
-  all confirmed on screen.
-- **UI/UX increment 4**: the mixer panel proper — New/Open moved to its head, one
-  horizontal strip per Window (name · mute · the combined fader/VU trough), a
-  ≤250px column with a scrolling list, and everything in it hand-painted System 7
-  (including the scrollbar). Engine side: `Window::meter`. **Builds and runs**
-  (Standalone, macOS arm64, JUCE 8.0.4); drive-tested on screen — Open from the
-  panel loads a file, the meter fills and falls with playback, dragging a fader
-  swaps the name cell for a live dB readout (−∞ … +6.0 dB) and the meter follows
-  the new gain, mute inverts the button and empties the meter, double-click
-  returns the fader to unity, and the list scrolls once the strips outgrow it.
-- **Save / load**: `getStateInformation` / `setStateInformation` implemented, so the
-  File menu's canvas items, the standalone's quit-and-relaunch, and a DAW
-  session all carry the real canvas (see *Saving* above). Engine side verified by
-  `state-tests` (field-by-field round trip, damaged blobs refused, ASan/UBSan clean
-  over a 4000-case mutation sweep); verified in the built app too — a three-Window
-  canvas written into `SoundEffects.settings` came up on screen with its tints,
-  sizes, byte counts, independent track lengths, mute and solo intact, and was
-  written back out byte-identical apart from the grid's own re-pack of x/height.
-- **The Keyboard palette**: the one effect that is not a form, and the only one that
-  is always on. A floating strip hangs under the View palette, shown and hidden from
-  a button there (the module's own ICN# 128, inverted while it is up), and at any
-  moment it plays **the Window that is selected now** — click a key to hear that
-  Window at that pitch, click a different Window and the same keyboard is playing
-  that one. Apply commits by editing the document's playback rate and **touching not
-  one byte of audio**; Resample Rate is how you make the lie true.
-  The keyboard itself is recovered exactly — the shipping module's resource fork
-  (`SoundEffects 0.9.2 ƒ/Effects Folder/Keyboard`) still carries PICT 128, ICN# 128,
-  WIND/CNTL, STR# 1000 and TEXT 1000, and the picture is redrawn from measurements
-  of the decoded bitmap (56 white keys on an 8px pitch, eight octaves, black keys
-  5 × 20) rather than embedded, so it is pixel-exact and stays crisp. The dot under
-  the document's base note is the original's.
-  Everything around it is deliberately modern: no modal, no System 7 dialog chrome,
-  no "Use selection for looping" checkbox (looping is always on — it was the switch
-  that turned a one-shot into an instrument), no Cancel, and **no one-channel
-  limitation** — the original could only play the first selected channel and
-  apologised for it in STR# 1000 #3; this plays every selected track, and nothing
-  raises the apology any more.
-  **A key does one of two things**, and the difference is the whole feel of it. On a
-  STOPPED Window it starts it looping at that pitch and letting go stops it. On a
-  Window ALREADY ROLLING it re-pitches the transport *where it stands* — letting go
-  puts the rate back and leaves it running, so you can ride a live loop up and down
-  the keyboard and hand it back exactly as you found it. Nothing restarts: no gap,
-  no playhead jump, no phase lost against the other Windows, and no re-snapshotting
-  of the loop region from a selection that may have moved since. That is what
-  `Transport::setRateScale` exists for; save-and-restore would have gapped the loop
-  for the length of every note and had to reconstruct state the transport does not
-  publish. It also only ever touches the Window it is driving — playback is global
-  and additive here, and almost nothing on the canvas is the keyboard's to stop.
-  The readout badge wears the **target Window's tint**, the way the mixer's strips
-  do: on a one-row strip with no space for a title, the tint is what says which
-  Window the keys are about to move.
-- **Next increments**: System 7 chrome polish; the effects port; recording;
-  byte-accurate AIFF/WAV save.
+**0.4.0 is released** (tag `v0.4.0`). Everything above is built and drive-tested;
+the step-by-step record, with what was verified at each step, is the journal in
+[`docs/0.4.0/PLAN.md`](../docs/0.4.0/PLAN.md). Tests: `effect-fixtures` (209 golden
+cases from the TS reference), `engine-tests` (mixer, directions, loops, recording,
+concurrency; run under TSan) and `state-tests` (round trips, damaged blobs, a
+mutation sweep), all JUCE-free. See the Verification section of PLAN.md for how to
+run them.
 
-## Known TODO / not-yet-safe
+## Known gaps
 
-- **Window lifecycle hand-off: DONE** (lock-free command + retirement queues;
-  gain/mute atomics). Verified with ThreadSanitizer (200k-iteration concurrent
-  churn, no races) and `leaks` (0 leaks, incl. destructor reclaim).
-- **Intra-window edits are NOT yet safe.** The audio thread reads a Window's
-  document (track buffers, selection, loop) while playing. Destructive effects,
-  selection changes, and add/move/trash *track* while a Window is playing still
-  need their own hand-off (same command-queue idea, or a per-Window immutable
-  document swap). Editing a stopped Window is fine.
+The performance and robustness audit of 0.4.0, with what was fixed before the
+release and what comes after, is [`docs/0.4.0/perf-audit-plan.md`](../docs/0.4.0/perf-audit-plan.md).
+The main open items:
+
+- **The canvas is saved only at quit or on ⌘S.** The standalone keeps the open
+  canvas, audio and all, base64'd in `~/Library/Application Support/
+  SoundEffects.settings`, written on quit. A crash loses everything since the last
+  save, and a canvas of long audio makes a fat settings file and a slower quit.
+  Background autosave is the first item after the release.
+- **The plugin is frozen.** Before it ships: render in chunks when a host sends a
+  block larger than `prepareToPlay` promised, keep `prepareToPlay` off the
+  message-thread registry, and settle a take when the device rate changes.
 - **`getStateInformation` has no thread escape.** It reads the UI-side documents,
-  so it expects the message thread — which is where the standalone and every host
+  so it expects the message thread, which is where the standalone and every host
   we target call it. `setStateInformation` is defended (parse anywhere, apply
   marshalled); the save side cannot be, because the host wants the bytes before the
   call returns.
-- **The standalone keeps its state in the settings file.** Quitting base64s the
-  whole canvas — audio and all — into `~/Library/Application Support/
-  SoundEffects.settings`. Fine at SoundEffects sizes (8-bit, 22 kHz), but a canvas
-  full of long imported audio makes for a fat settings file and a slower quit.
-- **`TrackMonitor` uses `std::set`.** Soloing/muting a *track* (not a window)
-  mutates a set — allocation. Fine today because it goes through the command
-  queue applied on the audio thread only via `play` payloads, but a live
-  solo/mute path must avoid `std::set` on the audio thread.
-- Plugin format AAX needs the AAX SDK path set; CLAP needs the clap-juce-extension
-  wrapper. Only Standalone/VST3/AU are enabled by default.
+- **Effects run on the message thread.** A long effect on a long Sound blocks the UI
+  until it is done.
+- AAX needs the AAX SDK path set; CLAP needs the clap-juce-extension wrapper. Only
+  Standalone / VST3 / AU are enabled.
