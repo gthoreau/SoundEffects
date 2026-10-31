@@ -25,7 +25,7 @@ constexpr int kRevealMargin = 24;
 
 juce::Colour CanvasComponent::tintFromPalette (int index) noexcept
 {
-    return sys7::tintFromPalette (index);   // the palette itself lives in Sys7
+    return os8::themeColour (index);   // the palette itself lives in Os8
 }
 
 CanvasComponent::CanvasComponent (se::Engine& e) : engine (e)

@@ -72,7 +72,7 @@ public:
 
 private:
     /** The parts that answer the pointer. The two slider ends step; the trough
-        drags; the segments toggle. The 100% button is a real Sys7Button. */
+        drags; the segments toggle. The 100% button is a real Os8Button. */
     enum class Part { none, grid, free, minus, plus, trough, keys };
 
     Part partAt (juce::Point<int> p) const;

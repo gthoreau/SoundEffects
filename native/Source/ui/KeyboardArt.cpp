@@ -36,7 +36,7 @@ const char* const kIcon[kbd::kIconH] = {
     ".###################",
 };
 
-// The palette these are drawn in. Kept local so this file needs no Sys7.h: the
+// The palette these are drawn in. Kept local so this file needs no Os8.h: the
 // artwork is one bit deep, and one bit deep is black and white.
 const juce::Colour kInk   { 0xff000000 };
 const juce::Colour kWhite { 0xffffffff };

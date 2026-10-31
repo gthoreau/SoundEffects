@@ -31,8 +31,8 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "Os8.h"
 #include "Reorder.h"
-#include "Sys7.h"
 #include "WindowComponent.h"
 #include "engine/Engine.h"
 
@@ -54,10 +54,10 @@ public:
     void setMosaicMode (bool shouldTile);
     bool isMosaicMode() const noexcept { return mosaicEnabled; }
 
-    /** The 12 pastels new Windows are tinted from (sys7's, so the mixer can wear
+    /** The 24 themes new Windows are tinted from (os8's, so the mixer can wear
         them too — a strip is painted in its Window's coat). */
     static juce::Colour tintFromPalette (int index) noexcept;
-    static constexpr int kNumTints = sys7::kNumTints;
+    static constexpr int kNumTints = os8::kNumThemes;
 
     /** Hand-drag panning (H to enter, V to leave). */
     void setPanMode (bool shouldPan);

@@ -80,7 +80,6 @@ target_sources(SoundEffects PRIVATE
     Source/effects/modules/Granular.cpp
     Source/effects/modules/SampleHose.cpp
     Source/effects/modules/Waveform.cpp
-    Source/ui/Sys7.cpp
     Source/ui/Os8.cpp
     Source/ui/Os8Gallery.cpp
     Source/ui/Os8Widgets.cpp

@@ -1,8 +1,7 @@
 // Os8 — the Mac OS 8 vocabulary of SoundEffects 0.4.0, drawn from the Figma design
 // system (file QmG2Chvizn1QXGPwQVBgnn, page "Design System").
 //
-// This is the successor to Sys7. The two live side by side while the panels move
-// over one at a time; once nothing includes Sys7.h any more, it goes. Every value
+// It replaced the Sys7 look of 0.3 (deleted in 0.4.0, step 13.2). Every value
 // here is a value read off a Figma style or component, so when the design changes,
 // this file is where the change lands — and nothing outside it should hard-code a
 // colour or a font that has a name in Figma.
