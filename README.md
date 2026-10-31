@@ -77,56 +77,78 @@ xattr -dr com.apple.quarantine /Applications/SoundEffects.app
 
 ## What works today
 
-- **The canvas** — unbounded board, zoom 20–400% (⌘/Ctrl + wheel or pinch), pan
-  (`H`), snap-to-grid columns you can drag windows between, or **Mosaic** to turn
-  the grid off and place them freely.
-- **Open WAV and AIFF** (⌘O). A stereo file arrives as two tracks already routed
-  left and right.
-- **Multiple tracks per window**, each its own buffer with its own length, its own
-  `L` / `L+R` / `R` output routing, and its own loop — so tracks phase against
-  each other, and windows phase against each other. This is the point of the app.
-- **Transport per window** — play/pause (also `Space`), stop, 2× and loop.
-- **The mixer** — one strip per window, with mute, solo, a dB fader and a VU meter
-  sharing one trough on one scale.
-- **37 effects**, ported from the originals and checked against golden vectors
-  generated from the TypeScript reference — Amplify, Echo/Delay, Flanger, FIR and
-  IIR filters, Robotize, Granular Synthesis, Sample Hose, Weird Tempo, Zero
-  Crosser and the rest.
+- **The canvas.** An unbounded board, zoom 20–400% (⌘/Ctrl + wheel, pinch, ⌘0,
+  ⌘1), pan with a right-button drag or `H`, and a **grid** you drag windows
+  between, or a **free** canvas (`G`) to place them anywhere.
+- **The Mac OS 8 look.** Redrawn from a Figma design system and set in a
+  recreated Classic Chicago, with 24 colour themes. Each sound wears one on its
+  window and on its mixer strip.
+- **Multiple tracks per window.** Each track is its own buffer with its own
+  length, its own left/right speakers and its own loop, so tracks phase against
+  each other and windows phase against each other. This is the point of the
+  app. Drag tracks to reorder, add, duplicate (⌥-drag) or trash them.
+- **A transport per window.** Record, stop, pause, play (`Space`), 2× and loop.
+  Each window plays **Forward, Backward or Ping-pong** (`D`, or the strip on the
+  Play button) and switches mid-play without a glitch. A running loop follows the
+  selection as you change it.
+- **Recording.** The **Source** button (⌘⇧R) records from an audio input, from
+  the canvas (the main mix, or one window's own output) or, in a plugin, from
+  the DAW. With nothing selected, a take goes into new tracks; with a selection
+  over one or two tracks, it goes into the selection, as a punch-in or looping.
+  Conversion is Raw (lo-fi, the default) or Clean.
+- **The mixer.** One strip per window, in numbered slots (keys `1`…`0` select a
+  slot). Each strip has a fader with a stereo VU meter, balance, mute and solo,
+  and you drag strips to reorder them.
+- **37 effects** in a panel, ported from the originals and checked against golden
+  vectors generated from the TypeScript reference. They include Amplify,
+  Echo/Delay, Flanger, the FIR and IIR filters, Robotize, Granular Synthesis,
+  Sample Hose, Weird Tempo and Zero Crosser. Settings open in a tray, setups
+  (presets) are saved and recalled, and **Auto-apply** makes the one-click
+  effects instant.
+- **The original's editing.** Cut, copy, paste, duplicate, clear, crop, insert
+  silence, Leave Silence, Shift Sound, Select Exactly, Select Peak, Select Silence
+  and Set Loop, all from the in-app **Edit** and **Selection** menus. The
+  selection's start, length and end are live fields in seconds, ms or samples.
+- **The Keyboard.** A palette that plays the selected window at chromatic pitches
+  (`K`).
+- **Projects.** **Save Canvas** (⌘S) writes a folder holding the `.sefx` file and
+  an `Assets` folder with every track as a WAV. **Export Sound** and **Import
+  Sound** move single sounds between canvases. **Open Sound** (⌘O) reads WAV and
+  AIFF; a stereo file arrives as two tracks routed left and right.
 
 ## What doesn't work yet
 
 Worth knowing before you spend an evening on a patch:
 
-- **There is no Export.** Your work is safe — see Save Canvas above — but
-  it can only be reopened by SoundEffects. Nothing leaves as a WAV or AIFF yet, so
-  recording the output with Loopback/BlackHole is still the only way into another
-  program.
-- **Recording is not wired up.** The red button is there; pressing it opens the
-  audio settings and otherwise does nothing.
-- **There is no undo** — and there never will be. That one is deliberate; see the
-  original's own alert text in the spec.
-- **Saving your work.** **File → "Save Canvas"** (⌘S) writes the whole canvas to a
-  `.sefx` file — every window where you left it, its colour, its tracks and their
-  audio, and the mixer settings — and **"Open Canvas…"** brings it back, as does
-  double-clicking a `.sefx` in the Finder. You don't have to remember to save: quit
-  and the canvas is waiting on the next launch. (It comes back stopped, not
-  playing.)
+- **There is no undo**, and there never will be. That one is deliberate: the
+  menu item is there and always greyed. See the original's own alert text in the
+  spec.
+- **The plugin** (VST3/AU) builds from the same sources but is not released.
+- **The canvas is only saved when you ask, or when you quit.** A crash loses what
+  you did since the last ⌘S.
+- **Not back yet from the original:** the Preferences pages, the level meter,
+  Spectrum, the Chunk List and Play Clipboard.
 
 ## Requirements
 
 macOS 11 Big Sur or later, Apple Silicon or Intel. No installer beyond the drag.
-The only thing it leaves on your disk is
-`~/Library/Application Support/SoundEffects.settings` — your audio device choice,
-and the canvas you had open when you last quit. That file therefore carries your
-audio, and can run to tens of megabytes once you have real samples loaded; it is
-rewritten on every quit. Delete the app and that file and nothing remains.
+It leaves two files on your disk:
+
+- `~/Library/Application Support/SoundEffects.settings` holds your audio device
+  choice and the canvas you had open when you last quit. That file therefore
+  carries your audio and can run to tens of megabytes once you have real samples
+  loaded. It is rewritten on every quit.
+- `~/Library/Application Support/SoundEffects/Preferences.settings` holds the
+  app's preferences: the selection unit, Auto-apply and the effect setups.
+
+Delete the app and those two and nothing remains.
 
 If you ran an earlier build, back when the app was called SoundEffect without the
 s, there is also a `SoundEffect.settings` next to it. The first launch under the
 new name copies it across, so your canvas and audio device come with you; the old
 file is then dead weight and safe to delete.
 
-Audio input/output is picked in **File → Preferences → Audio/MIDI Settings** (⌘,).
+Audio input and output are picked in **File → Audio/Midi Setup** (⌘,).
 
 ---
 
@@ -157,6 +179,10 @@ cmake -B native/build -S native -G Ninja && cmake --build native/build
 
 The same sources also build a **VST3** and an **AU** plugin (`SoundEffects_VST3`,
 `SoundEffects_AU`); only the standalone app is packaged for release today.
+
+The 0.4.0 work, its decisions and its journal are in
+[docs/0.4.0/PLAN.md](docs/0.4.0/PLAN.md); what comes next is in
+[docs/0.4.0/perf-audit-plan.md](docs/0.4.0/perf-audit-plan.md).
 
 ## Repository layout
 
