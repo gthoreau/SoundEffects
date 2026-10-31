@@ -38,6 +38,17 @@ struct Os8AppMenuLookAndFeelHolder : juce::DeletedAtShutdown
     JUCE_DECLARE_SINGLETON_INLINE (Os8AppMenuLookAndFeelHolder, true)
 };
 
+const juce::String& Os8AppMenuLookAndFeel::iconRowMark()
+{
+    static const juce::String mark = juce::String::charToString (0x2063) + "icon";   // invisible separator
+    return mark;
+}
+
+void Os8AppMenuLookAndFeel::markIconRow (juce::PopupMenu::Item& item)
+{
+    item.shortcutKeyDescription = iconRowMark();
+}
+
 Os8AppMenuLookAndFeel& Os8AppMenuLookAndFeel::instance()
 {
     return Os8AppMenuLookAndFeelHolder::getInstance()->lf;
@@ -76,18 +87,17 @@ void Os8AppMenuLookAndFeel::getIdealPopupMenuItemSizeWithOptions (const juce::St
     // to measure OUR rendering of the shortcut and to know whether the row carries
     // an icon, and fit the frame to the widest row, as the design's menus are.
     const auto label = text.upToFirstOccurrenceOf ("   ", false, false);
+    const auto tail = text.fromFirstOccurrenceOf ("   ", false, false);
     const cmd::Spec* spec = nullptr;
     for (const auto& row : cmd::table())
         if (label == row.name) { spec = &row; break; }
 
-    const bool hasIcon = label.startsWith ("Color:")
-                      || (spec != nullptr && (spec->id == cmd::record || spec->id == cmd::stop || spec->id == cmd::play
-                                              || spec->id == cmd::pause || spec->id == cmd::loop || spec->id == cmd::fastForward));
+    const bool hasIcon = tail == iconRowMark();
     auto shortcut = spec != nullptr && ! spec->keys.empty() ? cmd::describe (spec->keys.front()) : juce::String();
     // A row that shows its own text for a command (the sound list's slot keys):
     // JUCE's rendering of a bare digit is the design's.
-    if (spec == nullptr && text.contains ("   "))
-        shortcut = text.fromFirstOccurrenceOf ("   ", false, false).trim();
+    if (spec == nullptr && ! hasIcon && tail.isNotEmpty())
+        shortcut = tail.trim();
 
     idealWidth = (hasIcon ? kIconLabelX : kLabelX) + os8::widthOf (label, os8::TextStyle::menuItem)
                + (shortcut.isEmpty() ? 0 : kShortcutGap + os8::widthOf (shortcut, os8::TextStyle::menuItem))
@@ -100,7 +110,9 @@ void Os8AppMenuLookAndFeel::drawPopupMenuItemWithOptions (juce::Graphics& g, con
                                                           const juce::PopupMenu::Options&)
 {
     using namespace os8::colour;
-    const int x = area.getX(), y = area.getY(), w = area.getWidth();
+    // JUCE gives each row the window's width, which is the frame's plus the border
+    // on both sides; lay the row out on the frame's width so nothing passes it.
+    const int x = area.getX(), y = area.getY(), w = area.getWidth() - 2 * kMenuBorder;
     const int inner = w - 2 * kRowInset;
 
     if (item.isSeparator)
@@ -159,8 +171,9 @@ void Os8AppMenuLookAndFeel::drawPopupMenuItemWithOptions (juce::Graphics& g, con
     if (item.subMenu != nullptr)
     {
         g.setColour (ink);
+        // "Arrow": a 12 px column at the row's right end, the 6 x 11 icon 2 px into it.
         g.fillPath (os8::icon::outline (os8::icon::Id::menuArrow),
-                    juce::AffineTransform::translation ((float) (x + w - kRowInset - 7), (float) y + 3.0f));
+                    juce::AffineTransform::translation ((float) (x + w - kRowInset - 10), (float) y + 3.0f));
     }
 }
 

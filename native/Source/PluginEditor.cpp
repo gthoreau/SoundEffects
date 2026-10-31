@@ -389,6 +389,7 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::getMenuForIndex (int index, co
         item.setTicked ((info.flags & juce::ApplicationCommandInfo::isTicked) != 0);
         item.commandManager = &commandManager;
         item.setImage (os8::icon::makeDrawable (icon));
+        Os8AppMenuLookAndFeel::markIconRow (item);
         m.addItem (std::move (item));
     };
 
@@ -492,6 +493,7 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::windowMenu()
             juce::PopupMenu::Item item (os8::themeName (i));
             item.setTicked (i == current);
             item.setImage (std::move (swatch));
+            Os8AppMenuLookAndFeel::markIconRow (item);
             item.setAction ([this, selected, i]
             {
                 if (auto* win = processorRef.engine().windowById (selected))
@@ -506,7 +508,11 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::windowMenu()
         dot.addEllipse (0.0f, 0.0f, 10.0f, 10.0f);
         colourDot->setPath (dot);
         colourDot->setFill (os8::themeColour (current));
-        m.addSubMenu ("Color: " + os8::themeName (current), colours, true, std::move (colourDot));
+        juce::PopupMenu::Item colourRow ("Color: " + os8::themeName (current));
+        colourRow.subMenu = std::make_unique<juce::PopupMenu> (std::move (colours));
+        colourRow.setImage (std::move (colourDot));
+        Os8AppMenuLookAndFeel::markIconRow (colourRow);
+        m.addItem (std::move (colourRow));
     }
     m.addCommandItem (&commandManager, cmd::changeName);
     m.addSeparator();

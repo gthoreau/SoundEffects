@@ -990,7 +990,9 @@ private:
                 const auto& item = it.getItem();
                 int w = 0, h = 0;
                 auto measured = item.text;
-                if (item.commandManager != nullptr)
+                if (item.shortcutKeyDescription.isNotEmpty())
+                    measured << "   " << item.shortcutKeyDescription;
+                else if (item.commandManager != nullptr)
                     if (auto* info = item.commandManager->getCommandForID (item.itemID))
                         if (! info->defaultKeypresses.isEmpty())
                             measured << "   " << info->defaultKeypresses.getReference (0).getTextDescriptionWithIcons();
@@ -1007,7 +1009,8 @@ private:
             int y = border;
             for (auto& [item, h] : rows)
             {
-                lf.drawPopupMenuItemWithOptions (g, { 0, y, width, h }, false, item, options);
+                // As JUCE lays a live popup: every row is the window's width.
+                lf.drawPopupMenuItemWithOptions (g, { 0, y, width + 2 * border, h }, false, item, options);
                 y += h;
             }
             ok = ok && writePng (image, png.getSiblingFile (png.getFileNameWithoutExtension() + "-menu-" + names[m] + ".png"));

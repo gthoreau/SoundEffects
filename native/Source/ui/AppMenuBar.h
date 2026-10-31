@@ -38,6 +38,12 @@ public:
     /** Rows start 3 px into the frame (the dropdown menus' border is 2). */
     static constexpr int kMenuBorder = 3;
 
+    /** JUCE measures a row from its text alone, so a row built by hand with an icon
+        (the Color submenu, the Transport rows) says so in its shortcutKeyDescription,
+        which JUCE appends to the measured text. It is never drawn. */
+    static void markIconRow (juce::PopupMenu::Item&);
+    static const juce::String& iconRowMark();
+
     // The bar.
     void drawMenuBarBackground (juce::Graphics&, int width, int height, bool isMouseOverBar,
                                 juce::MenuBarComponent&) override;
