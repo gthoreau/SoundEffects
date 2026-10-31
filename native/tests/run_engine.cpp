@@ -328,6 +328,264 @@ void directionTests()
     }
 }
 
+std::unique_ptr<se::SoundDocument> sineDocument (size_t len);
+
+// 12.8: deselecting (and every live re-aim) — a track that cannot keep its own frame
+// follows the topmost track that had one. Cases as numbered in
+// docs/0.4.0/12.8-deselect-sync.md. Ramps are 8-bit mono, so bytes == frames.
+void deselectSyncTests()
+{
+    using se::PlayDirection;
+    se::PlayOptions loop; loop.loop = true;
+    const auto at = [] (se::Transport& tr, int t) { size_t p = 0; return tr.uiTrackPosition (t, p) ? (long) p : -1L; };
+    const auto selectTracks = [] (se::SoundDocument& d, int first, int last, size_t st, size_t end)
+    {
+        d.firstSelTrack = first; d.lastSelTrack = last; d.selSt = st; d.selEnd = end;
+    };
+
+    // The bug itself (+ case 6, a caret is a deselection): looping track 2's selection,
+    // then clearing it. Tracks 1 and 3 used to restart at 0.
+    {
+        auto doc = rampDocument ({ 100, 100, 100 });
+        selectTracks (*doc, 2, 2, 20, 60);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        renderTransport (tr, *doc, 25);                    // track 2 reads 45 next
+        doc->selSt = doc->selEnd = 10;                     // a caret
+        renderTransport (tr, *doc, 1);
+        check (tr.uiLoopMode() == se::LoopMode::all, "deselect: the whole sound loops");
+        check (at (tr, 0) == 46 && at (tr, 1) == 46 && at (tr, 2) == 46,
+               "deselect: the tracks outside the old selection pick up its frame (playheads 46, 46, 46)");
+        const auto o = renderTransport (tr, *doc, 100);
+        check (o.left.back() == (46 + 99) % 100 && o.right.back() == (46 + 99) % 100,
+               "deselect: and run on from there, wrapping at their own ends");
+    }
+    // Backward and ping-pong: R's heading is taken too.
+    for (int pp = 0; pp < 2; ++pp)
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        selectTracks (*doc, 2, 2, 20, 60);
+        se::Transport tr (kRate);
+        tr.setDirection (pp ? PlayDirection::pingPong : PlayDirection::backward, *doc);
+        tr.play (*doc, loop);
+        renderTransport (tr, *doc, pp ? 50 : 10);          // backward: 59 down to 50; ping-pong: up 40, down 10 -> 49
+        const long r = at (tr, 1);
+        doc->selSt = doc->selEnd = 0;
+        renderTransport (tr, *doc, 1);
+        check (at (tr, 0) == r - 1 && at (tr, 1) == r - 1,
+               pp ? "deselect: ping-pong on its way down, the others come in heading down too"
+                  : "deselect: backward, the others come in on its frame, heading backward");
+    }
+    // Case 1: selected tracks out of phase keep their own frames; the others follow
+    // the topmost of them.
+    {
+        auto doc = rampDocument ({ 100, 70, 100 });
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        renderTransport (tr, *doc, 80);                    // 80, 10, 80
+        selectTracks (*doc, 1, 2, 0, 100);
+        renderTransport (tr, *doc, 1);                     // 81, 11; track 3 out
+        doc->selSt = doc->selEnd = 0;
+        renderTransport (tr, *doc, 1);
+        check (at (tr, 0) == 82 && at (tr, 1) == 12 && at (tr, 2) == 82,
+               "deselect: out-of-phase selected tracks keep their frames, the others take the topmost's");
+    }
+    // Case 2: a formerly-selected track that was absent follows R, wrapped to its length.
+    {
+        auto doc = rampDocument ({ 100, 30, 100 });
+        selectTracks (*doc, 2, 3, 20, 60);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        renderTransport (tr, *doc, 25);                    // track 2 (30 long) absent at 45, track 3 at 45
+        doc->selSt = doc->selEnd = 0;
+        renderTransport (tr, *doc, 1);
+        check (at (tr, 2) == 46 && at (tr, 0) == 46 && at (tr, 1) == 16,
+               "deselect: an absent selected track follows the reference, mod its own length (45 mod 30 -> 16)");
+    }
+    // Case 3: no reference at all — every selected track absent: span start, as before.
+    {
+        auto doc = rampDocument ({ 100, 30 });
+        selectTracks (*doc, 2, 2, 40, 80);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        renderTransport (tr, *doc, 5);                     // track 2 absent at 45
+        doc->selSt = doc->selEnd = 0;
+        renderTransport (tr, *doc, 1);
+        check (at (tr, 0) == 1 && at (tr, 1) == 1, "deselect: no reference, every track starts over (today's rule) got " + std::to_string (at (tr, 0)) + "," + std::to_string (at (tr, 1)));
+    }
+    // Case 4: a new selection over other tracks — the newcomers take F inside the span.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        selectTracks (*doc, 1, 1, 20, 60);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        renderTransport (tr, *doc, 15);                    // track 1 reads 35 next
+        selectTracks (*doc, 1, 2, 20, 60);
+        renderTransport (tr, *doc, 1);
+        check (at (tr, 0) == 36 && at (tr, 1) == 36, "reselect: a track entering the selection takes the reference's frame");
+        selectTracks (*doc, 1, 2, 70, 90);                 // F (37) outside the new span: its start
+        renderTransport (tr, *doc, 1);
+        check (at (tr, 0) == 71 && at (tr, 1) == 71, "reselect: outside the new span, the span's start as before");
+    }
+    // Case 5: dragging the selection along: nothing that has a frame jumps.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        selectTracks (*doc, 1, 1, 10, 60);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        renderTransport (tr, *doc, 20);                    // 30 next
+        bool steady = true;
+        long last = at (tr, 0);
+        for (int k = 0; k < 10; ++k)
+        {
+            doc->selSt += 1; doc->selEnd += 1;
+            if (k == 5) doc->lastSelTrack = 2;             // the drag takes in track 2 halfway
+            renderTransport (tr, *doc, 1);
+            steady = steady && at (tr, 0) == last + 1;
+            last = at (tr, 0);
+        }
+        check (steady && at (tr, 1) == last, "drag: the playhead never jumps, and the track taken in joins it");
+    }
+    // Case 7: a Set Loop region is the aim: deselecting changes nothing.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->loopSt = 20; doc->loopEnd = 60;
+        selectTracks (*doc, 1, 1, 30, 40);
+        se::PlayOptions region; region.loop = true; region.useLoopRegion = true;
+        se::Transport tr (kRate);
+        tr.play (*doc, region);
+        renderTransport (tr, *doc, 10);
+        const long before = at (tr, 0);
+        doc->selSt = doc->selEnd = 0;
+        renderTransport (tr, *doc, 1);
+        check (tr.uiLoopMode() == se::LoopMode::selection && at (tr, 0) == before + 1 && at (tr, 1) == before + 1,
+               "Set Loop: deselecting does not touch a region loop");
+    }
+    // Case 8: play-once has no live re-aim.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        selectTracks (*doc, 1, 1, 20, 60);
+        se::PlayOptions once;
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        renderTransport (tr, *doc, 5);
+        doc->selSt = doc->selEnd = 0;
+        renderTransport (tr, *doc, 1);
+        check (tr.uiLoopMode() == se::LoopMode::once && at (tr, 0) == 26, "play once: deselecting mid-pass changes nothing (unchanged)");
+    }
+    // Case 9: paused, the re-aim lands on resume, from where it was paused.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        selectTracks (*doc, 2, 2, 20, 60);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        renderTransport (tr, *doc, 25);
+        tr.pause();
+        doc->selSt = doc->selEnd = 0;
+        const auto held = renderTransport (tr, *doc, 10);
+        check (held.frames == 0 && tr.uiLoopMode() == se::LoopMode::selection, "paused: nothing re-aims while paused");
+        tr.pause();
+        renderTransport (tr, *doc, 1);
+        check (tr.uiLoopMode() == se::LoopMode::all && at (tr, 0) == 46 && at (tr, 1) == 46,
+               "paused: on resume the deselection lands on the paused frame");
+    }
+    // Case 10: while a take runs (excludeMask) the aim is frozen; it lands after.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        selectTracks (*doc, 2, 2, 20, 60);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        tr.excludeMask = 2;                                // track 2 is being written
+        renderTransport (tr, *doc, 25);
+        doc->selSt = doc->selEnd = 0;
+        renderTransport (tr, *doc, 1);
+        check (tr.uiLoopMode() == se::LoopMode::selection && at (tr, 1) == 46, "recording: no re-aim mid-take");
+        tr.excludeMask = 0;                                // the take ends
+        renderTransport (tr, *doc, 1);
+        check (tr.uiLoopMode() == se::LoopMode::all && at (tr, 0) == 47 && at (tr, 1) == 47,
+               "recording: the deselection lands when the take ends");
+    }
+    // Case 11: no click — a sine through the deselection.
+    {
+        auto doc = sineDocument (400);
+        doc->tracks.push_back (doc->tracks[0]);
+        doc->tracks[1].outLeft = true;
+        selectTracks (*doc, 2, 2, 100, 300);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        const auto a = renderTransport (tr, *doc, 150);
+        doc->selSt = doc->selEnd = 0;
+        const auto b = renderTransport (tr, *doc, 200);
+        float worst = 0.0f, prevS = a.rawL.back();
+        for (float v : b.rawL) { worst = std::max (worst, std::fabs (v - prevS)); prevS = v; }
+        check (worst * 128.0f < 5.0f, "deselect: the tracks that come in do so under the crossfade, no click");
+    }
+    // Case 13: Advance and the Keyboard's rateScale do not change the frames picked up.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        selectTracks (*doc, 2, 2, 20, 60);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        tr.setRateScale (2.0);
+        renderTransport (tr, *doc, 10);                    // 20 + 2*10: reads 40 next
+        doc->selSt = doc->selEnd = 0;
+        renderTransport (tr, *doc, 1);
+        check (at (tr, 0) == 42 && at (tr, 1) == 42, "deselect at 2x: the frame is picked up all the same");
+    }
+}
+
+// Case 12 + TSan: several Windows, selections made and cleared while they render.
+void deselectConcurrencyTests()
+{
+    se::Engine engine;
+    engine.prepare (kRate, kBlock);
+    const uint64_t a = engine.addWindow (rampDocument ({ 700, 450, 300 }));
+    const uint64_t b = engine.addWindow (rampDocument ({ 500, 800 }));
+    se::PlayOptions loop; loop.loop = true;
+    engine.play (a, loop);
+    engine.play (b, loop);
+
+    std::atomic<bool> stop { false }, sane { true };
+    std::thread audio ([&]
+    {
+        std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
+        while (! stop.load())
+        {
+            engine.render (l.data(), r.data(), kBlock);
+            for (int i = 0; i < kBlock; ++i)
+                if (! std::isfinite (l[(size_t) i]) || std::fabs (l[(size_t) i]) > 1.0f) sane = false;
+        }
+    });
+    unsigned seed = 777;
+    const auto next = [&] (unsigned m) { seed = seed * 1664525u + 1013904223u; return (seed >> 8) % m; };
+    long reads = 0;
+    for (int i = 0; i < 3000; ++i)
+    {
+        const uint64_t id = next (2) ? a : b;
+        if (auto* d = engine.editDoc (id))
+        {
+            const size_t len = d->maxTrackSize();
+            if (next (3) == 0) { d->selSt = d->selEnd = next ((unsigned) len); }
+            else
+            {
+                d->firstSelTrack = 1 + (int) next ((unsigned) d->numTracks());
+                d->lastSelTrack = d->firstSelTrack + (int) next ((unsigned) (d->numTracks() - d->firstSelTrack + 1));
+                d->selSt = next ((unsigned) len / 2); d->selEnd = d->selSt + 1 + next ((unsigned) len / 2);
+            }
+            if (next (7) == 0) engine.setDirection (id, (se::PlayDirection) next (3));
+            engine.commitEdit (id);
+        }
+        if (auto* w = engine.windowById (id))
+            for (int t = 0; t < 3; ++t) { size_t p = 0; reads += w->transport->uiTrackPosition (t, p) ? 1 : 0; }
+        engine.collectRetired();
+        std::this_thread::sleep_for (std::chrono::microseconds (150));
+    }
+    stop = true;
+    audio.join();
+    engine.collectRetired();
+    check (sane.load(), "deselect: two Windows selecting / deselecting under the audio thread (" + std::to_string (reads) + " reads)");
+}
+
 // A smooth signal exposes a click that a ramp hides: one sine cycle, amplitude 100
 // (8-bit units), so no honest step between neighbouring frames exceeds ~0.16.
 std::unique_ptr<se::SoundDocument> sineDocument (size_t len)
@@ -1487,6 +1745,8 @@ int main()
     directionEngineTests();
     switchingTests();
     concurrencyTests();
+    deselectSyncTests();
+    deselectConcurrencyTests();
     captureTests();
     convertTests();
     recordTests();

@@ -82,6 +82,20 @@ void Transport::anchor (const SoundDocument& doc, PlayContext next) noexcept
     const PlayContext old = ctx;
     const double fresh = 0.25 * static_cast<double> (fs) - pos;   // u = 0: the span's start
 
+    // The reference (12.8): the topmost track the OLD mapping had reading a frame of
+    // its own. A track that cannot keep its frame follows it, so deselecting does not
+    // send the tracks outside the old selection back to 0. See
+    // docs/0.4.0/12.8-deselect-sync.md for the cases.
+    bool haveRef = false, refUp = true;
+    size_t refFrame = 0;
+    for (int t = 0; t < n && ! haveRef; ++t)
+    {
+        const size_t lenFrames = doc.tracks[static_cast<size_t> (t)].data.size() / fs;
+        const TrackRead was = readFor (old, t, lenFrames, fs, pos);
+        // readFor does not know the track's length: present = inside its own data.
+        if (was.inSpan && was.frame < lenFrames) { haveRef = true; refFrame = was.frame; refUp = was.up; }
+    }
+
     bool up0 = true; size_t span0 = 0;
     for (int t = 0; t < n; ++t)
     {
@@ -90,15 +104,26 @@ void Transport::anchor (const SoundDocument& doc, PlayContext next) noexcept
 
         size_t lo = 0, S = 0; bool wrap = true;
         const bool plays = readSpan (next, t, lenFrames, fs, lo, S, wrap);
+        auto& ph = next.phase[static_cast<size_t> (t)];
 
-        int64_t u = 0; bool up = true;
+        bool up = true;
         if (plays && was.inSpan && was.frame >= lo && was.frame < lo + S)
         {
-            next.phase[static_cast<size_t> (t)] = phaseToRead (next.dir, S, was.frame - lo, was.up, pos, fs, &u);
+            ph = phaseToRead (next.dir, S, was.frame - lo, was.up, pos, fs);   // keep its own frame
             up = was.up;
         }
+        else if (plays && haveRef && refFrame >= lo && refFrame < lo + S)
+        {
+            ph = phaseToRead (next.dir, S, refFrame - lo, refUp, pos, fs);       // the reference's frame
+            up = refUp;
+        }
+        else if (plays && haveRef && next.mode == LoopMode::all)
+        {
+            ph = phaseToRead (next.dir, S, refFrame % S, refUp, pos, fs);       // ...wrapped to its own length
+            up = refUp;
+        }
         else
-            next.phase[static_cast<size_t> (t)] = fresh;
+            ph = fresh;
 
         if (t == 0) { up0 = up; span0 = S; }
     }
@@ -251,7 +276,10 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
     // track whose playhead is inside the new range does not move at all — it just
     // wraps at the new ends — and one that is outside restarts at the range's start
     // (the end, going backward), under the crossfade.
-    if (playOpts.loop && ctx.mode != LoopMode::once)
+    // While a take runs (excludeMask) the aim is frozen: the Recorder writes the span
+    // it snapshotted, and the written tracks' playheads must not jump. A selection
+    // drawn or cleared mid-take re-aims on the first block after the take ends.
+    if (playOpts.loop && ctx.mode != LoopMode::once && excludeMask == 0)
     {
         const Aim a = loopAim (doc, playOpts);
         const bool same = a.mode == ctx.mode
