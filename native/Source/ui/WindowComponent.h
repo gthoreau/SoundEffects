@@ -142,6 +142,13 @@ public:
     std::function<void (juce::Point<int>)> onDragged;
     /** Title-bar drag finished — settle into the layout. */
     std::function<void()> onDropped;
+    /** The title-bar press became a drag: the pointer has travelled far enough
+        (reorder::kLiftThreshold) that it is not a click. Fired before the first
+        onDragged. */
+    std::function<void()> onDragStarted;
+    /** The canvas cancelled the drag (Escape, the board changed): ignore the rest
+        of this press. */
+    void abandonTitleDrag();
     /** Source was clicked: the editor shows the Select Audio Source popup for this Window. */
     std::function<void (uint64_t)> onSourceRequested;
 
@@ -297,6 +304,7 @@ private:
 
     // title drag / corner resize
     bool draggingTitle = false;
+    bool titleLifted = false;     // ...and it has travelled past the lift threshold
     bool resizingWindow = false;
     juce::Point<int> dragMouseStart, dragBoundsStart;
     juce::Point<int> resizeSizeStart;

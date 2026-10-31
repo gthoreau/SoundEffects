@@ -36,6 +36,13 @@ CanvasComponent::CanvasComponent (se::Engine& e) : engine (e)
     addAndMakeVisible (rightPan);   // above the world, so it is asked first
     pan = originPan();
     applyViewTransform();
+
+    slider.onFrame = [this] { if (carrying() && ! carry.landing) followPointer(); };
+    slider.onArrived = [this] (juce::Component& c)
+    {
+        if (auto* wc = dynamic_cast<WindowComponent*> (&c)) wc->storeGeometry();
+        if (carry.landing && &c == carry.wc.getComponent()) endCarry();
+    };
 }
 
 juce::Point<float> CanvasComponent::originPan() const noexcept
@@ -135,18 +142,21 @@ void CanvasComponent::refresh()
         wc->recorder = recorder;
         wc->recordSetupFor = recordSetupFor;
         wc->onClose = [this] (uint64_t wid) { engine.removeWindow (wid); };
-        wc->onGeometryChanged = [this] { if (mosaicEnabled) layoutGrid(); };
+        wc->onGeometryChanged = [this] { if (mosaicEnabled && ! carrying()) layoutGrid(); };
         auto* raw = wc.get();
         // A grow-box drag is a column-width drag: the rest of the column follows it
         // in and out. (onGeometryChanged, right behind it, does the relayout.)
         wc->onWidthChanged = [this, raw] (int w) { if (mosaicEnabled) setColumnWidth (*raw, w); };
-        wc->onDragged = [this, raw] (juce::Point<int> topLeft)
+        // Free placement: the drag IS the position, and the Window moves itself. In
+        // the grid it is carried: see Reorder.h.
+        wc->onDragStarted = [this, raw] { if (mosaicEnabled) beginCarry (*raw); };
+        wc->onDragged = [this] (juce::Point<int>) { if (carrying() && ! carry.landing) followPointer(); };
+        wc->onDropped = [this]
         {
-            if (! mosaicEnabled) return;      // free placement: the drag IS the position
-            retargetCell (*raw, topLeft);
-            layoutGrid (raw);                 // reflow around the gap it will drop into
+            // Let go over the board: it lands in its gap. Anywhere else: it goes home.
+            if (carrying() && ! carry.landing)
+                land (getScreenBounds().contains (juce::Desktop::getMousePosition()));
         };
-        wc->onDropped = [this] { if (mosaicEnabled) layoutGrid(); setDropTarget ({}); };
         wc->onSelected = [this] (uint64_t wid) { selectWindow (wid); };
         wc->onSourceRequested = [this] (uint64_t wid) { if (onSourceRequested) onSourceRequested (wid); };
         wc->recordReady = recordReady;
@@ -155,6 +165,9 @@ void CanvasComponent::refresh()
         windows.push_back (std::move (wc));
     }
     if (newCount > 0) cascade += newCount;
+
+    // A Window came or went under a drag: the arrangement being built is gone.
+    if ((newCount > 0 || removedAny) && carrying()) abortCarry();
 
     if (mosaicEnabled && (newCount > 0 || removedAny)) layoutGrid();
 
@@ -243,6 +256,7 @@ void CanvasComponent::focusWindow (uint64_t id)
 
 void CanvasComponent::mosaic()
 {
+    if (carrying()) abortCarry();
     mosaicEnabled = true;
     layoutGrid();
     if (onViewChanged) onViewChanged();
@@ -251,6 +265,7 @@ void CanvasComponent::mosaic()
 void CanvasComponent::setMosaicMode (bool shouldTile)
 {
     if (shouldTile) { mosaic(); return; }
+    if (carrying()) abortCarry();
     mosaicEnabled = false;
     if (onViewChanged) onViewChanged();
 }
@@ -375,82 +390,6 @@ void CanvasComponent::assignCell (WindowComponent& wc)
     setCell (wc, columns[best].key, rowKey (*columns[best].items.back()) + 1);
 }
 
-void CanvasComponent::retargetCell (WindowComponent& dragged, juce::Point<int> topLeft)
-{
-    auto* ew = engine.windowById (dragged.windowId());
-    if (ew == nullptr) return;
-
-    auto columns = buildColumns();
-    if (columns.empty()) return;
-
-    // Which column is the dragged corner over? Past either end means it is being
-    // pulled out into a brand new column of its own — the grid grows both ways.
-    size_t target = columns.size();
-    for (size_t c = 0; c < columns.size(); ++c)
-        if (topLeft.getX() < columns[c].x + columns[c].width) { target = c; break; }
-
-    // In both cases: don't let a window that is already alone in the end column
-    // keep spawning new ones, or it would drift outwards for ever.
-    if (topLeft.getX() < columns.front().x)
-    {
-        if (! isAloneIn (columns.front(), dragged))
-        {
-            setCell (dragged, columns.front().key - 1, 0);
-            return;
-        }
-        target = 0;
-    }
-    else if (target == columns.size())
-    {
-        if (! isAloneIn (columns.back(), dragged))
-        {
-            setCell (dragged, columns.back().key + 1, 0);
-            return;
-        }
-        target = columns.size() - 1;
-    }
-
-    // Insert above the first window whose middle is below the dragged corner. The
-    // scan runs over the column WITHOUT the dragged window, i.e. over the reflowed
-    // positions the drop will actually produce.
-    auto& col = columns[target];
-    std::vector<WindowComponent*> order;
-    order.reserve (col.items.size());
-    for (auto* item : col.items)
-        if (item != &dragged) order.push_back (item);
-
-    size_t insert = 0;
-    for (int y = col.y; insert < order.size(); ++insert)
-    {
-        if (topLeft.getY() < y + order[insert]->getHeight() / 2) break;
-        y += order[insert]->getHeight();
-    }
-
-    // Already exactly there? Then leave every address alone. Re-keying on each
-    // mouse-move of a held drag would inflate the row numbers for no visible reason.
-    if (col.items.size() == order.size() + 1 && col.items[insert] == &dragged) return;
-
-    // Rows are addresses, not offsets, so where the new one is spliced in decides
-    // which way the column grows:
-    //   - above the top     → one row further into the negatives; nothing else moves
-    //                         and the column extends UPWARD past the origin line,
-    //   - below the bottom  → one row past the last; nothing else moves,
-    //   - in between        → the rows below it make room, the rows above stay put.
-    if (order.empty())
-        setCell (dragged, col.key, 0);
-    else if (insert == 0)
-        setCell (dragged, col.key, rowKey (*order.front()) - 1);
-    else if (insert == order.size())
-        setCell (dragged, col.key, rowKey (*order.back()) + 1);
-    else
-    {
-        const int row = rowKey (*order[insert]);
-        for (size_t r = insert; r < order.size(); ++r)
-            setCell (*order[r], col.key, rowKey (*order[r]) + 1);
-        setCell (dragged, col.key, row);
-    }
-}
-
 void CanvasComponent::setDropTarget (juce::Rectangle<int> r)
 {
     if (world.dropTarget == r) return;
@@ -459,13 +398,15 @@ void CanvasComponent::setDropTarget (juce::Rectangle<int> r)
     world.repaint (r.expanded (2));
 }
 
-void CanvasComponent::layoutGrid (WindowComponent* floating)
+void CanvasComponent::layoutGrid (bool animate)
 {
     // Anything without a cell yet (freshly opened) gets one first.
-    for (auto& wc : windows)
-        if (auto* ew = engine.windowById (wc->windowId()))
-            if (ew->gridCol == se::Window::kNoCell) assignCell (*wc);
+    if (! carrying())
+        for (auto& wc : windows)
+            if (auto* ew = engine.windowById (wc->windowId()))
+                if (ew->gridCol == se::Window::kNoCell) assignCell (*wc);
 
+    auto* floating = carry.wc.getComponent();
     for (const auto& col : buildColumns())
     {
         int y = col.y;
@@ -473,12 +414,200 @@ void CanvasComponent::layoutGrid (WindowComponent* floating)
         {
             // Every window in the column is stretched to the column's width; the
             // cell is exactly as tall as the window. No padding: they touch.
-            if (w != floating) w->setBounds (col.x, y, col.width, w->getHeight());
-            else               setDropTarget ({ col.x, y, col.width, w->getHeight() });
-            w->storeGeometry();
+            const juce::Rectangle<int> cell (col.x, y, col.width, w->getHeight());
+            y += w->getHeight();
+            if (w == floating) { setDropTarget (cell); continue; }
+
+            // Only positions slide; a column that changed width snaps to it.
+            w->setSize (cell.getWidth(), cell.getHeight());
+            if (animate || carrying()) slider.moveTo (*w, cell.getPosition());
+            else                       slider.jumpTo (*w, cell.getPosition());
+            if (! slider.isMoving (*w)) w->storeGeometry();   // else once it arrives
+        }
+    }
+}
+
+// --- the carried Window ------------------------------------------------------
+
+void CanvasComponent::beginCarry (WindowComponent& wc)
+{
+    if (carry.landing) endCarry();   // the last one settles first
+
+    carry = {};
+    carry.id = wc.windowId();
+    carry.wc = &wc;
+    for (auto& w : windows)
+        if (auto* ew = engine.windowById (w->windowId()))
+            carry.cells.push_back ({ w->windowId(), ew->gridCol, ew->gridRow });
+    carry.grab = wc.getLocalPoint (nullptr, juce::Desktop::getMousePosition());
+
+    slider.forget (wc);
+    lift.apply (wc);
+    setDropTarget (wc.getBounds());
+    slider.setTicking (true);   // follow the pointer (and auto-scroll) every frame
+}
+
+void CanvasComponent::restoreCells()
+{
+    for (const auto& c : carry.cells)
+        if (auto* ew = engine.windowById (c.id)) { ew->gridCol = c.col; ew->gridRow = c.row; }
+}
+
+std::vector<CanvasComponent::Spot> CanvasComponent::candidateSpots()
+{
+    // The grid as it would be without the carried Window: every slot between two
+    // Windows of a column, above its top and below its bottom, a new column at
+    // either end — and home, whatever home looks like.
+    restoreCells();
+    std::vector<Spot> spots { Spot {} };
+    auto* ew = engine.windowById (carry.id);
+    if (ew == nullptr) return spots;
+
+    const int col = ew->gridCol;
+    ew->gridCol = se::Window::kNoCell;   // sits out of buildColumns
+    const auto base = buildColumns();
+    ew->gridCol = col;
+
+    for (const auto& c : base)
+        for (int i = 0; i <= (int) c.items.size(); ++i)
+            spots.push_back ({ Spot::intoColumn, c.key, i });
+    if (! base.empty())
+    {
+        spots.push_back ({ Spot::newColumn, base.front().key - 1, 0 });
+        spots.push_back ({ Spot::newColumn, base.back().key + 1, 0 });
+    }
+    return spots;
+}
+
+void CanvasComponent::applySpot (const Spot& spot)
+{
+    restoreCells();
+    auto* wc = carry.wc.getComponent();
+    if (wc == nullptr || spot.kind == Spot::home) return;
+    if (spot.kind == Spot::newColumn) { setCell (*wc, spot.key, 0); return; }
+
+    // The column without the carried Window, top to bottom.
+    std::vector<std::pair<int, WindowComponent*>> order;
+    for (auto& w : windows)
+        if (w.get() != wc)
+            if (auto* ew = engine.windowById (w->windowId()); ew != nullptr && ew->gridCol == spot.key)
+                order.push_back ({ ew->gridRow, w.get() });
+    std::sort (order.begin(), order.end(),
+               [] (const auto& a, const auto& b) { return a.first < b.first; });
+
+    // Rows are addresses, not offsets, so where the new one is spliced in decides
+    // which way the column grows:
+    //   - above the top     → one row further into the negatives; nothing else moves
+    //                         and the column extends UPWARD past the origin line,
+    //   - below the bottom  → one row past the last; nothing else moves,
+    //   - in between        → the rows below it make room, the rows above stay put.
+    const auto at = (size_t) juce::jlimit (0, (int) order.size(), spot.index);
+    if (order.empty())
+        setCell (*wc, spot.key, 0);
+    else if (at == 0)
+        setCell (*wc, spot.key, order.front().first - 1);
+    else if (at == order.size())
+        setCell (*wc, spot.key, order.back().first + 1);
+    else
+    {
+        const int row = order[at].first;
+        for (size_t r = at; r < order.size(); ++r)
+            setCell (*order[r].second, spot.key, order[r].first + 1);
+        setCell (*wc, spot.key, row);
+    }
+}
+
+juce::Rectangle<int> CanvasComponent::spotRect (const Spot& spot)
+{
+    applySpot (spot);
+    for (const auto& col : buildColumns())
+    {
+        int y = col.y;
+        for (auto* w : col.items)
+        {
+            if (w == carry.wc.getComponent()) return { col.x, y, col.width, w->getHeight() };
             y += w->getHeight();
         }
     }
+    return {};
+}
+
+void CanvasComponent::followPointer()
+{
+    auto* wc = carry.wc.getComponent();
+    if (wc == nullptr) { abortCarry(); return; }
+
+    const auto mouse = juce::Desktop::getMousePosition();
+
+    // Near an edge of the board: scroll it, faster the deeper into the edge band
+    // the pointer goes.
+    const auto local = getLocalPoint (nullptr, mouse).toFloat();
+    const juce::Point<float> speed { reorder::edgeSpeed (local.x, 0.0f, (float) getWidth()),
+                                     reorder::edgeSpeed (local.y, 0.0f, (float) getHeight()) };
+    if (! speed.isOrigin()) setPan (pan - speed);
+
+    // The Window rides with the pointer, held where it was grabbed — and at least a
+    // corner of it stays in view, so it cannot be lost off the edge.
+    constexpr int kKeep = 48;
+    const auto visTL = world.getLocalPoint (this, juce::Point<int>());
+    const auto visBR = world.getLocalPoint (this, juce::Point<int> (getWidth(), getHeight()));
+    auto topLeft = world.getLocalPoint (nullptr, mouse) - carry.grab;
+    topLeft.x = juce::jlimit (visTL.x - wc->getWidth() + kKeep, juce::jmax (visTL.x, visBR.x - kKeep), topLeft.x);
+    topLeft.y = juce::jlimit (visTL.y - wc->getHeight() + kKeep, juce::jmax (visTL.y, visBR.y - kKeep), topLeft.y);
+    topLeft = { juce::jmax (0, topLeft.x), juce::jmax (0, topLeft.y) };
+    wc->setTopLeftPosition (topLeft);
+
+    // The gap goes to the nearest cell (centre to centre) the Window could land
+    // in, and only moves on once another is clearly nearer.
+    const auto centre = wc->getBounds().getCentre();
+    const auto distance = [&centre] (juce::Rectangle<int> r) { return centre.getDistanceFrom (r.getCentre()); };
+
+    const int current = distance (spotRect (carry.spot));
+    Spot best = carry.spot;
+    int bestDistance = current;
+    for (const auto& s : candidateSpots())
+        if (const int d = distance (spotRect (s)); d < bestDistance) { best = s; bestDistance = d; }
+
+    const bool move = ! (best == carry.spot) && bestDistance + reorder::kHysteresis < current;
+    if (move) carry.spot = best;
+    applySpot (carry.spot);
+    if (move) layoutGrid (true);
+}
+
+void CanvasComponent::land (bool commit)
+{
+    auto* wc = carry.wc.getComponent();
+    if (wc == nullptr) { abortCarry(); return; }
+
+    carry.landing = true;
+    slider.setTicking (false);
+    if (! commit) carry.spot = {};   // home, and the others back around it
+    applySpot (carry.spot);
+    layoutGrid (true);               // also sets the gap it lands in
+
+    slider.moveTo (*wc, world.dropTarget.getPosition(), reorder::kDropMs);
+    if (! slider.isMoving (*wc)) endCarry();   // already there
+}
+
+void CanvasComponent::endCarry()
+{
+    // The cells already say where it went (or, sent home, where it was).
+    carry = {};
+    lift.restore();
+    slider.setTicking (false);
+    setDropTarget ({});
+    if (mosaicEnabled) layoutGrid (true);
+}
+
+void CanvasComponent::abortCarry()
+{
+    if (auto* wc = carry.wc.getComponent()) wc->abandonTitleDrag();
+    restoreCells();
+    carry = {};
+    lift.restore();
+    slider.setTicking (false);
+    setDropTarget ({});
+    if (mosaicEnabled) layoutGrid();
 }
 
 // --- view (zoom / pan) -------------------------------------------------------
@@ -598,15 +727,12 @@ void CanvasComponent::RightPan::mouseDrag (const juce::MouseEvent& e)
 void CanvasComponent::World::paint (juce::Graphics& g)
 {
     if (dropTarget.isEmpty()) return;
-    // PROVISIONAL (no Figma node yet; the author is asked to design it): the cell
-    // the dragged Window will drop into, outlined in dashes.
-    juce::Path outline;
-    outline.addRectangle (dropTarget.reduced (2).toFloat());
-    juce::Path dashed;
-    const float dashes[] = { 4.0f, 3.0f };
-    juce::PathStrokeType (2.0f).createDashedStroke (dashed, outline, dashes, 2);
-    g.setColour (os8::colour::selectedMenuItem);
-    g.fillPath (dashed);
+    // The open gap the carried Window would land in: an empty, lightly outlined
+    // cell (PROVISIONAL, from the design system's greys; no Figma node yet).
+    g.setColour (os8::colour::gray000);
+    g.fillRect (dropTarget);
+    g.setColour (os8::colour::gray400);
+    g.drawRect (dropTarget.reduced (1), 1);
 }
 
 void CanvasComponent::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
@@ -642,6 +768,12 @@ bool CanvasComponent::keyPressed (const juce::KeyPress& k)
     const int code = k.getKeyCode();
     if (code == 'h' || code == 'H') { setPanMode (true);  return true; }
     if (code == 'v' || code == 'V') { setPanMode (false); return true; }
+    if (code == juce::KeyPress::escapeKey && carrying() && ! carry.landing)
+    {
+        if (auto* wc = carry.wc.getComponent()) wc->abandonTitleDrag();
+        land (false);   // everything glides back
+        return true;
+    }
     if (code == juce::KeyPress::escapeKey && panMode) { setPanMode (false); return true; }
     if (code == '0') { resetView(); return true; }
     if (code == '=' || code == '+') { zoomAround (zoom * 1.25f, getLocalBounds().getCentre().toFloat()); return true; }

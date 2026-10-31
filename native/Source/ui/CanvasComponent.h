@@ -19,8 +19,10 @@
 // BOTH indices may be negative: the grid grows left of and above the origin as
 // readily as right of and below it, and neither direction shunts the other along.
 // Resizing a Window therefore resizes its whole column (and shifts the columns
-// beside it). Dragging a Window re-targets its cell, with the rest reflowing live
-// around the gap it will land in. The view palette's layout toggle turns the grid
+// beside it). Dragging a Window by its title bar lifts it (Reorder.h): it floats
+// under the pointer, its gap opens at the nearest cell it could land in, and the
+// other Windows slide out of the way; letting go settles it there, Escape or a
+// release off the board puts everything back. The view palette's layout toggle turns the grid
 // off, leaving Windows wherever they were dropped (free placement).
 //
 // Keeps its WindowComponents in sync with engine.windowIds().
@@ -29,6 +31,7 @@
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
+#include "Reorder.h"
 #include "Sys7.h"
 #include "WindowComponent.h"
 #include "engine/Engine.h"
@@ -125,7 +128,7 @@ private:
     {
         World() { setInterceptsMouseClicks (false, true); }
         void paint (juce::Graphics&) override;
-        /** In grid mode, while a Window is dragged: the cell it would drop into. */
+        /** In grid mode, while a Window is carried: the gap it would land in. */
         juce::Rectangle<int> dropTarget;
     };
 
@@ -179,12 +182,51 @@ private:
     /** Give a Window with no cell yet one: a new column while the row of columns
         still fits the viewport, else the shortest existing column. */
     void assignCell (WindowComponent& wc);
-    /** Re-target `dragged`'s cell from where it has been dragged to. */
-    void retargetCell (WindowComponent& dragged, juce::Point<int> topLeft);
-    /** Lay every Window out; `floating` (if any) keeps its position, but still
-        takes up its slot, so the gap it would drop into stays open. */
-    void layoutGrid (WindowComponent* floating = nullptr);
+    /** Lay every Window out — sliding there when `animate`. While a Window is
+        carried it keeps floating, and its cell is the open gap. */
+    void layoutGrid (bool animate = false);
     void setDropTarget (juce::Rectangle<int>);
+
+    // --- the carried Window (grid mode; see Reorder.h) ---
+    /** A place the carried Window could land: back home (the cells as they were
+        when it was lifted), into an existing column before its `index`-th Window,
+        or a new column `key` at either end of the grid. */
+    struct Spot
+    {
+        enum Kind { home, intoColumn, newColumn } kind = home;
+        int key = 0, index = 0;
+        bool operator== (const Spot& o) const noexcept
+        { return kind == o.kind && (kind == home || (key == o.key && index == o.index)); }
+    };
+    bool carrying() const noexcept { return carry.id != 0; }
+    void beginCarry (WindowComponent&);
+    /** Follow the pointer: auto-scroll near an edge, move the floating Window, pick
+        the spot. Every move and every frame while held. */
+    void followPointer();
+    std::vector<Spot> candidateSpots();
+    /** Rewrite the cells for `spot`, from the ones saved at lift. */
+    void applySpot (const Spot&);
+    /** Where the carried Window would sit for `spot` (leaves the cells at it). */
+    juce::Rectangle<int> spotRect (const Spot&);
+    void restoreCells();
+    /** Let go (or Escape): glide into the gap, or home when `commit` is false. */
+    void land (bool commit);
+    void endCarry();
+    /** Stop at once, no glide: the board changed under the drag. */
+    void abortCarry();
+
+    struct Carry
+    {
+        uint64_t id = 0;
+        juce::Component::SafePointer<WindowComponent> wc;
+        struct Cell { uint64_t id; int col, row; };
+        std::vector<Cell> cells;     // every Window's cell when it was lifted
+        juce::Point<int> grab;       // where in the Window it was taken hold of
+        Spot spot;                   // where it would land now
+        bool landing = false;
+    } carry;
+    reorder::Slider slider;
+    reorder::Lift   lift;
     void applyViewTransform();
     /** The pan that parks the world origin just inside the viewport's top-left. */
     juce::Point<float> originPan() const noexcept;

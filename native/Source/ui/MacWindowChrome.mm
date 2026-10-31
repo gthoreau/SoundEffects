@@ -127,3 +127,47 @@ void titleBarDoubleClicked (juce::Component& c)
 }
 
 } // namespace os8::chrome
+
+// --- the closed hand -----------------------------------------------------------
+// Declared in Reorder.h. JUCE names only the open hand; AppKit has the closed one,
+// so its picture (drawn at 2x for Retina) and its hot spot are copied across once.
+#include "Reorder.h"
+
+juce::MouseCursor reorder::grabbingCursor()
+{
+    static const juce::MouseCursor cursor = []
+    {
+        NSCursor* closed = [NSCursor closedHandCursor];
+        NSImage* image = [closed image];
+        const NSSize size = image.size;
+        const int scale = 2;
+
+        NSBitmapImageRep* rep = [[NSBitmapImageRep alloc]
+            initWithBitmapDataPlanes: nil
+                          pixelsWide: (NSInteger) size.width * scale
+                          pixelsHigh: (NSInteger) size.height * scale
+                       bitsPerSample: 8
+                     samplesPerPixel: 4
+                            hasAlpha: YES
+                            isPlanar: NO
+                      colorSpaceName: NSDeviceRGBColorSpace
+                         bytesPerRow: 0
+                        bitsPerPixel: 0];
+        if (rep == nil) return juce::MouseCursor (juce::MouseCursor::DraggingHandCursor);
+        rep.size = size;
+
+        [NSGraphicsContext saveGraphicsState];
+        [NSGraphicsContext setCurrentContext: [NSGraphicsContext graphicsContextWithBitmapImageRep: rep]];
+        [image drawInRect: NSMakeRect (0, 0, size.width, size.height)];
+        [NSGraphicsContext restoreGraphicsState];
+
+        NSData* png = [rep representationUsingType: NSBitmapImageFileTypePNG properties: @{}];
+        const auto picture = juce::PNGImageFormat::loadFrom (png.bytes, (size_t) png.length);
+        if (! picture.isValid()) return juce::MouseCursor (juce::MouseCursor::DraggingHandCursor);
+
+        const NSPoint hot = [closed hotSpot];
+        return juce::MouseCursor (juce::ScaledImage (picture, (double) scale),
+                                  { (int) hot.x, (int) hot.y });
+    }();
+    return cursor;
+}

@@ -2,6 +2,7 @@
 
 #include "engine/SampleFormat.h"
 #include "Os8Icons.h"
+#include "Reorder.h"
 
 #include <algorithm>
 #include <cmath>
@@ -1190,6 +1191,7 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
     if (titleBar().contains (p))
     {
         draggingTitle = true;
+        titleLifted = false;
         dragMouseStart = parentPos (e);
         dragBoundsStart = getBounds().getPosition();
         toFront (true);
@@ -1223,6 +1225,16 @@ void WindowComponent::mouseDrag (const juce::MouseEvent& e)
     }
     if (draggingTitle)
     {
+        // A click with a shaky hand is still a click: nothing moves until the
+        // pointer has really travelled.
+        if (! titleLifted)
+        {
+            if (e.getDistanceFromDragStart() < reorder::kLiftThreshold) return;
+            titleLifted = true;
+            setMouseCursor (reorder::grabbingCursor());
+            if (onDragStarted) onDragStarted();
+            if (! draggingTitle) return;   // refused
+        }
         auto np = dragBoundsStart + (parentPos (e) - dragMouseStart);
         np = { std::max (0, np.getX()), std::max (0, np.getY()) };   // stay on the board
         setTopLeftPosition (np);
@@ -1301,9 +1313,17 @@ void WindowComponent::mouseUp (const juce::MouseEvent& e)
     }
 
     if (selecting) commit();       // publish the selection so Play can loop it
-    if (draggingTitle && onDropped) onDropped();
+    const bool dropped = draggingTitle && titleLifted;
+    if (titleLifted) mouseMove (e);   // the hover cursor again
     if (pressedZoomButton >= 0) { pressedZoomButton = -1; repaint(); }
-    draggingTitle = false; selecting = false; resizingWindow = false; overviewDragging = false;
+    draggingTitle = titleLifted = false; selecting = false; resizingWindow = false; overviewDragging = false;
+    if (dropped && onDropped) onDropped();
+}
+
+void WindowComponent::abandonTitleDrag()
+{
+    draggingTitle = titleLifted = false;
+    setMouseCursor (juce::MouseCursor::NormalCursor);
 }
 
 juce::MouseCursor WindowComponent::trackDragCursor (os8::icon::Id icon)

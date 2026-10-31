@@ -380,6 +380,15 @@ void MixerStrip::paint (Graphics& g)
 void MixerStrip::mouseEnter (const juce::MouseEvent&) { repaint(); }
 void MixerStrip::mouseExit (const juce::MouseEvent&)  { repaint(); }
 
+void MixerStrip::mouseMove (const juce::MouseEvent& e)
+{
+    // The open hand over the numbered handle: the part of the strip that is there
+    // to be taken hold of. (The name drags too, but reads as a label.)
+    if (! draggingStrip)
+        setMouseCursor (e.x < kHandleWidth ? juce::MouseCursor::DraggingHandCursor
+                                           : juce::MouseCursor::NormalCursor);
+}
+
 void MixerStrip::mouseDown (const juce::MouseEvent& e)
 {
     // Touching a channel at all means you are working on that Window: bring it to
@@ -414,24 +423,34 @@ void MixerStrip::mouseDrag (const juce::MouseEvent& e)
 {
     if (! pressInDragArea) return;
 
-    // Screen coordinates: the strip itself moves under the mouse.
-    const int dy = e.getScreenY() - e.getMouseDownScreenY();
+    // A click with a shaky hand is still a click: nothing lifts until the pointer
+    // has really travelled.
     if (! draggingStrip)
     {
-        if (std::abs (dy) < 3) return;
+        if (e.getDistanceFromDragStart() < reorder::kLiftThreshold) return;
         draggingStrip = true;
-        dragStartTop = getY();
-        toFront (false);
+        setMouseCursor (reorder::grabbingCursor());
+        if (onDragStart) onDragStart (*this, e.getMouseDownPosition());
+        if (! draggingStrip) return;   // refused
     }
-    if (onDragMove) onDragMove (*this, dragStartTop + dy);
+    if (onDragMove) onDragMove (*this);
 }
 
-void MixerStrip::mouseUp (const juce::MouseEvent&)
+void MixerStrip::mouseUp (const juce::MouseEvent& e)
 {
     pressInDragArea = false;
     if (! draggingStrip) return;
     draggingStrip = false;
+    mouseMove (e);   // back to the hover cursor
     if (onDragEnd) onDragEnd (*this);
+    repaint();
+}
+
+void MixerStrip::abandonDrag()
+{
+    draggingStrip = false;
+    pressInDragArea = false;
+    setMouseCursor (juce::MouseCursor::NormalCursor);
     repaint();
 }
 
@@ -448,6 +467,16 @@ MixerComponent::MixerComponent (se::Engine& e) : engine (e)
     viewport.setViewedComponent (&list, false);
     viewport.setScrollBarsShown (false, false, true, false);
     addAndMakeVisible (viewport);
+
+    // Escape puts a carried strip back; the panel takes focus while one is held.
+    setWantsKeyboardFocus (true);
+    setMouseClickGrabsKeyboardFocus (false);
+
+    slider.onFrame = [this] { if (carrying() && ! drag.landing) followPointer(); };
+    slider.onArrived = [this] (juce::Component& c)
+    {
+        if (drag.landing && &c == drag.strip.getComponent()) endDrag (drag.commit);
+    };
 }
 
 MixerComponent::~MixerComponent() = default;
@@ -486,23 +515,13 @@ void MixerComponent::refresh()
             setSelectedWindow (wid);                          // Active here immediately...
             if (onChannelClicked) onChannelClicked (wid);     // ...and raised there
         };
-        strip->onDragMove = [this] (MixerStrip& s, int top)
+        strip->onDragStart = [this] (MixerStrip& s, juce::Point<int> grab) { beginDrag (s, grab); };
+        strip->onDragMove  = [this] (MixerStrip&) { if (carrying() && ! drag.landing) followPointer(); };
+        strip->onDragEnd   = [this] (MixerStrip&)
         {
-            if (auto* w = engine.windowById (s.windowId()); w != nullptr && dragFrom < 0) dragFrom = w->slot;
-            top = juce::jlimit (0, juce::jmax (0, list.getHeight() - s.getHeight()), top);
-            s.setTopLeftPosition (0, top);
-            dropGap = gapAt (top);
-            list.repaint();
-        };
-        strip->onDragEnd = [this] (MixerStrip& s)
-        {
-            // Insert between two strips (no empty rows to drop on): the gap counted
-            // among ALL rows, minus one when it lies below the strip's own row.
-            const int gap = dropGap, from = dragFrom;
-            dropGap = dragFrom = -1;
-            if (gap >= 0 && from >= 0)
-                engine.moveToSlot (s.windowId(), gap > from ? gap - 1 : gap);   // the canvas is untouched
-            layoutRows();
+            // Let go over the panel: it lands in its gap. Anywhere else: it goes home.
+            if (carrying() && ! drag.landing)
+                land (getScreenBounds().contains (juce::Desktop::getMousePosition()));
         };
         strip->setSelected (id == selectedId);
         list.addAndMakeVisible (*strip);
@@ -510,9 +529,13 @@ void MixerComponent::refresh()
         changed = true;
     }
 
+    // A strip came or went under a drag: the order being built no longer exists.
+    if (changed && carrying()) abortDrag();
+
     // A slot can also change without a strip coming or going: a loaded canvas,
-    // or a drop. Rows are cheap to lay out; compare where everybody sits.
-    if (! changed)
+    // or a drop. Rows are cheap to lay out; compare where everybody sits. (Not
+    // while strips are sliding: they are on their way.)
+    if (! changed && ! carrying() && ! slider.anyMoving())
         for (auto& s : strips)
             if (! s->isBeingDragged())
                 if (auto* w = engine.windowById (s->windowId());
@@ -534,7 +557,12 @@ void MixerComponent::setSelectedWindow (uint64_t id)
     layoutRows();   // the Active strip is 2 px taller: the rows below move down
 }
 
-void MixerComponent::layoutRows()
+int MixerComponent::rowHeight (const MixerStrip& s) noexcept
+{
+    return s.isSelected() ? MixerStrip::kActiveHeight : MixerStrip::kHeight;
+}
+
+void MixerComponent::layoutRows (bool animate)
 {
     // One row per slot, 0..N-1: slots have no gaps.
     const int rows = engine.highestSlot() + 1;
@@ -543,48 +571,186 @@ void MixerComponent::layoutRows()
     for (int i = 0; i < rows; ++i)
     {
         const auto* s = stripInSlot (i);
-        const int h = s != nullptr && s->isSelected() ? MixerStrip::kActiveHeight : MixerStrip::kHeight;
-        rowTops.push_back (rowTops.back() + h);
+        rowTops.push_back (rowTops.back() + (s != nullptr ? rowHeight (*s) : MixerStrip::kHeight));
     }
 
     list.setSize (MixerStrip::kWidth, rowTops.back());
+
+    const auto place = [this, animate] (MixerStrip& s, int y)
+    {
+        s.setSize (MixerStrip::kWidth, rowHeight (s));
+        if (animate || carrying()) slider.moveTo (s, { 0, y });
+        else                       slider.jumpTo (s, { 0, y });
+    };
+
+    if (carrying())
+    {
+        // The carried strip floats where the pointer has it; everybody else closes
+        // up around it and leaves its gap open where it would land.
+        const auto others = othersInOrder();
+        int y = 0;
+        for (int i = 0; i < (int) others.size(); ++i)
+        {
+            if (i == drag.gap && drag.strip != nullptr) y += rowHeight (*drag.strip);
+            place (*others[(size_t) i], y);
+            y += rowHeight (*others[(size_t) i]);
+        }
+        list.repaint();
+        return;
+    }
 
     for (auto& s : strips)
     {
         auto* w = engine.windowById (s->windowId());
         if (w == nullptr || w->slot < 0 || w->slot >= rows) continue;
-        const int h = s->isSelected() ? MixerStrip::kActiveHeight : MixerStrip::kHeight;
-        if (! s->isBeingDragged())
-            s->setBounds (0, rowTops[(size_t) w->slot], MixerStrip::kWidth, h);
-        else
-            s->setSize (MixerStrip::kWidth, h);
+        place (*s, rowTops[(size_t) w->slot]);
     }
     list.repaint();
 }
 
-int MixerComponent::gapAt (int top) const
+// --- the carried strip ------------------------------------------------------------
+
+std::vector<MixerStrip*> MixerComponent::othersInOrder() const
 {
-    // The gap above the first row whose middle is below the dragged strip's middle.
-    const int rows = (int) rowTops.size() - 1;
-    const int centre = top + MixerStrip::kHeight / 2;
-    for (int i = 0; i < rows; ++i)
-        if (centre < (rowTops[(size_t) i] + rowTops[(size_t) i + 1]) / 2) return i;
-    return juce::jmax (0, rows);
+    std::vector<MixerStrip*> others;
+    for (int slot = 0; slot <= engine.highestSlot(); ++slot)
+        if (auto* s = stripInSlot (slot); s != nullptr && s->windowId() != drag.id)
+            others.push_back (s);
+    return others;
 }
 
-void MixerComponent::SlotList::paintOverChildren (Graphics& g)
+int MixerComponent::gapTop (const std::vector<MixerStrip*>& others, int index) const
 {
-    // Where a dragged strip would go: a 2 px black bar between two strips. PROVISIONAL
-    // (no Figma node yet; the author is asked to design it). Dropping it back where
-    // it was shows nothing.
-    const int rows = (int) owner.rowTops.size() - 1;
-    const int gap = owner.dropGap, from = owner.dragFrom;
-    if (gap >= 0 && gap <= rows && gap != from && gap != from + 1)
+    int y = 0;
+    for (int i = 0; i < index && i < (int) others.size(); ++i) y += rowHeight (*others[(size_t) i]);
+    return y;
+}
+
+void MixerComponent::beginDrag (MixerStrip& s, juce::Point<int> grab)
+{
+    if (drag.landing) endDrag (drag.commit);   // the last one settles first
+
+    auto* w = engine.windowById (s.windowId());
+    if (w == nullptr || w->slot < 0) { s.abandonDrag(); return; }
+
+    drag = {};
+    drag.id = s.windowId();
+    drag.strip = &s;
+    drag.from = drag.gap = w->slot;
+    drag.grabY = grab.y;
+
+    slider.forget (s);
+    lift.apply (s);
+    grabKeyboardFocus();
+    slider.setTicking (true);   // follow the pointer (and auto-scroll) every frame
+    list.repaint();
+}
+
+void MixerComponent::followPointer()
+{
+    auto* s = drag.strip.getComponent();
+    if (s == nullptr) { abortDrag(); return; }
+
+    const auto mouse = juce::Desktop::getMousePosition();
+
+    // Near the top or bottom of a list longer than the panel: scroll, faster the
+    // deeper into the edge band the pointer goes.
+    const float speed = reorder::edgeSpeed ((float) viewport.getLocalPoint (nullptr, mouse).y,
+                                            0.0f, (float) viewport.getHeight());
+    if (speed != 0.0f)
+        viewport.setViewPosition (0, viewport.getViewPositionY() + juce::roundToInt (speed));
+
+    // The strip rides with the pointer, held where it was grabbed, along the
+    // column only, and never out of sight.
+    const int h = s->getHeight();
+    const int visTop = juce::jmax (0, viewport.getViewPositionY());
+    const int visBottom = juce::jmin (list.getHeight(), viewport.getViewPositionY() + viewport.getHeight());
+    const int top = juce::jlimit (visTop, juce::jmax (visTop, visBottom - h),
+                                  list.getLocalPoint (nullptr, mouse).y - drag.grabY);
+    s->setTopLeftPosition (0, top);
+
+    // The gap goes to the nearest place the strip could land, and only moves on
+    // once another place is clearly nearer.
+    const auto others = othersInOrder();
+    const int n = (int) others.size();
+    const int current = juce::jlimit (0, n, drag.gap);
+    int nearest = current;
+    for (int i = 0; i <= n; ++i)
+        if (std::abs (top - gapTop (others, i)) < std::abs (top - gapTop (others, nearest))) nearest = i;
+
+    if (nearest != current
+        && std::abs (top - gapTop (others, nearest)) + reorder::kHysteresis < std::abs (top - gapTop (others, current)))
     {
-        const int y = juce::jlimit (1, juce::jmax (1, getHeight() - 1), owner.rowTops[(size_t) gap]);
-        g.setColour (black);
-        g.fillRect (0, y - 1, getWidth(), 2);
+        drag.gap = nearest;
+        layoutRows (true);
     }
+}
+
+void MixerComponent::land (bool commit)
+{
+    auto* s = drag.strip.getComponent();
+    if (s == nullptr) { abortDrag(); return; }
+
+    drag.landing = true;
+    drag.commit = commit && drag.gap != drag.from;
+    slider.setTicking (false);
+
+    if (! drag.commit)
+    {
+        drag.gap = drag.from;   // home, and the others back around it
+        layoutRows (true);
+    }
+
+    slider.moveTo (*s, { 0, gapTop (othersInOrder(), drag.gap) }, reorder::kDropMs);
+    if (! slider.isMoving (*s)) endDrag (drag.commit);   // already there
+}
+
+void MixerComponent::endDrag (bool commit)
+{
+    const auto done = drag;
+    drag = {};
+    lift.restore();
+    slider.setTicking (false);
+
+    // The one moment the order changes: the canvas is untouched.
+    if (commit && done.id != 0 && done.gap >= 0)
+        engine.moveToSlot (done.id, done.gap);
+
+    layoutRows (true);
+}
+
+void MixerComponent::abortDrag()
+{
+    if (auto* s = drag.strip.getComponent()) s->abandonDrag();
+    drag = {};
+    lift.restore();
+    slider.setTicking (false);
+    layoutRows (false);
+}
+
+bool MixerComponent::keyPressed (const juce::KeyPress& key)
+{
+    if (key == juce::KeyPress::escapeKey && carrying() && ! drag.landing)
+    {
+        if (auto* s = drag.strip.getComponent()) s->abandonDrag();
+        land (false);
+        return true;
+    }
+    return false;
+}
+
+void MixerComponent::SlotList::paint (Graphics& g)
+{
+    // The open gap where the carried strip would land: an empty, lightly outlined
+    // row (PROVISIONAL, from the design system's greys; no Figma node yet).
+    if (! owner.carrying() || owner.drag.strip == nullptr) return;
+    const auto others = owner.othersInOrder();
+    const Rectangle<int> gap (0, owner.gapTop (others, owner.drag.gap),
+                              MixerStrip::kWidth, rowHeight (*owner.drag.strip));
+    g.setColour (gray000);
+    g.fillRect (gap);
+    g.setColour (gray400);
+    g.drawRect (gap.reduced (1), 1);
 }
 
 void MixerComponent::paint (Graphics& g)

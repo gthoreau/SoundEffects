@@ -16,8 +16,10 @@
 // Slots are the panel's own order, independent of the canvas: a new Sound takes
 // the lowest free slot (Engine::addWindow), Close frees it, and the gaps between
 // used slots show as empty numbered rows. Dragging a strip by its handle or its
-// name onto another row moves it there, swapping with whoever sat there; the canvas
-// is left alone. The slot is saved in the .sefx (state blob v2).
+// name lifts it out of the list (Reorder.h): the strips below or above slide out of
+// its way, its gap follows it, and letting go settles it into the gap — the only
+// moment the slots change. The canvas is left alone. The slot is saved in the .sefx
+// (state blob v2).
 //
 // Clicking anywhere on a strip focuses its Window on the canvas: the panel is a
 // list OF the Windows, not a parallel set of nameplates that happen to match.
@@ -31,6 +33,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "Os8Widgets.h"
+#include "Reorder.h"
 #include "engine/Engine.h"
 
 #include <functional>
@@ -58,15 +61,22 @@ public:
 
     /** Clicked anywhere — the panel asks the canvas to focus this Window. */
     std::function<void (uint64_t)> onFocusRequested;
-    /** Dragged by the handle or the name: where the strip's top is now (in the
-        parent's coordinates) while it moves, and the drop when it is let go. */
-    std::function<void (MixerStrip&, int top)> onDragMove;
+    /** Dragged by the handle or the name: lifted once the pointer has travelled
+        (with where in the strip it was grabbed), every move after that, and the
+        release. The panel works out where the strip goes from the pointer. */
+    std::function<void (MixerStrip&, juce::Point<int> grab)> onDragStart;
+    std::function<void (MixerStrip&)> onDragMove;
     std::function<void (MixerStrip&)> onDragEnd;
+
+    /** The panel cancelled the drag (Escape, the list changed): ignore the rest of
+        this press. */
+    void abandonDrag();
 
     void paint (juce::Graphics&) override;
     void resized() override;
 
     void mouseEnter (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
     void mouseExit (const juce::MouseEvent&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
@@ -133,7 +143,6 @@ private:
     bool  pressInDragArea = false;
     bool  draggingStrip = false;
     bool  forcedHover = false;
-    int   dragStartTop = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerStrip)
 };
@@ -149,6 +158,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    bool keyPressed (const juce::KeyPress&) override;
 
     /** Mark which Window the canvas has selected, so the matching strip is Active. */
     void setSelectedWindow (uint64_t id);
@@ -161,19 +171,49 @@ public:
     static constexpr int kBarHeight = 44;
 
 private:
-    /** The scrolled list: strips are its children; the drop target is painted. */
+    /** The scrolled list: strips are its children; the open gap is painted under them. */
     struct SlotList : juce::Component
     {
         explicit SlotList (MixerComponent& m) : owner (m) {}
-        void paintOverChildren (juce::Graphics&) override;
+        void paint (juce::Graphics&) override;
         MixerComponent& owner;
     };
 
-    void layoutRows();
-    /** Between which rows a strip whose top is at `top` would be inserted: 0 =
-        above the first, N = below the last. */
-    int gapAt (int top) const;
+    /** Where every strip belongs: its slot's row, or — while a strip is carried —
+        the order with the carried one taken out and its gap opened at `gap`. Slides
+        there, or jumps when `animate` is false. */
+    void layoutRows (bool animate = false);
     MixerStrip* stripInSlot (int slot) const;
+    static int rowHeight (const MixerStrip& s) noexcept;
+
+    // --- the carried strip (see Reorder.h) ---
+    void beginDrag (MixerStrip&, juce::Point<int> grab);
+    /** Follow the pointer: auto-scroll near an edge, move the floating strip, pick
+        the gap. Every move and every frame while held. */
+    void followPointer();
+    /** The strips in slot order, the carried one left out. */
+    std::vector<MixerStrip*> othersInOrder() const;
+    /** The top of the gap if it opened before the `index`-th of the others. */
+    int gapTop (const std::vector<MixerStrip*>& others, int index) const;
+    /** Let go (or Escape): glide into the gap, or home when `commit` is false. */
+    void land (bool commit);
+    /** Settled: restore the strip's look and, if `commit`, move it to its slot. */
+    void endDrag (bool commit);
+    /** Stop at once, no glide: the strips changed under the drag. */
+    void abortDrag();
+    bool carrying() const noexcept { return drag.id != 0; }
+
+    struct Drag
+    {
+        uint64_t id = 0;
+        juce::Component::SafePointer<MixerStrip> strip;
+        int from = -1;              // its slot when lifted
+        int gap = -1;               // the slot it would land in now
+        int grabY = 0;              // where in the strip it was taken hold of
+        bool landing = false;       // let go: gliding into the gap (or home)
+        bool commit = false;        // ...and once there, does the order change?
+        size_t count = 0;           // how many strips there were when it began
+    } drag;
 
     se::Engine& engine;
     uint64_t selectedId = 0;
@@ -186,8 +226,9 @@ private:
     std::vector<std::unique_ptr<MixerStrip>> strips;
 
     std::vector<int> rowTops;      // y of each slot's row in `list`, plus the end
-    int dropGap = -1;              // while a strip is dragged: the gap it would go into
-    int dragFrom = -1;             // ...and the slot it came from
+
+    reorder::Slider slider;
+    reorder::Lift   lift;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerComponent)
 };
