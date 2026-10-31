@@ -348,6 +348,7 @@ void EffectsPanelComponent::refresh()
     updateStatus();
     if (openModule != nullptr)
     {
+        followTargetFormat();
         prefillSpanFields();
         refreshTray();
     }
@@ -527,23 +528,30 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     // Fields remember what they last held (§8) — for this session; setups (step 6)
     // are what persists.
     const auto kept = remembered.find (module->name);
-    working = kept != remembered.end() ? kept->second
-                                       : (module->defaults ? module->defaults() : se::Settings{});
     openSchema = module->schema ? module->schema() : se::SettingsSchema{};
     presetKeys.clear();
+    std::set<std::string> keptTouched;
     if (kept != remembered.end())
     {
-        for (const auto& item : openSchema) presetKeys.insert (item.key);   // theirs from last time
+        // Last time's values, in the format they were bytes of then; what the user had
+        // set stays theirs, the rest follows the scope again.
+        working = kept->second.values;
+        keptTouched = kept->second.touched;
+        fmtRate = kept->second.rate;
+        fmtBps = kept->second.bps;
+        for (const auto& item : openSchema) presetKeys.insert (item.key);
     }
     else
     {
         // The author's starting values sit on the module's own defaults (see
-        // EffectLayouts); a field they set is theirs, so the scope prefill leaves it be.
-        const se::SoundDocument* d0 = targetDoc();
-        fxlayout::applyPresets (module->name, working, d0 != nullptr ? d0->rateHz : 44100.0,
-                                d0 != nullptr ? d0->bps : 16, &presetKeys);
-        seedFromSelection();
+        // EffectLayouts), in the target's format.
+        working = module->defaults ? module->defaults() : se::Settings{};
+        const auto [rate, bps] = targetFormat();
+        fmtRate = rate;
+        fmtBps = bps;
+        fxlayout::applyPresets (module->name, working, fmtRate, fmtBps, &presetKeys);
     }
+    followTargetFormat();
     openIsOneClick = ! module->schema;
     warningLines.clear();
     if (openIsOneClick)
@@ -572,7 +580,7 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     else
         openLayout = fxlayout::Layout { module->name, {} };
     openApplicability = runner.check (targetId, *module);
-    touchedKeys = presetKeys;
+    touchedKeys = keptTouched;
 
     // What a setup of this module holds: every saveable key the schema binds and the
     // tray shows (with each duration's units), the way the original saved every item
@@ -654,7 +662,7 @@ void EffectsPanelComponent::updateLatchedButtons()
 
 void EffectsPanelComponent::closeTray()
 {
-    if (openModule != nullptr) remembered[openModule->name] = working;
+    if (openModule != nullptr) remembered[openModule->name] = { working, touchedKeys, fmtRate, fmtBps };
     clearTray();
     openModule = nullptr;
     applyButton.reset();
@@ -667,6 +675,7 @@ void EffectsPanelComponent::closeTray()
 void EffectsPanelComponent::applyOpen()
 {
     if (openModule == nullptr) return;
+    followTargetFormat();   // the bytes handed to the module are the target's
 
     if (openApplicability != se::Applicability::Ok)
     {
@@ -790,40 +799,47 @@ void EffectsPanelComponent::resetToDefaults()
     if (openModule == nullptr) return;
     working = openModule->defaults ? openModule->defaults() : se::Settings{};
     touchedKeys.clear();
-    const se::SoundDocument* d0 = targetDoc();
-    fxlayout::applyPresets (openModule->name, working, d0 != nullptr ? d0->rateHz : 44100.0,
-                            d0 != nullptr ? d0->bps : 16, &touchedKeys);
-    seedFromSelection();
+    const auto [rate, bps] = targetFormat();
+    fmtRate = rate;
+    fmtBps = bps;
+    fxlayout::applyPresets (openModule->name, working, fmtRate, fmtBps, nullptr);
     prefillSpanFields();
     refreshTray();
     content->repaint();
 }
 
-void EffectsPanelComponent::seedFromSelection()
+void EffectsPanelComponent::followTargetFormat()
 {
-    // Waveform Generator (507:5908): "1000 ms OR the current selection's length".
-    // The preset gave 1000 ms; a real selection (not a caret) replaces it.
-    if (openModule == nullptr || juce::String (openModule->name) != "Waveform Generator") return;
     const se::SoundDocument* doc = targetDoc();
-    if (doc == nullptr || doc->selEnd <= doc->selSt) return;
-    const se::Scope sc = runner.scope (targetId);
-    if (sc.endByte > sc.startByte)
-        working["length"] = se::Value ((int64_t) (sc.endByte - sc.startByte));
+    if (doc == nullptr || (doc->rateHz == fmtRate && doc->bps == fmtBps)) return;
+
+    // Same time, the new Sound's bytes.
+    for (const auto& item : openSchema)
+        if (isDuration (&item) && working.count (item.key) != 0)
+        {
+            const auto bytes = (size_t) std::max<int64_t> (0, se::getInt (working, item.key));
+            const double seconds = se::bytesToUnit (bytes, se::Unit::Seconds, fmtRate, fmtBps);
+            working[item.key] = se::Value ((int64_t) se::unitToBytes (seconds, se::Unit::Seconds, doc->rateHz, doc->bps));
+        }
+    fmtRate = doc->rateHz;
+    fmtBps = doc->bps;
 }
 
 void EffectsPanelComponent::prefillSpanFields()
 {
     if (openModule == nullptr) return;
     const se::SoundDocument* doc = targetDoc();
-    if (doc == nullptr) return;
+    if (doc == nullptr) return;   // nothing to measure: the fields keep their time
 
-    // The selection's length when there is one, the longest track's when there is not —
-    // the span the scope readout reports, so the field and the readout cannot disagree.
-    // An empty Window has no span to derive, so the generators that can run there seed
-    // at 1000 ms.
+    // A span field follows the scope, live, until the user sets it: the selection's
+    // length when there is one, the longest track's when there is not — the span the
+    // scope readout reports. Waveform Generator (507:5908) is "1000 ms OR the current
+    // selection's length": with no selection (a caret counts as none) it is 1000 ms.
+    // An empty Window has no span to derive, so it seeds at 1000 ms too.
     const se::Scope sc = runner.scope (targetId);
+    const bool generator = juce::String (openModule->name) == "Waveform Generator";
     auto span = (int64_t) (sc.endByte - sc.startByte);
-    if (span <= 0)
+    if (span <= 0 || (generator && doc->selEnd <= doc->selSt))
         span = (int64_t) se::unitToBytes (1000.0, se::Unit::Milliseconds, doc->rateHz, doc->bps);
 
     for (const auto& item : openSchema)
@@ -904,9 +920,7 @@ void EffectsPanelComponent::buildTray()
                         const se::SoundDocument* doc = targetDoc();
 
                         if (duration)
-                            working[key] = se::Value ((int64_t) (doc != nullptr
-                                ? se::unitToBytes (v, unitNow(), doc->rateHz, doc->bps)
-                                : (size_t) std::max (0.0, v)));
+                            working[key] = se::Value ((int64_t) se::unitToBytes (std::max (0.0, v), unitNow(), fmtRate, fmtBps));
                         else if (flags & fxlayout::fixed16)  working[key] = se::Value ((int64_t) se::doubleToFixed (v));
                         else if (flags & fxlayout::kilo)     working[key] = se::Value (v * 1000.0);
                         else if (decimal)                    working[key] = se::Value (v);
@@ -936,15 +950,13 @@ void EffectsPanelComponent::buildTray()
                         if (duration)
                         {
                             const auto unit = unitNow();
-                            const se::SoundDocument* doc = targetDoc();
                             const auto bytes = (size_t) std::max<int64_t> (0, se::getInt (working, key));
-                            shown = doc != nullptr ? se::bytesToUnit (bytes, unit, doc->rateHz, doc->bps) : (double) bytes;
+                            shown = se::bytesToUnit (bytes, unit, fmtRate, fmtBps);
                             step = Os8TextField::stepFor (fieldUnit (unit));
                             // A duration is a whole number of samples, so 5000 ms at 22.25 kHz is
                             // really 4999.97: anything within one sample of a round number reads
                             // as that number ("250", not "250.00").
-                            const double oneSample = doc != nullptr
-                                ? se::bytesToUnit ((size_t) doc->frameSize(), unit, doc->rateHz, doc->bps) : 0.0;
+                            const double oneSample = se::bytesToUnit ((size_t) se::frameSizeFor (fmtBps), unit, fmtRate, fmtBps);
                             if (std::abs (shown - std::round (shown)) <= oneSample) shown = std::round (shown);
                             places = shown == std::floor (shown) ? 0 : Os8TextField::decimalsFor (fieldUnit (unit));
                             lo = 0.0;
@@ -1196,7 +1208,7 @@ void EffectsPanelComponent::buildTray()
 std::pair<double, int> EffectsPanelComponent::targetFormat() const
 {
     const se::SoundDocument* doc = targetDoc();
-    return doc != nullptr ? std::pair<double, int> { doc->rateHz, doc->bps } : std::pair<double, int> { 44100.0, 16 };
+    return doc != nullptr ? std::pair<double, int> { doc->rateHz, doc->bps } : std::pair<double, int> { fmtRate, fmtBps };
 }
 
 int EffectsPanelComponent::currentSetup() const

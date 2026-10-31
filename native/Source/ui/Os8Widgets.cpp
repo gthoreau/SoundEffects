@@ -345,6 +345,15 @@ void Os8TextField::Editor::focusLost (FocusChangeType cause)
     owner.clearSelection();
 }
 
+void Os8TextField::Editor::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    // A triple click selects the whole field, as in any Mac text field (JUCE only
+    // knows the double click's word).
+    juce::TextEditor::mouseDoubleClick (e);
+    if (e.getNumberOfClicks() >= 3) selectAll();
+    owner.restyle();
+}
+
 void Os8TextField::textEditorFocusLost (juce::TextEditor&) {}
 
 void Os8TextField::clearSelection()

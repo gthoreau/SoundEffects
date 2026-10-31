@@ -130,11 +130,10 @@ private:
     bool gateOn (const std::string& key) const;
     const se::SchemaItem* schemaItem (const std::string& key) const;
     void prefillSpanFields();
-    /** The opening values the design gives a tray where it depends on the Sound:
-        Waveform Generator's length is the selection's when there is one. */
-    void seedFromSelection();
     /** Setup ▸ Custom: the tray's opening values again. */
     void resetToDefaults();
+    /** Re-express the durations in the target Sound's format when it differs. */
+    void followTargetFormat();
 
     // --- the Setup: popup (disassembly/Setups.md) ---
     /** The target's rate and sample size, or the presets' 44.1 kHz 16-bit without one. */
@@ -177,10 +176,16 @@ private:
     bool openIsOneClick = false;             // the "Apply X." tray of a parameterless effect
     std::vector<juce::String> warningLines;  // Weird Tempo's apology, wrapped to the tray
     std::set<std::string> presetKeys;        // keys the author's starting values (or last time's) set
-    std::set<std::string> touchedKeys;       // scope-defaulted fields the user typed over
+    std::set<std::string> touchedKeys;       // fields the user set (typed, slid, a setup): the scope leaves them be
+    // The working settings hold durations in BYTES; this is the format they are bytes
+    // of (the target Sound's when it was last known), so a duration keeps its time
+    // when the target changes, and still reads right with no target at all.
+    double fmtRate = 44100.0;
+    int fmtBps = 16;
+    struct Kept { se::Settings values; std::set<std::string> touched; double rate; int bps; };
     bool reformatFields = false;             // a commit is settling: re-seat every field's text
     bool allowExtend = false;                // answers AskDoExtend() for modules that grow
-    std::map<std::string, se::Settings> remembered;   // last-used values, per module, this session
+    std::map<std::string, Kept> remembered;   // last-used values, per module, this session
     std::vector<se::Setup> openSetups;       // the open module's saved setups (empty: it has none)
     se::SetupKeys setupKeys;                 // what one of them holds
     bool openHasSetups = false;              // the design gives this tray a Setup row

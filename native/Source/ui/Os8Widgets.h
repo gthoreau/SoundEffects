@@ -182,6 +182,7 @@ private:
         bool keyPressed (const juce::KeyPress&) override;
         void focusGained (FocusChangeType) override;
         void focusLost (FocusChangeType) override;
+        void mouseDoubleClick (const juce::MouseEvent&) override;
         Os8TextField& owner;
     };
 
