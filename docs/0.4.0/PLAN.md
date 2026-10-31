@@ -160,7 +160,7 @@ The audit and its measurements are in [`perf-audit-plan.md`](perf-audit-plan.md)
 - [x] 13.1 P4: compiler warnings to zero (14 distinct → 0)
 - [x] 13.2 P6: delete Sys7
 - [x] 13.3 P5: TrackMonitor and the never-written transport knobs removed
-- [ ] 13.4 P2: a playing Window repaints only what moves
+- [x] 13.4 P2: a playing Window repaints only what moves
 - [ ] 13.5 P1: waveform peaks from a summary cache (long recordings, zoom/pan)
 - [ ] 13.6 P3: selection/loop/routing published without cloning the samples
 
@@ -292,6 +292,7 @@ full-screen control or the author's screenshots.
 ## Journal
 One line per finished sub-step: date · sub-step · what was verified · commit.
 
+- 2026-10-31 · 13.4 · P2: `WindowComponent::refresh` no longer repaints the whole Window per tick while playing: only the 1 px column each track's playhead leaves and lands on (padded by the canvas zoom, else a sub-pixel column rounds to nothing and leaves a trail), and the overview block when it moves; `paint` skips the title/status/tracks/zoom bar the clip misses and `drawWave` emits only the clipped columns (Core Graphics records clipped calls too). Found while measuring: macOS merged every dirty rect into one bounding box, so two playing Windows still repainted the whole span between them; `JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS=1` (JUCE's Metal-layer renderer) keeps them apart. Measured in the app, author's canvas, Windows muted: 2 Windows playing ~60 % → ~30 % of a core, 1 Window ~19 % → ~16 %, idle ~4 % unchanged. Drive-tested: one playhead per track at its own phase, no trails over a loop wrap, menus and text unchanged; the configured EVO16 was absent, so the test ran on the MacBook output (settings restored byte-identical)
 - 2026-10-31 · 13.3 · P5: the audio thread's one allocation path is gone (`Transport::play` inserted into a `std::set` for `PlayOptions::soloTrack`, never set since the Keyboard dropped it). Removed with it, all write-less: `TrackMonitor`/`isAudible`, `masterVolume`/`VOLUME_*`/`volumeScalar`, `supportsStereo`/`forceMono`, `playFrom`/`PlayFrom` (the 0.9.2 "play from insertion point" pref, never wired, not in the 0.4.0 spec; in git if wanted), the unused `mixFrame` overload. Render output bit-identical to before on the audit bench (same FNV hash at 8/16/32 Windows), ~10 % faster; tests + TSan green, 0 warnings
 - 2026-10-31 · 13.2 · P6: `ui/Sys7.{h,cpp}` deleted (357 lines, no users left); `CanvasComponent` reads `os8::themeColour` / `os8::kNumThemes` directly; stale Sys7 comments fixed; standalone builds with 0 warnings, tests green, `--app-snapshot` shows the themed Windows and strips unchanged
 - 2026-10-31 · 13.1 · P4 of the perf audit: 14 distinct warnings → 0 over the 63 Source files (shadows renamed, sign conversions explicit, an unused capture and an unused local gone, a structured binding no longer captured, exact rate compares go through the new `se::sameRate()`); no behaviour change; tests green, standalone builds

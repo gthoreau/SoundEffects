@@ -132,19 +132,75 @@ void WindowComponent::refresh()
     // (edits, selection, toggles, resize) already repaints itself where it changes.
     auto* w = engineWindow();
     const bool playing = w != nullptr && w->transport->uiState() == se::TransportState::playing;
-    const size_t head = w != nullptr ? w->transport->uiPlayhead() : 0;
     const bool muted = w != nullptr && w->muted.load (std::memory_order_relaxed);
     const bool soloed = w != nullptr && w->soloed.load (std::memory_order_relaxed);
     const bool silenced = muted || (! soloed && engine.anyWindowSoloed());
+    const size_t blockSt  = w != nullptr ? w->transport->uiPlaySt()  : 0;
+    const size_t blockEnd = w != nullptr ? w->transport->uiPlayEnd() : 0;
+    auto heads = playheadXs();
 
-    if (playing == lastPlaying && head == lastPlayhead && muted == lastMuted && soloed == lastSoloed
-        && silenced == lastSilenced) return;
-    lastPlaying = playing;
-    lastPlayhead = head;
-    lastMuted = muted;
-    lastSoloed = soloed;
-    lastSilenced = silenced;
-    repaint();
+    if (playing != lastPlaying || muted != lastMuted || soloed != lastSoloed || silenced != lastSilenced)
+    {
+        // The whole face changes (the play button's state, the mute veil): all of it.
+        lastPlaying = playing;
+        lastMuted = muted;
+        lastSoloed = soloed;
+        lastSilenced = silenced;
+        lastHeadX = std::move (heads);
+        lastBlockSt = blockSt; lastBlockEnd = blockEnd;
+        repaint();
+        return;
+    }
+
+    // Rolling, only the playheads and the overview's block move. Repaint the column
+    // each playhead leaves and the one it lands on, track by track, and the block.
+    // A full repaint here would redraw every transport button and field 30 times a
+    // second, and the canvas under them (perf audit P2).
+    // The canvas zooms its Windows with a transform: below 100 % a 1 px column is
+    // less than a screen pixel and would round to nothing, leaving the old line
+    // behind. Pad it so it always spans whole device pixels, antialiasing included.
+    const float scale = juce::Component::getApproximateScaleFactorForComponent (this);
+    const int pad = 1 + (int) std::ceil (1.0f / std::max (0.05f, scale));
+    const auto column = [this, pad] (int x, Rectangle<int> rows)
+    {
+        if (x != kNoHead) repaint (x - pad, rows.getY(), 1 + 2 * pad, rows.getHeight());
+    };
+    for (size_t t = 0; t < heads.size(); ++t)
+    {
+        const int was = t < lastHeadX.size() ? lastHeadX[t] : kNoHead;
+        if (heads[t] == was) continue;
+        column (was, trackRow ((int) t));
+        column (heads[t], trackRow ((int) t));
+    }
+    for (size_t t = heads.size(); t < lastHeadX.size(); ++t)   // a track gone since
+        column (lastHeadX[t], tracksArea());
+    lastHeadX = std::move (heads);
+
+    if (blockSt != lastBlockSt || blockEnd != lastBlockEnd)
+    {
+        lastBlockSt = blockSt; lastBlockEnd = blockEnd;
+        repaint (overviewRect());
+    }
+}
+
+std::vector<int> WindowComponent::playheadXs() const
+{
+    std::vector<int> xs;
+    auto* d = doc();
+    auto* w = engineWindow();
+    if (d == nullptr || w == nullptr || w->transport->uiState() != se::TransportState::playing) return xs;
+
+    const size_t maxSize = d->maxTrackSize();
+    xs.assign ((size_t) d->numTracks(), kNoHead);
+    for (int t = 0; t < d->numTracks(); ++t)
+    {
+        size_t ph = 0;
+        if (d->tracks[(size_t) t].data.empty() || ! w->transport->uiTrackPosition (t, ph)) continue;
+        const int px = xAtByte (ph, maxSize);
+        const auto lane = waveRect (t).reduced (1, 0);
+        if (px >= lane.getX() && px < lane.getRight()) xs[(size_t) t] = px;
+    }
+    return xs;
 }
 
 void WindowComponent::resizeToFit()
@@ -459,10 +515,12 @@ void WindowComponent::paint (Graphics& g)
     g.setColour (silenced ? tint.interpolatedWith (white, 0.8f) : tint);
     g.fillRect (b);
 
-    paintTitle (g, *d, muted, soloed);
-    paintStatus (g, *d);
-    paintTracks (g, *d, silenced);
-    paintZoomBar (g, *d);
+    // A playing Window mostly repaints 1 px columns (refresh()): skip the parts the
+    // clip does not reach rather than build their paths and text for nothing.
+    if (g.clipRegionIntersects (titleBar()))   paintTitle (g, *d, muted, soloed);
+    if (g.clipRegionIntersects (statusArea())) paintStatus (g, *d);
+    if (g.clipRegionIntersects (tracksArea())) paintTracks (g, *d, silenced);
+    if (g.clipRegionIntersects (zoomArea().withTrimmedBottom (-1))) paintZoomBar (g, *d);
 
     // Source is joined to Record by a short groove ("Menu_separator", 8 x 2): the
     // source feeds the recording.
@@ -557,6 +615,7 @@ void WindowComponent::paintStatus (Graphics& g, const se::SoundDocument& d)
 void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool muted)
 {
     const auto area = tracksArea();
+    const auto clip = g.getClipBounds();
     const int n = d.numTracks();
     const size_t maxSize = d.maxTrackSize();
 
@@ -640,20 +699,24 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
         {
             g.setColour (colour);
             g.drawHorizontalLine ((int) mid, (float) lane.getX(), (float) endX);
+            // Only the columns the clip reaches: Core Graphics records every call,
+            // clipped or not, and a playing Window repaints 1 px columns (refresh()).
+            const int x0 = std::max (lane.getX(), clip.getX());
+            const int x1 = std::min (lane.getRight(), clip.getRight());
             if (t < (int) peaks.size())
             {
                 const auto& cols = peaks[(size_t) t];
-                for (int x = 0; x < (int) cols.size() && waveOriginX() + x < endX; ++x)
+                for (int px = x0; px < x1 && px < endX; ++px)
                 {
+                    const int x = px - waveOriginX();
+                    if (x < 0 || x >= (int) cols.size()) continue;
                     const auto r = cols[(size_t) x];
                     if (juce::exactlyEqual (r.getStart(), 0.0f) && juce::exactlyEqual (r.getEnd(), 0.0f)) continue;
-                    const int px = waveOriginX() + x;
-                    if (px < lane.getX() || px >= lane.getRight()) continue;
                     g.drawVerticalLine (px, mid - r.getEnd() * amp, mid - r.getStart() * amp + 1.0f);
                 }
             }
-            for (int x = endX + 1; x < lane.getRight(); x += 3)
-                g.fillRect (x, (int) mid, 1, 1);
+            for (int x = endX + 1; x < x1; x += 3)
+                if (x >= x0) g.fillRect (x, (int) mid, 1, 1);
         };
 
         const bool inSel = t >= d.firstSelTrack - 1 && t <= d.lastSelTrack - 1;

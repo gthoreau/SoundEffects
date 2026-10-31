@@ -36,6 +36,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -298,7 +299,11 @@ private:
 
     // last drawn state, so refresh() can skip idle repaints
     bool   lastPlaying = false, lastMuted = false, lastSoloed = false, lastSilenced = false;
-    size_t lastPlayhead = 0;
+    std::vector<int> lastHeadX;                 // per track, kNoHead when none is drawn
+    size_t lastBlockSt = 0, lastBlockEnd = 0;   // the overview's block, as last drawn
+    static constexpr int kNoHead = std::numeric_limits<int>::min();
+    /** Where each track's playhead is drawn right now (kNoHead: none), as paintTracks does it. */
+    std::vector<int> playheadXs() const;
     size_t lastSelSt = (size_t) -1, lastSelEnd = (size_t) -1;
     int    lastUnit = -1;
 

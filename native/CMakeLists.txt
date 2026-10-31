@@ -111,11 +111,17 @@ if(APPLE)
     target_sources(SoundEffects PRIVATE Source/ui/MacWindowChrome.mm)
 endif()
 
+# JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS: draw through JUCE's Metal-layer
+# renderer so that separate dirty rectangles stay separate. Without it macOS merges
+# every repaint of a frame into one bounding box: two playing Windows' 1 px playhead
+# columns became one repaint the width of the canvas (perf audit P2: two Windows
+# playing went from ~60 % of a core to ~30 %; idle unchanged at ~4 %).
 target_compile_definitions(SoundEffects PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
-    JUCE_DISPLAY_SPLASH_SCREEN=0)
+    JUCE_DISPLAY_SPLASH_SCREEN=0
+    JUCE_COREGRAPHICS_RENDER_WITH_MULTIPLE_PAINT_CALLS=1)
 
 target_include_directories(SoundEffects PRIVATE Source)
 
