@@ -25,9 +25,9 @@ reading it**, and every sub-step that lands updates it in the same commit.
 | Font | `~/Library/Fonts/ClassicChicago.ttf` is embedded via BinaryData. The author owns the rights. |
 | Themes | 24 named `Window-themes/*` colours in one name+hex table, in index order. Old index N maps to new colour N. The theme fills the Window background, its two speaker buttons and **its mixer strip** (node `636:11566`). The waveform bed stays white. |
 | Mixer strip tint | The strip is filled with the theme colour, and the sliders and VU trough use a darker shade of it. A muted strip is a washed-out pale version with grey text. |
-| Mixer slots | A new Sound takes the lowest free slot; Close frees it. Empty slots between used ones show as empty numbered rows. Keys 1–0 focus slots 1–10. Dragging a strip to another slot leaves the canvas untouched. |
+| Mixer slots | **Revised 2026-10-31 (step 12): always 1..N, no empty slots.** A new Sound takes slot N+1; closing a Sound closes the gap (the strips below move up and are renumbered). Keys 1–0 and the Window menu follow the current numbers. Dragging a strip inserts it between two others (no drop on an empty row). The order is saved. Dragging leaves the canvas untouched. |
 | Balance | Linear balance: unity at centre, the opposite side is attenuated. |
-| Shortcuts | ⌘W closes, ⌘← / ⌘→ extend to beginning / end. ⌘␣ and ⌃␣ are taken by macOS (Spotlight, input source), so the 3 direction items stay in the menu, a single-key **D** cycles Forward→Backward→Ping-pong, and ⌥␣ = Ping-pong. Single-key shortcuts (R F L M S K G D ⇥ 1–0) work only when no text field has focus. |
+| Shortcuts | ⌘W closes, ⌘← / ⌘→ extend to beginning / end. ⌘␣ and ⌃␣ are taken by macOS (Spotlight, input source), so the 3 direction items stay in the menu, a single-key **D** cycles Forward→Backward→Ping-pong, and ⌥␣ = Ping-pong. Single-key shortcuts (R F L M S K G D 1–0) work only when no text field has focus. **Show/Hide Side Panels is ⌘. (period) since 2026-10-31; ⇥ no longer does it.** Audio/Midi Setup keeps ⌘,. |
 | 1-click effects | Auto-apply is on by default and persisted app-wide. When it is off, a tray reads "Apply [name]." with Activate Auto-Apply, Cancel and Apply. Weird Tempo's warning shows in that tray. |
 | Apply feedback | The button shows `Done!` for about 0.5 s (one constant), independent of compute time. |
 | Bandpass IIR | Has its own tray in the design (`357:13366`). |
@@ -53,6 +53,7 @@ reading it**, and every sub-step that lands updates it in the same commit.
 | Popups | `636:21366`: Leave Silence `543:8056`, Shift Sound `543:9335`, Select Exactly `543:8171`, Select Peak `543:9266`, Select Audio Source `543:9503` |
 | Canvas palettes | `636:21442` |
 | Theme board | page `650:5398` |
+| Bugs and fixes list (step 12) | Specs block `883:21119`, snapshot in [`bugs-and-fixes.md`](bugs-and-fixes.md). Revised nodes: Text field `327:4482`, window-button `203:4347` (Close / hide-panel / Mute / Solo / Resize × Pressed), Placeholder-waveform `196:4395` (Selection × Mute × Recording), Transport-button `761:17286`, Transport-controls `589:8301`, icons `208:5690` (new `Loop-big` `897:6430`, `Active-track-drag` `881:18803`, `new-track-drag` `881:18814`), Mixer-channel-strip `870:16438`, Waveform-generator tray `507:5908`, dropdown-menus `339:11140` (Notes `575:6253`, Octaves `575:6423`) |
 
 Colour styles: `System/*` (selected-text-field #ccccff, selected-menu-item #333399,
 transport-button-red #fd0000, white, gray-000 #eeeeee … gray-600 #333333, black) and
@@ -133,9 +134,24 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - [x] 10.3 Import Sound… (pick sounds from a .sefx), lands in the first free slots, plus its dialog
 - [x] 10.4 New Sound defaults: 1 track, 44.1 kHz, 16 bit, random theme
 
-### 11. Release
+### 11. Release (waits for step 12)
 - [ ] 11.1 SPEC `[NATIVE]` departures, re-sync `specs_v0-4-0.md`, settle the uncommitted deletion of `SoundEffects-0.9.2-SPEC.md` with the author
 - [ ] 11.2 Version 0.4.0, merge into main, tag
+
+### 12. Bugs and fixes (author's review, Figma `883:21119`, runs before 11)
+The list is in [`bugs-and-fixes.md`](bugs-and-fixes.md). The analysis of 2026-10-31
+(code read against each item) is under "Step 12 analysis" below: read it before
+starting a sub-step. Order: 12.1 and 12.2 fix shared widgets, 12.3 makes the M/S
+painter that 12.4 and 12.5 reuse. 12.8 is engine-only and can run alongside any of
+the others.
+- [ ] 12.1 Text fields: revised `327:4482`; one highlight at a time, none in a disabled field, no stray caret, ink back to black on blur. Applies everywhere `Os8TextField` is used (trays, selection info, popups).
+- [ ] 12.2 App menus in real popups: nothing past the frame, submenu arrow, Window ▸ Color submenu. Verify in the running app, not only `--app-snapshot`.
+- [ ] 12.3 Window buttons `203:4347`: new Mute/Solo look (title bars and strips), `hide-panel` box on the side panels, Show/Hide Side Panels on ⌘. (⇥ removed), Solo feedback on Sound Windows, ⌘-click on a lit M or S clears every Mute or every Solo.
+- [ ] 12.4 Sound Window: playhead visible over the selection, the Recording waveform states `196:4395`, re-exported transport icons + `Loop-big`, the two new track-drag icons.
+- [ ] 12.5 Mixer: refined strip `870:16438`, balance readout (50L … C … 50R), no empty slots (close compacts, drag inserts), drop target while dragging a strip.
+- [ ] 12.6 Canvas: right-button drag pans from anywhere (over Windows too), drop target in grid mode while a Window is dragged.
+- [ ] 12.7 Effects: Cancel replaces Reset and closes the tray; Setup ▸ Custom resets to defaults; Waveform Generator per `507:5908` (1000 ms or the selection, 50 %, Octave 0–8, "-" for a custom frequency).
+- [ ] 12.8 Engine: on deselection, the tracks outside the old selection pick up the frame of the topmost formerly-selected track. Design note first, then code, tests and TSan.
 
 ## Verification per sub-step
 - Tests: `cmake -S native/tests -B native/tests/build -G Ninja && cmake --build native/tests/build`, then **from `native/tests`** run `./build/effect-fixtures` (it reads `fixtures/` relative to the cwd and exits 2 elsewhere), `./build/engine-tests` and `./build/state-tests`. Run TSan/ASan for engine changes.
@@ -171,6 +187,96 @@ Rules learned this way, all in `ui/Os8.cpp`:
 - **The tokens live in `ui/Os8.h`, not in a separate `ui/Theme`**: the System colours, `kThemes[24]`, `themeColour()` and `themeName()`. `sys7::tintFromPalette` and `kNumTints` forward there until Sys7 is gone.
 
 - **Step 7 left (found by the author after 7.3):** Set Loop does not take effect during looping playback: `Transport::play` snapshots the loop range when playback starts (selection or Set Loop region), so changing the region, or the selection, mid-loop does nothing until Stop and Play. 8.1/8.2 rework that mapping (per-track phase, selection-loop aware, glitch-free switching): make the loop range live there. Figma's menu now says "Set Loop" (the author fixed it), settling the open question above.
+
+## Step 12 analysis (2026-10-31)
+What the code does today for each item, where to fix it, and what was decided. The
+causes marked "likely" were found by reading the code and still need checking in
+the running app. In-app menus do not open from a background click, so 12.2 needs
+full-screen control or the author's screenshots.
+
+**12.1 Text fields** (`ui/Os8Widgets.cpp`, `Os8TextField`)
+- It wraps a `juce::TextEditor` with `setSelectAllWhenFocused (true)`. A TextEditor keeps its highlighted range after it loses focus and still paints it. Likely cause of several highlights at once, and of white text in a field that is no longer focused (x-small fields draw the selection #333333 with white text).
+- A disabled editor keeps its old highlight: the selected text seen in disabled fields.
+- `setText()` puts the caret at 0. Trays and selection info refresh their text all the time, which likely explains the caret sitting at the left.
+- Fix:
+  - Losing focus or being disabled clears the selection and hides the caret.
+  - Gaining focus selects everything, as now.
+  - Pixel-diff every state of the revised `327:4482` (3 sizes × Default/Active/Selected/Disabled) with `--gallery-snapshot`.
+- Then drive the effects trays and the selection info: Tab between fields, click away, disable a field while it is selected.
+
+**12.2 App menus** (`ui/AppMenuBar.cpp`, `Os8AppMenuLookAndFeel`)
+- `getIdealPopupMenuItemSizeWithOptions` only knows rows whose label is a command name in `cmd::table()`. The Color submenu's items, the sound-list rows and submenu parents get no room for an icon, shortcut or arrow column.
+- The background frame is drawn `width - 2*kMenuBorder` wide from x = 0. Check where JUCE really puts the item rows in a live popup; a border mismatch would explain items bleeding past the frame.
+- `--app-snapshot` lays the menus out itself, so it cannot show this bug. Compare live captures with Figma `569:*`.
+
+**12.3 Window buttons, Solo and Mute** (`ui/Os8.cpp` `paintTitleBarBox`, `ui/SidePanel.cpp`, `ui/WindowComponent.cpp`, `ui/MixerComponent.cpp`, `ui/AppCommands.cpp`)
+- New Mute/Solo look from `203:4347`. One painter serves the title bars and the strips.
+- The `hide-panel` variant replaces SidePanel's provisional window-shade glyph.
+- `toggleSidePanels`: key ⇥ → ⌘. (period), and ⇥ is removed. Make sure no popup relies on ⌘. as Cancel.
+- **Solo feedback on Sound Windows:** a Window silenced by another Window's solo wears the Mute look (greyed waveform, as `196:4395` Mute=on) with its M box unlit. This is what its strip already does.
+- **⌘-click on a lit box:** on M, every Window is unmuted; on S, every solo is cleared. It works the same in title bars and mixer strips. The engine already has per-Window `muted` / `soloed` atomics.
+
+**12.4 Sound Window** (`ui/WindowComponent.cpp` `paintTracks`, `ui/Os8Icons.cpp`)
+- **Playhead:** today it is drawn solid black, so it vanishes inside the inverted selection. In Figma it is a 1 px white DIFFERENCE line (#9d9d9d DIFFERENCE when muted), over a selection that is itself white DIFFERENCE.
+- **Recording states** (`196:4395`), applied to the tracks being written (`Recorder` targets / `excludeMask`):
+  - No selection: the waveform turns #fd0000.
+  - With a selection: a #fd0000 block with the waveform white inside, black outside.
+  - Muted: waveform #fd0000@0.30. With a selection, the selection is #fd0000@0.30 LINEAR_BURN over a #c0c0c0 waveform.
+- **Icons:** re-export, verbatim from Figma, every Transport-button variant (`761:17286`) and the `Loop-big` icon for the Loop button. Then check the Transport-controls row spacing (`589:8301`).
+- **Track drags:**
+  - `Active-track-drag` is the dragged ghost when moving, ⌥-duplicating or trashing a Track.
+  - `new-track-drag` is the ghost when adding a Track.
+
+**12.5 Mixer** (`ui/MixerComponent.cpp`, `engine/Engine` slots)
+- Pixel-diff the refined strip `870:16438` with `--mixer-snapshot`.
+- **Balance readout:** while the balance slider moves, the name cell shows it, as it does the dB for the fader. Format "50L … C … 50R": the ±1 balance is shown as 0–50 per side (my reading of "50L - C - 50R"; say if it means something else).
+- **No empty slots** (decision above):
+  - Close compacts through `Engine::normaliseSlots`.
+  - `moveToSlot` becomes an insert.
+  - The state blob's slot is the order.
+  - Keys 1–0 and the Window menu follow.
+- **Drop target:** no Figma node. Provisional: a 2 px black insertion bar between the strips where the dragged one will land, as the collapse box was provisional. Ask the author to design it.
+
+**12.6 Canvas** (`ui/CanvasComponent.cpp`)
+- **Right-button pan from anywhere:** panning exists only in pan mode, and only on clicks that miss every Window.
+  - Catch right-button presses before the Windows: a mouse listener on `world` for nested children. Nothing in the app uses the right button today.
+  - Pan with the dragging-hand cursor and leave the selection alone.
+- **Grid drop target:** `layoutGrid (floating)` already reflows around the gap. Add a visible target in that gap. It is provisional (dashed outline of the cell) until the author designs it.
+
+**12.7 Effects** (`ui/EffectsPanel.cpp`, `effects/modules/Waveform.cpp`)
+- **Cancel instead of Reset:** the second button reads Cancel in every tray (today only the 1-click tray does, `EffectsPanel.cpp:615`) and closes the tray.
+- **Setup ▸ Custom:** today Custom is a disabled status row (`refreshSetupMenu`). It becomes always present and enabled, and picking it loads the module's `defaults`. If the defaults equal a saved setup, the popup then shows that setup's name: acceptable, flag it.
+- **Waveform Generator defaults** are today length 0 (meaning the selection) and amplitude 100.
+  - New defaults: the selection's length when there is one, else 1000 ms, computed in bytes for the Sound when the tray opens; amplitude 50 %.
+  - Check whether any golden vector relies on the defaults, and keep `src/` (the TS reference) in step.
+- **Octave popup:** "Oct.0…Oct.9" becomes "-", "0"…"8". The Notes popup gets "-" first.
+- **Custom frequency:** a frequency that is not an exact equal-tempered note (typed in the kHz field) shows "-" in both popups.
+- **Layout:** per `507:5908`.
+
+**12.8 Deselection playhead sync** (`engine/Transport.cpp` `anchor`, `engine/Mixer.h`)
+- **Today:** looping with a selection plays only the selected tracks (selection mode). Deselecting re-aims to `all` mode in `render`.
+  - `anchor()` keeps a track on its frame only if the old mapping had it inside its span.
+  - Every other track gets `fresh` (u = 0: its own start).
+  - So the formerly unselected tracks restart at 0 while the selected ones carry on. That is the bug.
+- **Rule (author, 2026-10-31):** the reference R is the topmost track that was reading a frame inside the old span (inSpan and present), with its frame F and heading. A track with no frame of its own in the new span:
+  - reads F if F lies in its new span;
+  - in `all` mode, reads F mod its own length (a shorter track wraps, so the phasing stays the "exquisite mess");
+  - takes R's heading (backward, or the current leg of a ping-pong).
+- **Cases to settle in the design note and to test:**
+  1. Selected tracks that were themselves out of phase (a selection made while tracks drifted): R wins for everyone outside. The selected tracks keep their own frames.
+  2. A formerly-selected track that was absent (shorter than the read point): it has no frame, so it follows R.
+  3. No R at all (every selected track absent): keep today's rule (span start).
+  4. A new selection over other tracks (not a deselection): newly included tracks take F if it is inside the new span, else the span start (backward: its end). The same code path as above.
+  5. Dragging a selection across tracks re-aims every block: the rule must be stable under that, so no jump on a track that already has a frame.
+  6. A caret (zero length) counts as no selection.
+  7. Loop with a Set Loop region: the aim is the region, so deselecting changes nothing.
+  8. Loop off (once mode): no live re-aim exists today, so deselecting mid-pass changes nothing until Stop. Unchanged; say so to the author.
+  9. Paused: the re-aim lands when playback resumes. Test it.
+  10. Recording: the tracks being written must not be re-anchored mid-take. Check `excludeMask` and the loop-recording path; freeze the re-aim for those tracks if needed.
+  11. Tracks that were silent come in through the existing ~2 ms crossfade, with no click.
+  12. Several Windows: each Transport is independent.
+  13. Advance (2×) and the Keyboard's rateScale work in frames, so they are unaffected.
+- **Tests in `run_engine.cpp`:** one per case, plus the playheads the UI reads (`uiTrackPosition`), plus a threaded select/deselect stress under TSan.
 
 ## Journal
 One line per finished sub-step: date · sub-step · what was verified · commit.
