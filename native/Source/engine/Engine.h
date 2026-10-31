@@ -147,17 +147,19 @@ public:
     const std::vector<uint64_t>& windowIds() const noexcept { return order; }
 
     // --- message thread: mixer slots ----------------------------------------
-    // Every Window sits in a numbered mixer slot (Window::slot). addWindow seats a
-    // new one in the lowest free slot; removing a Window frees its slot, leaving a
-    // gap the next new Window fills.
+    // Every Window sits in a numbered mixer slot (Window::slot), always 0..N-1 with
+    // no gaps (decision of 2026-10-31): addWindow seats a new one last; removing a
+    // Window closes the gap, the ones below moving up.
     int      lowestFreeSlot() const;
     /** The Window seated in `slot`, or 0. */
     uint64_t windowInSlot (int slot) const noexcept;
     /** The highest occupied slot, or Window::kNoSlot when there is no Window. */
     int      highestSlot() const noexcept;
-    /** Seat a Window in `slot`; whoever was there takes its old slot. */
+    /** Move a Window to `slot` by INSERTING it there: the others close up behind it
+        and those from `slot` on move down one. Past the end = last. */
     bool     moveToSlot (uint64_t id, int slot);
-    /** Resolve duplicate and missing slots (a damaged or a v1 file). */
+    /** Resolve duplicate and missing slots (a damaged or a v1 file), then close any
+        gaps. */
     void     normaliseSlots();
     Window*  windowById (uint64_t id) noexcept;
 
@@ -264,6 +266,11 @@ private:
     // --- message-thread state ----------------------------------------------
     std::unordered_map<uint64_t, Window*> registry;   // non-owning; UI's view
     std::vector<uint64_t> order;                       // stable creation order
+
+    /** The seated Windows in slot order (ties in creation order). */
+    std::vector<Window*> seatedInSlotOrder() const;
+    /** Renumber the seated Windows 0..N-1, keeping their order. */
+    void compactSlots();
     uint64_t nextId = 1;
 
     // --- shared, lock-free --------------------------------------------------

@@ -1419,21 +1419,28 @@ int main()
     check (wa->slot == 0 && wb->slot == 1 && wc->slot == 2, "slots: new Sounds take 0, 1, 2 in order");
     check (engine.windowInSlot (1) == b && engine.windowInSlot (7) == 0, "slots: who sits where");
 
-    engine.removeWindow (b);   // frees slot 1, leaving a gap
-    check (engine.highestSlot() == 2 && engine.lowestFreeSlot() == 1, "slots: Close leaves a gap");
+    engine.removeWindow (b);   // slots are 1..N with no gaps: c moves up into 1
+    check (wa->slot == 0 && wc->slot == 1 && engine.highestSlot() == 1, "slots: Close compacts");
     const uint64_t d = engine.addWindow (dcDocument (5, "d"));
-    check (engine.windowById (d)->slot == 1, "slots: the next new Sound fills the gap");
+    check (engine.windowById (d)->slot == 2, "slots: a new Sound goes last");
+    auto* wd = engine.windowById (d);
 
-    check (engine.moveToSlot (a, 6) && wa->slot == 6 && engine.lowestFreeSlot() == 0,
-           "slots: moving to an empty slot frees the old one");
-    check (engine.moveToSlot (c, 6) && wc->slot == 6 && wa->slot == 2,
-           "slots: moving onto an occupied slot swaps the two");
+    // a c d: moving is an insert.
+    check (engine.moveToSlot (d, 0) && wd->slot == 0 && wa->slot == 1 && wc->slot == 2,
+           "slots: moving to the top pushes the others down");
+    check (engine.moveToSlot (d, 2) && wa->slot == 0 && wc->slot == 1 && wd->slot == 2,
+           "slots: moving down closes up behind it");
+    check (engine.moveToSlot (a, 9) && wc->slot == 0 && wd->slot == 1 && wa->slot == 2,
+           "slots: past the end lands last");
 
     wa->slot = 1;              // a duplicate of d's, and c unseated: what a damaged file gives
     wc->slot = se::Window::kNoSlot;
     engine.normaliseSlots();   // order a, c, d: a keeps 1, then c and d take 0 and 2
-    check (wa->slot == 1 && wc->slot == 0 && engine.windowById (d)->slot == 2,
+    check (wa->slot == 1 && wc->slot == 0 && wd->slot == 2,
            "slots: normalising keeps the first claimant and reseats the rest lowest-first");
+    wa->slot = 4; wc->slot = 9; wd->slot = 0;   // gaps from an old file
+    engine.normaliseSlots();
+    check (wd->slot == 0 && wa->slot == 1 && wc->slot == 2, "slots: normalising closes the gaps, order kept");
     engine.collectRetired();
 
     // --- Edit ▸ Duplicate (0.4.0, no 1994 original) ---------------------------

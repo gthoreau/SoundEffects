@@ -77,11 +77,10 @@ public:
     /** Draw the Hover state without a mouse: for the off-screen snapshots. */
     void setForcedHover (bool h) { forcedHover = h; repaint(); }
 
-    // Geometry, from Mixer-channel 509:9257. A strip is laid out 270 px wide, like
-    // the component; the panel's content is 268, so its last two columns fall under
-    // the panel's frame exactly as they do in the design.
-    static constexpr int kWidth = 270;
-    static constexpr int kHeight = 44, kActiveHeight = 46;
+    // Geometry, from the refined Mixer-channel-strip 870:16438: 268 x 46 in every
+    // state (the panel's content width), the content 2 px down.
+    static constexpr int kWidth = 268;
+    static constexpr int kHeight = 46, kActiveHeight = 46;
     static constexpr int kHandleWidth = 18;
 
     // The fader's dB scale. Position runs 0..1 across the travel; 0 is silence, not
@@ -95,8 +94,8 @@ public:
 private:
     se::Window* window() const noexcept { return engine.windowById (id); }
 
-    /** The Active strip's content sits 1 px right and down (its frame is heavier). */
-    juce::Point<int> inset() const noexcept { return selected ? juce::Point<int> (1, 1) : juce::Point<int>(); }
+    /** Where the content sits: since 870:16438 the same in every state. */
+    juce::Point<int> inset() const noexcept { return {}; }
     juce::Rectangle<int> muteBox() const;
     juce::Rectangle<int> soloBox() const;
     bool inDragArea (juce::Point<int>) const;
@@ -162,18 +161,18 @@ public:
     static constexpr int kBarHeight = 44;
 
 private:
-    /** The scrolled list: strips are its children, empty rows and the drop target
-        are painted. */
+    /** The scrolled list: strips are its children; the drop target is painted. */
     struct SlotList : juce::Component
     {
         explicit SlotList (MixerComponent& m) : owner (m) {}
-        void paint (juce::Graphics&) override;
+        void paintOverChildren (juce::Graphics&) override;
         MixerComponent& owner;
     };
 
     void layoutRows();
-    /** Which row a strip whose top is at `top` would drop into. */
-    int slotAt (int top) const;
+    /** Between which rows a strip whose top is at `top` would be inserted: 0 =
+        above the first, N = below the last. */
+    int gapAt (int top) const;
     MixerStrip* stripInSlot (int slot) const;
 
     se::Engine& engine;
@@ -187,7 +186,8 @@ private:
     std::vector<std::unique_ptr<MixerStrip>> strips;
 
     std::vector<int> rowTops;      // y of each slot's row in `list`, plus the end
-    int dropSlot = -1;             // while a strip is dragged: the row it would land in
+    int dropGap = -1;              // while a strip is dragged: the gap it would go into
+    int dragFrom = -1;             // ...and the slot it came from
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerComponent)
 };

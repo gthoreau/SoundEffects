@@ -33,12 +33,13 @@ constexpr int kTaperN = (int) (sizeof (kTaper) / sizeof (kTaper[0]));
 
 float lerp (float a, float b, float t) noexcept { return a + (b - a) * t; }
 
-// Mixer-channel 509:9257, in strip coordinates (the Active strip adds inset()).
-constexpr int kNameX = 26, kNameY = 5, kNameW = 203;
-constexpr int kMuteX = 235, kSoloX = 251, kBoxY = 6;
-constexpr int kLX = 26, kRX = 99, kLRY = 24;
-constexpr int kPanX = 34, kPanW = 63, kVolumeX = 118, kSliderY = 20;
-const juce::Rectangle<float> kNumberBox { 2.0f, 17.5f, 13.0f, 9.0f };
+// Mixer-channel-strip 870:16438, in strip coordinates (the content starts 2 px down).
+constexpr int kContentY = 2, kContentH = 42;
+constexpr int kNameX = 26, kNameY = 6, kNameW = 203;
+constexpr int kMuteX = 234, kSoloX = 250, kBoxY = 7;
+constexpr int kLX = 26, kRX = 99, kLRY = 25;
+constexpr int kPanX = 34, kPanW = 63, kVolumeX = 118, kVolumeW = 142, kSliderY = 21;
+const juce::Rectangle<float> kNumberBox { 2.0f, 18.5f, 13.0f, 9.0f };
 
 const Colour kBevelDark { 0xff808080 };   // the strip's and the bar's lower-right bevel
 }
@@ -121,7 +122,9 @@ MixerStrip::MixerStrip (se::Engine& e, uint64_t wid) : engine (e), id (wid)
     pan.onValueChange = [this]
     {
         if (auto* w = window()) w->balance.store ((float) pan.getValue(), std::memory_order_relaxed);
+        repaint();   // the name cell shows the balance while the slider moves
     };
+    pan.onDragEnd = [this] { repaint(); };
     volume.onValueChange = [this]
     {
         if (auto* w = window())
@@ -192,8 +195,7 @@ void MixerStrip::resized()
 {
     const auto in = inset();
     pan.setBounds (Rectangle<int> (kPanX, kSliderY, kPanW, os8::kSliderHeight) + in);
-    // The Active strip's frame is 1 px heavier on the right too: the fader gives it up.
-    volume.setBounds (Rectangle<int> (kVolumeX, kSliderY, kWidth - 9 - kVolumeX - in.x, os8::kSliderHeight) + in);
+    volume.setBounds (Rectangle<int> (kVolumeX, kSliderY, kVolumeW, os8::kSliderHeight) + in);
 }
 
 void MixerStrip::refreshState (bool soloFilterOn)
@@ -281,20 +283,22 @@ void MixerStrip::paint (Graphics& g)
     if (off)
     {
         g.setColour (white.withAlpha (0.8f));
-        g.fillRect (in.x, 1 + in.y, kWidth - 1 - in.x, 42);
+        // The Active strip's content frame is 1 px narrower on each side.
+        const int cx = selected ? 1 : 0;
+        g.fillRect (cx, kContentY, kWidth - 2 * cx, kContentH);
     }
 
     // The handle: a black rule at its right, the slot number, and on the Active
     // strip the two stacks of drag bars.
     g.setColour (black);
-    g.fillRect (in.x + kHandleWidth - 1, 1 + in.y, 1, 42);
+    g.fillRect (kHandleWidth - 1, kContentY, 1, kContentH);
 
     if (selected)
     {
-        for (const float top : { 4.0f, 29.67f })
+        for (const float top : { 3.5f, 30.5f })
             for (int i = 0; i < 6; ++i)
             {
-                const juce::Rectangle<float> r ((float) (4 + 2 * i), top, 1.0f, 12.33f);
+                const juce::Rectangle<float> r ((float) (3 + 2 * i), top, 1.0f, 12.0f);
                 juce::Path bar;
                 bar.addRectangle (r);
                 {
@@ -318,7 +322,13 @@ void MixerStrip::paint (Graphics& g)
     // Name — or the fader's dB readout, which takes the cell over while the fader
     // is held, so the strip needs no permanent numeric column.
     juce::String label;
-    if (volume.isMouseButtonDown())
+    if (pan.isMouseButtonDown())
+    {
+        // "50L … C … 50R": the -1..+1 balance as 0..50 a side.
+        const int n = juce::roundToInt (std::abs (pan.getValue()) * 50.0);
+        label = n == 0 ? juce::String ("C") : juce::String (n) + (pan.getValue() < 0.0 ? "L" : "R");
+    }
+    else if (volume.isMouseButtonDown())
     {
         const float db = posToDb ((float) volume.getValue());
         label = db <= kMinDb ? juce::String::fromUTF8 ("-\xE2\x88\x9E dB")
@@ -339,20 +349,32 @@ void MixerStrip::paint (Graphics& g)
     os8::paintTitleBarBox (g, soloBox().getPosition(), lastSoloed, os8::TitleBox::solo);
 
     // The strip's own bevel (inner shadows, painted over its content as Figma does),
-    // then its stroke: the theme colour at rest (so invisible), black on hover, and
-    // the Active strip's heavier black frame.
+    // then its stroke. At rest and on hover: a white inner shadow (1, 1) only; hover
+    // adds a black rule above and below. Active: white (2, 3) and #808080 (-2, -3)
+    // under a black frame 2 px top and bottom, 1 px at the sides.
     juce::Path shape;
     shape.addRectangle (bounds.toFloat());
-    os8::innerShadow (g, shape,  1.0f,  1.0f, 0, white);
-    os8::innerShadow (g, shape, -1.0f, -1.0f, 0, kBevelDark);
-
     const bool hover = isMouseOver (true) || draggingStrip || forcedHover;
-    g.setColour (selected || hover ? black : themeFill());
-    const int t = selected ? 2 : 1, l = selected ? 1 : 0;
-    g.fillRect (0, 0, kWidth, t);
-    g.fillRect (0, h - t, kWidth, t);
-    g.fillRect (kWidth - 1, 0, 1, h);
-    if (l > 0) g.fillRect (0, 0, l, h);
+    if (selected)
+    {
+        os8::innerShadow (g, shape,  2.0f,  3.0f, 0, white);
+        os8::innerShadow (g, shape, -2.0f, -3.0f, 0, kBevelDark);
+        g.setColour (black);
+        g.fillRect (0, 0, kWidth, 2);
+        g.fillRect (0, h - 2, kWidth, 2);
+        g.fillRect (0, 0, 1, h);
+        g.fillRect (kWidth - 1, 0, 1, h);
+    }
+    else
+    {
+        os8::innerShadow (g, shape, 1.0f, 1.0f, 0, white);
+        if (hover)
+        {
+            g.setColour (black);
+            g.fillRect (0, 0, kWidth, 1);
+            g.fillRect (0, h - 1, kWidth, 1);
+        }
+    }
 }
 
 void MixerStrip::mouseEnter (const juce::MouseEvent&) { repaint(); }
@@ -466,17 +488,20 @@ void MixerComponent::refresh()
         };
         strip->onDragMove = [this] (MixerStrip& s, int top)
         {
-            if (dropSlot < 0) { dropSlot = 0; layoutRows(); }   // first move: grow a spare row
+            if (auto* w = engine.windowById (s.windowId()); w != nullptr && dragFrom < 0) dragFrom = w->slot;
             top = juce::jlimit (0, juce::jmax (0, list.getHeight() - s.getHeight()), top);
             s.setTopLeftPosition (0, top);
-            dropSlot = slotAt (top);
+            dropGap = gapAt (top);
             list.repaint();
         };
         strip->onDragEnd = [this] (MixerStrip& s)
         {
-            const int target = dropSlot;
-            dropSlot = -1;
-            if (target >= 0) engine.moveToSlot (s.windowId(), target);   // the canvas is untouched
+            // Insert between two strips (no empty rows to drop on): the gap counted
+            // among ALL rows, minus one when it lies below the strip's own row.
+            const int gap = dropGap, from = dragFrom;
+            dropGap = dragFrom = -1;
+            if (gap >= 0 && from >= 0)
+                engine.moveToSlot (s.windowId(), gap > from ? gap - 1 : gap);   // the canvas is untouched
             layoutRows();
         };
         strip->setSelected (id == selectedId);
@@ -511,9 +536,8 @@ void MixerComponent::setSelectedWindow (uint64_t id)
 
 void MixerComponent::layoutRows()
 {
-    // Rows run from slot 0 to the highest used one; the gaps are empty rows. While
-    // a strip is being dragged there is one spare row at the end to drop it in.
-    const int rows = engine.highestSlot() + 1 + (dropSlot >= 0 ? 1 : 0);
+    // One row per slot, 0..N-1: slots have no gaps.
+    const int rows = engine.highestSlot() + 1;
 
     rowTops.assign (1, 0);
     for (int i = 0; i < rows; ++i)
@@ -538,41 +562,28 @@ void MixerComponent::layoutRows()
     list.repaint();
 }
 
-int MixerComponent::slotAt (int top) const
+int MixerComponent::gapAt (int top) const
 {
+    // The gap above the first row whose middle is below the dragged strip's middle.
     const int rows = (int) rowTops.size() - 1;
-    if (rows <= 0) return 0;
     const int centre = top + MixerStrip::kHeight / 2;
     for (int i = 0; i < rows; ++i)
-        if (centre < rowTops[(size_t) i + 1]) return i;
-    return rows - 1;
+        if (centre < (rowTops[(size_t) i] + rowTops[(size_t) i + 1]) / 2) return i;
+    return juce::jmax (0, rows);
 }
 
-void MixerComponent::SlotList::paint (Graphics& g)
+void MixerComponent::SlotList::paintOverChildren (Graphics& g)
 {
+    // Where a dragged strip would go: a 2 px black bar between two strips. PROVISIONAL
+    // (no Figma node yet; the author is asked to design it). Dropping it back where
+    // it was shows nothing.
     const int rows = (int) owner.rowTops.size() - 1;
-    for (int i = 0; i < rows; ++i)
+    const int gap = owner.dropGap, from = owner.dragFrom;
+    if (gap >= 0 && gap <= rows && gap != from && gap != from + 1)
     {
-        const int top = owner.rowTops[(size_t) i];
-        const auto* s = owner.stripInSlot (i);
-
-        // An empty slot (or the one a dragged strip just left): the handle alone,
-        // its number grey, on the panel's own ground.
-        if (s == nullptr || s->isBeingDragged())
-        {
-            g.setColour (black);
-            g.fillRect (MixerStrip::kHandleWidth - 1, top + 1, 1, 42);
-            g.setColour (gray400);
-            drawSlotNumber (g, i, { 0, top });
-        }
-    }
-
-    // Where a dragged strip would land.
-    if (owner.dropSlot >= 0 && owner.dropSlot < rows)
-    {
-        const int top = owner.rowTops[(size_t) owner.dropSlot];
+        const int y = juce::jlimit (1, juce::jmax (1, getHeight() - 1), owner.rowTops[(size_t) gap]);
         g.setColour (black);
-        g.drawRect (Rectangle<int> (0, top, getWidth() - 2, owner.rowTops[(size_t) owner.dropSlot + 1] - top), 2);
+        g.fillRect (0, y - 1, getWidth(), 2);
     }
 }
 
@@ -584,7 +595,7 @@ void MixerComponent::paint (Graphics& g)
     // pixel, so 1 px of each band shows. The stroke's top edge is the rule on the
     // title bar's last row (SidePanel::setTitleRule); its bottom edge is the line
     // under the bar.
-    const Rectangle<int> bar (0, 0, MixerStrip::kWidth, kBarHeight);
+    const Rectangle<int> bar (0, 0, MixerStrip::kWidth + 2, kBarHeight);
     g.setColour (gray100);
     g.fillRect (bar);
     juce::Path shape;

@@ -1463,7 +1463,8 @@ void EffectsPanelComponent::Content::paintHeader (Graphics& g)
     const Rectangle<int> box (9, 27, 16, 16);
     g.setColour (colour::black);
     g.drawRect (box, 1);
-    os8::drawText (g, w != nullptr && w->slot > 0 ? juce::String (w->slot) : juce::String ("-"),
+    // Window::slot is 0-based; the panel, the strips and the Window show it 1-based.
+    os8::drawText (g, w != nullptr && w->slot >= 0 ? juce::String (w->slot + 1) : juce::String ("-"),
                    os8::TextStyle::xSmallLabel,
                    { (float) box.getX() + 1.0f, (float) box.getY() + 2.0f, 14.0f, 9.0f },
                    juce::Justification::horizontallyCentred);

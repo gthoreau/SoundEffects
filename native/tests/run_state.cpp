@@ -137,7 +137,7 @@ void checkRestored (se::Engine& engine)
            "mixer channel: gain and mute");
     check (wb->gain.load() == 1.75f && wb->soloed.load(), "mixer channel: solo");
     check (wa->balance.load() == -0.5f && wb->balance.load() == 1.0f, "mixer channel: balance (v2)");
-    check (wa->slot == 4 && wb->slot == 0, "mixer slot (v2)");
+    check (wa->slot == 1 && wb->slot == 0, "mixer slot (v2): order kept, the gap closed on load");
     check (wa->direction.load() == (uint8_t) se::PlayDirection::pingPong
              && wb->direction.load() == (uint8_t) se::PlayDirection::forward,
            "playback direction per Window (v3)");

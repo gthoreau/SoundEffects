@@ -72,6 +72,7 @@ bool Engine::removeWindow (uint64_t id)
 
     registry.erase (it);
     order.erase (std::remove (order.begin(), order.end(), id), order.end());
+    compactSlots();   // the strips below move up: no empty slots
     return true;
 }
 
@@ -100,16 +101,33 @@ int Engine::highestSlot() const noexcept
     return top;
 }
 
+std::vector<Window*> Engine::seatedInSlotOrder() const
+{
+    std::vector<Window*> seated;
+    for (uint64_t id : order)
+        if (auto* w = registry.at (id); w->slot >= 0) seated.push_back (w);
+    std::stable_sort (seated.begin(), seated.end(), [] (const Window* a, const Window* b) { return a->slot < b->slot; });
+    return seated;
+}
+
+void Engine::compactSlots()
+{
+    int next = 0;
+    for (auto* w : seatedInSlotOrder()) w->slot = next++;
+}
+
 bool Engine::moveToSlot (uint64_t id, int slot)
 {
     auto* w = windowById (id);
     if (w == nullptr || slot < 0) return false;
-    if (w->slot == slot) return true;
 
-    // An occupied target trades places: the two strips swap slots.
-    if (const uint64_t other = windowInSlot (slot); other != 0)
-        windowById (other)->slot = w->slot;
-    w->slot = slot;
+    // An insert, not a swap: the Window leaves its place, the others close up, and
+    // it goes in at `slot` (past the end = last), pushing the rest down.
+    auto seated = seatedInSlotOrder();
+    seated.erase (std::remove (seated.begin(), seated.end(), w), seated.end());
+    seated.insert (seated.begin() + std::min ((size_t) slot, seated.size()), w);
+    int next = 0;
+    for (auto* s : seated) s->slot = next++;
     return true;
 }
 
@@ -129,6 +147,7 @@ void Engine::normaliseSlots()
             seen.push_back (w->slot);
     }
     for (auto* w : unseated) { w->slot = Window::kNoSlot; w->slot = lowestFreeSlot(); }
+    compactSlots();
 }
 
 bool Engine::anyWindowSoloed() const noexcept
