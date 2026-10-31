@@ -477,9 +477,9 @@ void EffectsPanelComponent::layoutAll()
             if (applyButton != nullptr)
             {
                 const int cy = content->trayRect.getY() + kTrayInset + content->trayLayout.contentHeight() - fxlayout::kButtonsH;
-                applyButton->setBounds (kTrayInset + 199, cy + 4, 53, os8::buttonHeight (os8::ButtonKind::primary));
-                const int cancelW = openIsOneClick ? 56 : 50;       // 189 is the right edge of both
-                resetButton->setBounds (kTrayInset + 189 - cancelW, cy + 6, cancelW, os8::buttonHeight (os8::ButtonKind::secondary));
+                // Cancel 131, Apply 197 in the tray's content (507:5908, 543:9781).
+                applyButton->setBounds (kTrayInset + 197, cy + 4, 53, os8::buttonHeight (os8::ButtonKind::primary));
+                cancelButton->setBounds (kTrayInset + 131, cy + 6, 56, os8::buttonHeight (os8::ButtonKind::secondary));
             }
         }
     }
@@ -542,6 +542,7 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
         const se::SoundDocument* d0 = targetDoc();
         fxlayout::applyPresets (module->name, working, d0 != nullptr ? d0->rateHz : 44100.0,
                                 d0 != nullptr ? d0->bps : 16, &presetKeys);
+        seedFromSelection();
     }
     openIsOneClick = ! module->schema;
     warningLines.clear();
@@ -612,23 +613,13 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     applyButton->onClick = [this] { applyOpen(); };
     content->addAndMakeVisible (*applyButton);
 
-    resetButton = std::make_unique<Os8Button> (openIsOneClick ? "Cancel" : "Reset", os8::ButtonKind::secondary);
-    resetButton->setWantsKeyboardFocus (false);
-    resetButton->setMouseClickGrabsKeyboardFocus (false);
-    resetButton->onClick = [this]
-    {
-        if (openModule == nullptr) return;
-        if (openIsOneClick) { closeTray(); return; }
-        working = openModule->defaults ? openModule->defaults() : se::Settings{};
-        touchedKeys.clear();
-        const se::SoundDocument* d0 = targetDoc();
-        fxlayout::applyPresets (openModule->name, working, d0 != nullptr ? d0->rateHz : 44100.0,
-                                d0 != nullptr ? d0->bps : 16, &touchedKeys);
-        prefillSpanFields();
-        refreshTray();
-        content->repaint();
-    };
-    content->addAndMakeVisible (*resetButton);
+    // Cancel closes the tray in every effect (step 12); resetting the values is
+    // Setup ▸ Custom's job now.
+    cancelButton = std::make_unique<Os8Button> ("Cancel", os8::ButtonKind::secondary);
+    cancelButton->setWantsKeyboardFocus (false);
+    cancelButton->setMouseClickGrabsKeyboardFocus (false);
+    cancelButton->onClick = [this] { if (openModule != nullptr) closeTray(); };
+    content->addAndMakeVisible (*cancelButton);
 
     buildTray();
     prefillSpanFields();
@@ -667,7 +658,7 @@ void EffectsPanelComponent::closeTray()
     clearTray();
     openModule = nullptr;
     applyButton.reset();
-    resetButton.reset();
+    cancelButton.reset();
     updateLatchedButtons();
     layoutAll();
     content->repaint();
@@ -792,6 +783,32 @@ void EffectsPanelComponent::placeTray()
 {
     const auto origin = content->trayRect.getPosition() + juce::Point<int> (kTrayInset, kTrayInset);
     for (auto& p : trayParts) p.comp->setBounds (p.rel.translated (origin.x, origin.y));
+}
+
+void EffectsPanelComponent::resetToDefaults()
+{
+    if (openModule == nullptr) return;
+    working = openModule->defaults ? openModule->defaults() : se::Settings{};
+    touchedKeys.clear();
+    const se::SoundDocument* d0 = targetDoc();
+    fxlayout::applyPresets (openModule->name, working, d0 != nullptr ? d0->rateHz : 44100.0,
+                            d0 != nullptr ? d0->bps : 16, &touchedKeys);
+    seedFromSelection();
+    prefillSpanFields();
+    refreshTray();
+    content->repaint();
+}
+
+void EffectsPanelComponent::seedFromSelection()
+{
+    // Waveform Generator (507:5908): "1000 ms OR the current selection's length".
+    // The preset gave 1000 ms; a real selection (not a caret) replaces it.
+    if (openModule == nullptr || juce::String (openModule->name) != "Waveform Generator") return;
+    const se::SoundDocument* doc = targetDoc();
+    if (doc == nullptr || doc->selEnd <= doc->selSt) return;
+    const se::Scope sc = runner.scope (targetId);
+    if (sc.endByte > sc.startByte)
+        working["length"] = se::Value ((int64_t) (sc.endByte - sc.startByte));
 }
 
 void EffectsPanelComponent::prefillSpanFields()
@@ -1011,12 +1028,21 @@ void EffectsPanelComponent::buildTray()
                         items.add ("Custom");
                     }
                     else if (c.kind == Kind::notePick)
+                    {
+                        items.add ("-");
                         for (auto* n : kNotes) items.add (n);
+                    }
                     else
-                        for (int o = 0; o <= 9; ++o) items.add ("Oct." + juce::String (o));
+                    {
+                        // Octaves 0..8 ("Octaves" 575:6423), "-" for a frequency that is no note.
+                        items.add ("-");
+                        for (int o = 0; o <= 8; ++o) items.add (juce::String (o));
+                    }
 
                     dd->setItems (items);
                     if (c.kind == Kind::curvePreset) { dd->setDisabledItem (0); dd->setSeparatorAfter (0); }
+                    // "-" says the frequency is not a note; it is not something to pick.
+                    if (c.kind == Kind::notePick || c.kind == Kind::octavePick) dd->setDisabledItem (0);
                     auto* dp = static_cast<Os8Dropdown*> (add (std::move (dd), { x, y, c.w, os8::kDropdownHeight }));
                     const Kind kind = c.kind;
 
@@ -1027,6 +1053,15 @@ void EffectsPanelComponent::buildTray()
                         const double hz = std::max (1.0, se::getDouble (working, key, 440.0));
                         return (int) std::lround (69.0 + 12.0 * std::log2 (hz / 440.0));
                     };
+                    // The frequency IS that note (as the popups set it), in octaves 0..8.
+                    const auto isNote = [this, key, midiNow]
+                    {
+                        const int m = midiNow();
+                        const double hz = se::getDouble (working, key, 440.0);
+                        const double exact = 440.0 * std::pow (2.0, (m - 69) / 12.0);
+                        const int oct = (int) std::floor (m / 12.0) - 1;
+                        return std::abs (hz - exact) <= exact * 1.0e-9 && oct >= 0 && oct <= 8;
+                    };
 
                     dp->onChange = [this, kind, key, midiNow] (int i)
                     {
@@ -1036,17 +1071,20 @@ void EffectsPanelComponent::buildTray()
                             working[key] = se::Value ((int64_t) (i == 1 ? 0 : i == 2 ? 100 : 200));
                         else if (kind == Kind::ratePreset && i < (int) std::size (kRates))
                             working[key] = se::Value ((int64_t) se::doubleToFixed (kRates[i].hz));
-                        else if (kind == Kind::notePick || kind == Kind::octavePick)
+                        else if ((kind == Kind::notePick || kind == Kind::octavePick) && i >= 1)
                         {
+                            // Item 0 is "-"; the other half of the pitch comes from the
+                            // nearest note when the frequency is a custom one.
                             const int m = midiNow();
-                            const int note = kind == Kind::notePick ? i : ((m % 12) + 12) % 12;
-                            const int oct = kind == Kind::octavePick ? i : (int) std::floor (m / 12.0) - 1;
+                            const int note = kind == Kind::notePick ? i - 1 : ((m % 12) + 12) % 12;
+                            const int oct = kind == Kind::octavePick ? i - 1
+                                                                     : juce::jlimit (0, 8, (int) std::floor (m / 12.0) - 1);
                             working[key] = se::Value (440.0 * std::pow (2.0, ((oct + 1) * 12 + note - 69) / 12.0));
                         }
                         refreshTray();
                     };
 
-                    trayRefreshers.push_back ([this, dp, kind, key, gate, midiNow]
+                    trayRefreshers.push_back ([this, dp, kind, key, gate, midiNow, isNote]
                     {
                         int sel = 0;
                         if (kind == Kind::choice)
@@ -1064,9 +1102,9 @@ void EffectsPanelComponent::buildTray()
                                 if (std::abs (kRates[r].hz - hz) < 0.5) sel = r;
                         }
                         else if (kind == Kind::notePick)
-                            sel = ((midiNow() % 12) + 12) % 12;
+                            sel = isNote() ? ((midiNow() % 12) + 12) % 12 + 1 : 0;
                         else if (kind == Kind::octavePick)
-                            sel = juce::jlimit (0, 9, (int) std::floor (midiNow() / 12.0) - 1);
+                            sel = isNote() ? (int) std::floor (midiNow() / 12.0) - 1 + 1 : 0;
 
                         dp->setSelectedIndex (juce::jmax (0, sel));
                         dp->setEnabled (gateOn (gate));
@@ -1247,14 +1285,12 @@ void EffectsPanelComponent::refreshSetupMenu (Os8Dropdown& dd)
     juce::Array<int> disabled, rules;
     setupMenuItems.clear();
 
-    if (current == kSetupCustom)
-    {
-        // It says what the values are; it is not something to pick.
-        items.add ("Custom");
-        setupMenuItems.push_back (kSetupCustom);
-        disabled.add (0);
-        rules.add (0);
-    }
+    // Custom is always there and always enabled (step 12): picking it puts back the
+    // tray's opening values — what the old Reset button did. While the values match
+    // no setup it is also what the popup reads.
+    items.add ("Custom");
+    setupMenuItems.push_back (kSetupCustom);
+    rules.add (0);
     for (int i = 0; i < n; ++i)
     {
         items.add (juce::String::fromUTF8 (openSetups[(size_t) i].name.c_str()));
@@ -1271,7 +1307,8 @@ void EffectsPanelComponent::refreshSetupMenu (Os8Dropdown& dd)
     dd.setItems (items);
     dd.setDisabledItems (disabled);
     dd.setSeparatorsAfter (rules);
-    dd.setSelectedIndex (current == kSetupCustom ? 0 : current, juce::dontSendNotification);
+    dd.setNotifySameItem (true);
+    dd.setSelectedIndex (current == kSetupCustom ? 0 : current + 1, juce::dontSendNotification);
 }
 
 void EffectsPanelComponent::setupMenuPicked (int item)
@@ -1283,7 +1320,8 @@ void EffectsPanelComponent::setupMenuPicked (int item)
         if (auto* f = dynamic_cast<Os8TextField*> (p.comp.get())) f->commitNow();
 
     const int action = setupMenuItems[(size_t) item];
-    if (action >= 0)                  chooseSetup (action);
+    if (action == kSetupCustom)       resetToDefaults();
+    else if (action >= 0)             chooseSetup (action);
     else if (action == kSetupSave)    saveSetupAs();
     else if (action == kSetupDelete)  deleteSetup (currentSetup());
 

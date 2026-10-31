@@ -224,6 +224,9 @@ public:
         item text itself. */
     void setItems (const juce::StringArray& items, const juce::StringArray& shortLabels = {});
     void setSelectedIndex (int, juce::NotificationType = juce::dontSendNotification);
+    /** Also call onChange when the item already shown is picked again (Setup ▸
+        Custom, which resets the values it names). */
+    void setNotifySameItem (bool shouldNotify) noexcept { notifySameItem = shouldNotify; }
     int getSelectedIndex() const noexcept { return selected; }
 
     /** One item that shows what the value is but cannot be picked ("Custom"), and a
@@ -246,6 +249,7 @@ public:
     static constexpr int kMiniLabelGap = 4;
 
 private:
+    bool notifySameItem = false;
     void showMenu();
 
     Style style;

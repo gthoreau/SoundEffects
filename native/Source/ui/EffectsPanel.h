@@ -130,6 +130,11 @@ private:
     bool gateOn (const std::string& key) const;
     const se::SchemaItem* schemaItem (const std::string& key) const;
     void prefillSpanFields();
+    /** The opening values the design gives a tray where it depends on the Sound:
+        Waveform Generator's length is the selection's when there is one. */
+    void seedFromSelection();
+    /** Setup ▸ Custom: the tray's opening values again. */
+    void resetToDefaults();
 
     // --- the Setup: popup (disassembly/Setups.md) ---
     /** The target's rate and sample size, or the presets' 44.1 kHz 16-bit without one. */
@@ -164,7 +169,7 @@ private:
 
     const se::EffectModule* openModule = nullptr;
     se::Settings working;            // the open module's live settings
-    std::unique_ptr<Os8Button> applyButton, resetButton;
+    std::unique_ptr<Os8Button> applyButton, cancelButton;
     std::vector<TrayPart> trayParts;
     std::vector<std::function<void()>> trayRefreshers;
     se::SettingsSchema openSchema;

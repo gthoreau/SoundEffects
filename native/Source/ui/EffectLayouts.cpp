@@ -324,9 +324,9 @@ std::map<string, Layout> build()
     m["Waveform Generator"] = with (setupRows(), "Waveform Generator", {
         row (25, { label (0, 7.5f, "Length:"), field ("length", 64, 4.5f, 70, "units"), units ("units", 138, 4) }),
         row (25, { label (0, 7.5f, "Freq.:"),
-                   [] { Cell c; c.kind = Kind::notePick; c.x = 64; c.y = 4; c.w = 48; c.key = "frequency"; return c; }(),
-                   [] { Cell c; c.kind = Kind::octavePick; c.x = 116; c.y = 4; c.w = 60; c.key = "frequency"; return c; }(),
-                   field ("frequency", 180, 4.5f, 47, {}, kilo), label (231, 7.5f, "kHz") }),
+                   [] { Cell c; c.kind = Kind::notePick; c.x = 64; c.y = 4; c.w = 46; c.key = "frequency"; return c; }(),
+                   [] { Cell c; c.kind = Kind::octavePick; c.x = 114; c.y = 4; c.w = 46; c.key = "frequency"; return c; }(),
+                   field ("frequency", 164, 4.5f, 61, {}, kilo), label (229, 7.5f, "kHz") }),
         row (24, { label (0, 7, "Amplitude:"), field ("amplitude", 64, 4, 70), label (138, 7, "%") }),
         row (20, { label (0, 5, "Wave:"), radio ("waveType", 1, 64, 4, "Sine") }),
         row (20, { radio ("waveType", 2, 64, 4, "Square") }),
@@ -424,7 +424,7 @@ const std::map<std::string, std::vector<Preset>>& presetTable()
         t["Resample Rate"] = { { "newRate", 44100, As::fixedHz } };
         t["Upsample Bits"] = { { "newBps", 16, I } };
         t["Waveform Generator"] = { { "length", 1000, D }, { "units", 3, I }, { "frequency", 440.0, R },
-                                    { "amplitude", 100, I }, { "waveType", 1, I } };
+                                    { "amplitude", 50, I }, { "waveType", 1, I } };
         t["Zero Crosser"] = { { "action", 2, I }, { "side", 3, I } };
 
         auto hose = std::vector<Preset> { { "units", 3, I }, { "newLength", 5000, D }, { "stereo", 1, I } };

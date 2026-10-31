@@ -498,7 +498,11 @@ void Os8Dropdown::showMenu()
         if (safe == nullptr) return;
         safe->menuOpen = false;
         safe->repaint();
-        if (result > 0) safe->setSelectedIndex (result - 1, juce::sendNotification);
+        if (result <= 0) return;
+        if (result - 1 == safe->selected && safe->notifySameItem && safe->onChange)
+            safe->onChange (safe->selected);   // picking what it already says still means something
+        else
+            safe->setSelectedIndex (result - 1, juce::sendNotification);
     });
 }
 
