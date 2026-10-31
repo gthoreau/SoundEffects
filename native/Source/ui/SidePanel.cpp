@@ -45,13 +45,9 @@ void SidePanel::paint (juce::Graphics& g)
     // Stripes run from 6 px in on the left to 6 px short of the collapse box.
     os8::paintTitleBar (g, bar, title, true, 6, bar.getRight() - box.getX() + 6);
 
-    os8::paintTitleBarBox (g, box.getPosition(), pressingBox);
+    os8::paintTitleBarBox (g, box.getPosition(), pressingBox, os8::TitleBox::hidePanel);
 
-    // A window-shade glyph: the bar's own two-line mark, drawn in the box.
     g.setColour (black);
-    g.fillRect (box.getX() + 2, box.getY() + 3, kBoxSize - 4, 1);
-    g.fillRect (box.getX() + 2, box.getY() + 7, kBoxSize - 4, 1);
-
     if (titleRule && ! collapsed)
         g.fillRect (bar.withTop (bar.getBottom() - 1));   // black, from the box glyph above
 

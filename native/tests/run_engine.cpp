@@ -1309,6 +1309,18 @@ int main()
     check (! engine.anyWindowSoloed(), "solo cleared: the filter is off again");
     checkClose (renderLevel (engine), la + lb + lc, tol, "solo cleared: all three back");
 
+    // --- ⌘-click on a lit box: clear it everywhere (step 12.3) -----------------
+    wa->soloed = true; wc->soloed = true; wb->muted = true; wc->muted = true;
+    engine.clearAllSolos();
+    check (! engine.anyWindowSoloed(), "clearAllSolos: no solo left");
+    check (wb->muted && wc->muted, "clearAllSolos: mutes untouched");
+    wa->soloed = true;
+    engine.unmuteAll();
+    check (! wa->muted && ! wb->muted && ! wc->muted, "unmuteAll: nothing muted");
+    check (wa->soloed, "unmuteAll: solos untouched");
+    wa->soloed = false;
+    checkClose (renderLevel (engine), la + lb + lc, tol, "after clearing: all three back");
+
     // --- gain --------------------------------------------------------------
     wa->gain = 0.5f;
     checkClose (renderLevel (engine), la * 0.5f + lb + lc, tol, "gain 0.5 halves that channel");

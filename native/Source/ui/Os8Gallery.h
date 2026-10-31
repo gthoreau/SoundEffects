@@ -36,6 +36,7 @@ public:
 
     /** Transport buttons, the combo play and the direction menu. */
     static juce::Rectangle<int> transportArea();
+    static juce::Rectangle<int> windowButtonsArea();
 
 private:
     // Live controls, to be clicked: the painters above show every state at once,

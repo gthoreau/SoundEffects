@@ -83,7 +83,7 @@ Os8Gallery::Os8Gallery()
     liveAmplify.setMarkerValue (100.0);
     liveKeyboard.setClickingTogglesState (true);
 
-    setSize (920, 900);
+    setSize (920, 1050);
 }
 
 void Os8Gallery::paint (juce::Graphics& g)
@@ -218,6 +218,21 @@ void Os8Gallery::paint (juce::Graphics& g)
     for (int row = 0; row < 3; ++row)
         os8::paintPlayDirectionButton (g, { ta.getX() + 245, ta.getY() + row * 30 }, ts[row]);
     os8::paintDirectionMenu (g, { ta.getX() + 262, ta.getY() }, 2, 0);
+
+    // window-button 203:4347 laid out as the component set is: raised left, pressed
+    // right; close, mute, solo, (resize lives in the Window), hide-panel.
+    const auto wb = windowButtonsArea();
+    sectionTitle (g, "Window buttons", wb.getX(), wb.getY() - 28);
+    const std::pair<os8::TitleBox, int> rows[] = { { os8::TitleBox::close, 11 }, { os8::TitleBox::mute, 32 },
+                                                   { os8::TitleBox::solo, 51 }, { os8::TitleBox::hidePanel, 89 } };
+    for (const auto& [kind, y] : rows)
+        for (int pressed = 0; pressed < 2; ++pressed)
+            os8::paintTitleBarBox (g, { wb.getX() + 11 + pressed * 20, wb.getY() + y }, pressed == 1, kind);
+}
+
+juce::Rectangle<int> Os8Gallery::windowButtonsArea()
+{
+    return { kMargin, 930, 52, 110 };
 }
 
 juce::Rectangle<int> Os8Gallery::transportArea()

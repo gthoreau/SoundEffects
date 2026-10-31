@@ -279,7 +279,7 @@ void paintMenuFrame (juce::Graphics&, juce::Rectangle<float>);
 inline constexpr int kTitleBarHeight = 21;
 
 /** What an 11 x 11 title-bar box shows. */
-enum class TitleBox { close, mute, solo, plain };
+enum class TitleBox { close, mute, solo, hidePanel, plain };
 
 /** The engraved stripes of a title bar: 7 one-pixel lines, 2 px apart, starting 4 px
     down, within `area` (whose height should be the bar's, 21 px). */
@@ -291,9 +291,11 @@ void paintTitleStripes (juce::Graphics&, juce::Rectangle<int> area);
 void paintTitleBar (juce::Graphics&, juce::Rectangle<int> bar, const juce::String& title,
                     bool active, int leftInset, int rightInset);
 
-/** An 11 x 11 title-bar box ("window-button" 203:4347): bevelled face, 1 px black
-    stroke outside it, drawn with its face's top-left at `origin`. The close box has a
-    sunken gradient face; M and S carry their letter and go dark when `on`. */
+/** An 11 x 11 title-bar box ("window-button" 203:4347, revised 2026-10-31):
+    bevelled face, 1 px black stroke outside it, drawn with its face's top-left at
+    `origin`. Close has a gradient face, M and S a #dddddd one with their letter,
+    hide-panel a gradient face with a window-shade glyph. `on` is the Pressed
+    variant: a #333333 face, the bevel reversed and the mark in white. */
 void paintTitleBarBox (juce::Graphics&, juce::Point<int> origin, bool on, TitleBox = TitleBox::plain);
 
 /** A 16 px zoom-bar button ("zoom-controls" 589:8166): the transport-button bevel at

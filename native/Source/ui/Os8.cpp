@@ -899,31 +899,46 @@ void paintTitleBarBox (juce::Graphics& g, juce::Point<int> o, bool on, TitleBox 
     juce::Path shape;
     shape.addRectangle (face);
 
-    // window-button's two drop shadows, outside the black outline: a white glint
-    // below-right and a dark one above-left, then the outline itself.
-    g.setColour (white.withAlpha (0.5f));
-    g.fillRect (face.expanded (1.0f).translated (1.0f, 1.0f));
+    // One drop shadow, dark, up and to the left of the outline; then the outline.
     g.setColour (black.withAlpha (0.35f));
     g.fillRect (face.expanded (1.0f).translated (-1.0f, -1.0f));
     g.setColour (black);
     g.fillRect (face.expanded (1.0f));
 
-    if (kind == TitleBox::close)
-    {
-        // Sunken: light at the bottom-right, grey at the top-left.
+    if (on)
+        g.setColour (gray600);
+    else if (kind == TitleBox::close || kind == TitleBox::hidePanel || kind == TitleBox::plain)
         g.setGradientFill (juce::ColourGradient (juce::Colour (0xfffffdfd), face.getBottomRight(),
                                                  juce::Colour (0xffa1a1a1), face.getTopLeft(), false));
+    else
+        g.setColour (gray100);
+    g.fillPath (shape);
+
+    // The bevel: two inner shadows offset 2 px on a shape the OUTSIDE stroke grows
+    // by 1, so a 1 px band shows. Raised: white top-left, dark bottom-right;
+    // Pressed: the reverse, its light band at 35 % (50 % on Solo).
+    if (! on)
+    {
+        innerShadow (g, shape,  1.0f,  1.0f, 0, white);
+        innerShadow (g, shape, -1.0f, -1.0f, 0, black.withAlpha (0.35f));
     }
     else
     {
-        g.setColour (on ? gray600 : gray100);
+        innerShadow (g, shape,  1.0f,  1.0f, 0, black.withAlpha (0.35f));
+        innerShadow (g, shape, -1.0f, -1.0f, 0, white.withAlpha (kind == TitleBox::solo ? 0.5f : 0.35f));
     }
-    g.fillPath (shape);
 
-    // Inner bevel: a 1 px light band top-left, a dark one bottom-right (measured on
-    // Figma's 1x export; the component's "spread 1" does not widen it).
-    innerShadow (g, shape,  1.0f,  1.0f, 0, white);
-    innerShadow (g, shape, -1.0f, -1.0f, 0, black.withAlpha (0.35f));
+    if (kind == TitleBox::hidePanel)
+    {
+        // A 7 x 7 window-shade glyph 2 px in: a bar, then a frame below it.
+        g.setColour (on ? white : black);
+        g.fillRect (face.getX() + 2.0f, face.getY() + 2.0f, 7.0f, 1.0f);
+        juce::Path frame;
+        frame.addRectangle (face.getX() + 2.0f, face.getY() + 4.0f, 7.0f, 5.0f);
+        frame.addRectangle (face.getX() + 3.0f, face.getY() + 5.0f, 5.0f, 3.0f);
+        frame.setUsingNonZeroWinding (false);
+        g.fillPath (frame);
+    }
 
     if (kind == TitleBox::mute || kind == TitleBox::solo)
     {

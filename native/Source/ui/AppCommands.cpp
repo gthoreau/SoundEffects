@@ -74,7 +74,7 @@ const std::vector<Spec>& table()
 
         // --- Window --------------------------------------------------------------------
         { changeName,        "Change Name...", "Window", {} },
-        { toggleSidePanels,  "Hide Side Panels",     "Window", { key (KP::tabKey) } },
+        { toggleSidePanels,  "Hide Side Panels",     "Window", { key ('.', kCmd) } },
         { toggleKeyboard,    "Hide Keyboard",        "Window", { key ('K') } },
         { toggleGrid,        "Free Canvas",          "Window", { key ('G') } },
         { zoom100,           "Zoom 100%",            "Window", { key ('0', kCmd) } },

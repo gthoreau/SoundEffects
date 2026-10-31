@@ -125,12 +125,15 @@ void WindowComponent::refresh()
     const size_t head = w != nullptr ? w->transport->uiPlayhead() : 0;
     const bool muted = w != nullptr && w->muted.load (std::memory_order_relaxed);
     const bool soloed = w != nullptr && w->soloed.load (std::memory_order_relaxed);
+    const bool silenced = muted || (! soloed && engine.anyWindowSoloed());
 
-    if (playing == lastPlaying && head == lastPlayhead && muted == lastMuted && soloed == lastSoloed) return;
+    if (playing == lastPlaying && head == lastPlayhead && muted == lastMuted && soloed == lastSoloed
+        && silenced == lastSilenced) return;
     lastPlaying = playing;
     lastPlayhead = head;
     lastMuted = muted;
     lastSoloed = soloed;
+    lastSilenced = silenced;
     repaint();
 }
 
@@ -436,16 +439,19 @@ void WindowComponent::paint (Graphics& g)
     auto* w = engineWindow();
     const bool muted = w != nullptr && w->muted.load (std::memory_order_relaxed);
     const bool soloed = w != nullptr && w->soloed.load (std::memory_order_relaxed);
+    // Silenced by somebody else's solo: the Mute look with the M box unlit, as its
+    // mixer strip shows it.
+    const bool silenced = muted || (! soloed && engine.anyWindowSoloed());
 
-    // The face is the theme colour; muted, a white veil at 80% washes it out (the
+    // The face is the theme colour; silenced, a white veil at 80% washes it out (the
     // "Window" frame's own fill in the Mute=On variants).
     const auto b = body();
-    g.setColour (muted ? tint.interpolatedWith (white, 0.8f) : tint);
+    g.setColour (silenced ? tint.interpolatedWith (white, 0.8f) : tint);
     g.fillRect (b);
 
     paintTitle (g, *d, muted, soloed);
     paintStatus (g, *d);
-    paintTracks (g, *d, muted);
+    paintTracks (g, *d, silenced);
     paintZoomBar (g, *d);
 
     // Source is joined to Record by a short groove ("Menu_separator", 8 x 2): the
@@ -1021,8 +1027,13 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
     {
         if (auto* w = engineWindow())
         {
-            auto& flag = muteBox().expanded (1).contains (p) ? w->muted : w->soloed;
-            flag.store (! flag.load (std::memory_order_relaxed), std::memory_order_relaxed);
+            const bool onMute = muteBox().expanded (1).contains (p);
+            auto& flag = onMute ? w->muted : w->soloed;
+            // ⌘-click on a lit box clears that box on every Window.
+            if (e.mods.isCommandDown() && flag.load (std::memory_order_relaxed))
+                onMute ? engine.unmuteAll() : engine.clearAllSolos();
+            else
+                flag.store (! flag.load (std::memory_order_relaxed), std::memory_order_relaxed);
         }
         repaint();
         return;

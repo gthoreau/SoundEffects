@@ -141,6 +141,9 @@ public:
         render() asks before it mixes; the mixer asks it to grey the channels solo
         is silencing. */
     bool     anyWindowSoloed() const noexcept;
+    /** ⌘-click on a lit M or S: unmute every Window, or clear every solo. */
+    void     unmuteAll() noexcept;
+    void     clearAllSolos() noexcept;
     const std::vector<uint64_t>& windowIds() const noexcept { return order; }
 
     // --- message thread: mixer slots ----------------------------------------

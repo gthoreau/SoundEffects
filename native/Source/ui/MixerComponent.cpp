@@ -368,15 +368,19 @@ void MixerStrip::mouseDown (const juce::MouseEvent& e)
     auto* w = window();
     if (w == nullptr) return;
 
+    // ⌘-click on a lit box clears that box on every Window.
+    const bool clearAll = e.mods.isCommandDown();
     if (muteBox().expanded (2).contains (e.getPosition()))
     {
-        w->muted.store (! w->muted.load (std::memory_order_relaxed), std::memory_order_relaxed);
+        if (clearAll && w->muted.load (std::memory_order_relaxed)) engine.unmuteAll();
+        else w->muted.store (! w->muted.load (std::memory_order_relaxed), std::memory_order_relaxed);
         refreshState (engine.anyWindowSoloed());
         return;
     }
     if (soloBox().expanded (2).contains (e.getPosition()))
     {
-        w->soloed.store (! w->soloed.load (std::memory_order_relaxed), std::memory_order_relaxed);
+        if (clearAll && w->soloed.load (std::memory_order_relaxed)) engine.clearAllSolos();
+        else w->soloed.store (! w->soloed.load (std::memory_order_relaxed), std::memory_order_relaxed);
         refreshState (engine.anyWindowSoloed());   // the OTHER strips catch up on the next tick
         return;
     }

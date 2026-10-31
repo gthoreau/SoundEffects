@@ -138,6 +138,16 @@ bool Engine::anyWindowSoloed() const noexcept
     return false;
 }
 
+void Engine::unmuteAll() noexcept
+{
+    for (const auto& kv : registry) kv.second->muted.store (false, std::memory_order_relaxed);
+}
+
+void Engine::clearAllSolos() noexcept
+{
+    for (const auto& kv : registry) kv.second->soloed.store (false, std::memory_order_relaxed);
+}
+
 Window* Engine::windowById (uint64_t id) noexcept
 {
     auto it = registry.find (id);

@@ -289,7 +289,7 @@ private:
     bool selected = false;
 
     // last drawn state, so refresh() can skip idle repaints
-    bool   lastPlaying = false, lastMuted = false, lastSoloed = false;
+    bool   lastPlaying = false, lastMuted = false, lastSoloed = false, lastSilenced = false;
     size_t lastPlayhead = 0;
     size_t lastSelSt = (size_t) -1, lastSelEnd = (size_t) -1;
     int    lastUnit = -1;
