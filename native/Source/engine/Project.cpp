@@ -65,8 +65,11 @@ bool safeAssetPath (const std::string& rel)
 std::string safeFileName (const std::string& s)
 {
     std::string o;
-    for (unsigned char c : s)
-        o += (c < 32 || c == '/' || c == ':' || c == '\\' || c == 127) ? '-' : (char) c;
+    for (const char ch : s)
+    {
+        const auto c = static_cast<unsigned char> (ch);
+        o += (c < 32 || c == '/' || c == ':' || c == '\\' || c == 127) ? '-' : ch;
+    }
     // No leading dot (hidden) and no trailing space/dot; never empty.
     while (! o.empty() && (o.front() == '.' || o.front() == ' ')) o.erase (o.begin());
     while (! o.empty() && (o.back() == '.' || o.back() == ' ')) o.pop_back();

@@ -680,7 +680,7 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
         }
 
         // What the selection layer turns a pixel into.
-        const auto selected = [&] (Colour under, bool inked)
+        const auto underSelection = [&] (Colour under, bool inked)
         {
             if (! rec)  return difference (under, sel);
             if (! muted) return inked ? white : red;               // a red block, the wave white in it
@@ -692,9 +692,9 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
             juce::Graphics::ScopedSaveState save (g);
             const Rectangle<int> selRect (selX0, lane.getY(), selX1 - selX0, lane.getHeight());
             g.reduceClipRegion (selRect);
-            g.setColour (selected (white, false));
+            g.setColour (underSelection (white, false));
             g.fillRect (selRect);
-            drawWave (selected (ink, true));
+            drawWave (underSelection (ink, true));
         }
         else if (inSel && d.selSt == d.selEnd)
         {
@@ -733,7 +733,7 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
                         else
                             under = waveInk;
                     }
-                    if (inRange) under = selected (under, inked);
+                    if (inRange) under = underSelection (under, inked);
                     g.setColour (difference (under, headInk));
                     g.fillRect (px, y, 1, 1);
                 }

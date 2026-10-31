@@ -414,7 +414,7 @@ void EffectsPanelComponent::rebuildButtons()
             g->autoApply->setWantsKeyboardFocus (false);
             g->autoApply->setMouseClickGrabsKeyboardFocus (false);
             g->autoApply->setToggleState (AppPrefs::get().autoApply(), juce::dontSendNotification);
-            g->autoApply->onClick = [this, t = g->autoApply.get()] { AppPrefs::get().setAutoApply (t->getToggleState()); };
+            g->autoApply->onClick = [t = g->autoApply.get()] { AppPrefs::get().setAutoApply (t->getToggleState()); };
             content->addAndMakeVisible (*g->autoApply);
         }
 
@@ -811,7 +811,7 @@ void EffectsPanelComponent::resetToDefaults()
 void EffectsPanelComponent::followTargetFormat()
 {
     const se::SoundDocument* doc = targetDoc();
-    if (doc == nullptr || (doc->rateHz == fmtRate && doc->bps == fmtBps)) return;
+    if (doc == nullptr || (se::sameRate (doc->rateHz, fmtRate) && doc->bps == fmtBps)) return;
 
     // Same time, the new Sound's bytes.
     for (const auto& item : openSchema)
@@ -917,7 +917,6 @@ void EffectsPanelComponent::buildTray()
                     fp->onCommit = [this, fp, key, duration, decimal, flags, item, unitNow] (const juce::String& text)
                     {
                         const double v = text.getDoubleValue();
-                        const se::SoundDocument* doc = targetDoc();
 
                         if (duration)
                             working[key] = se::Value ((int64_t) se::unitToBytes (std::max (0.0, v), unitNow(), fmtRate, fmtBps));
@@ -1214,7 +1213,9 @@ std::pair<double, int> EffectsPanelComponent::targetFormat() const
 int EffectsPanelComponent::currentSetup() const
 {
     if (! openHasSetups) return kSetupCustom;
-    const auto [rate, bps] = targetFormat();
+    const auto format = targetFormat();
+    const double rate = format.first;
+    const int bps = format.second;
     const auto matches = [&] (int i)
     {
         return juce::isPositiveAndBelow (i, (int) openSetups.size())

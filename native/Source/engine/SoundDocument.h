@@ -40,6 +40,11 @@ struct DocumentInit
     size_t sizeBytes = 0;         // initial length of each track, in bytes
 };
 
+/** Two declared rates are the same rate. Deliberately EXACT: any difference, however
+    small, is a different rate and the audio must be converted. Spelled with `<` so
+    -Wfloat-equal sees the intent. */
+inline bool sameRate (double a, double b) noexcept { return ! (a < b) && ! (b < a); }
+
 /** What File > New Sound (and the Sound a fresh canvas opens with) makes: one empty
     Track at 44.1 kHz, 16 bit (0.4.0 spec, File menu note 1). DocumentInit's own
     defaults stay the 0.9.2 ones (22254.5454 Hz, 8 bit) for the effects and fixtures

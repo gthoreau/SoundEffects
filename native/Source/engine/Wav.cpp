@@ -14,8 +14,8 @@ void put32 (std::vector<uint8_t>& o, uint32_t v) { for (int i = 0; i < 4; ++i) o
 void put16 (std::vector<uint8_t>& o, uint32_t v) { for (int i = 0; i < 2; ++i) o.push_back ((uint8_t) (v >> (8 * i))); }
 void tag (std::vector<uint8_t>& o, const char* t) { o.insert (o.end(), t, t + 4); }
 
-uint32_t get32 (const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t) p[3] << 24); }
-uint32_t get16 (const uint8_t* p) { return p[0] | (p[1] << 8); }
+uint32_t get32 (const uint8_t* p) { return (uint32_t) p[0] | ((uint32_t) p[1] << 8) | ((uint32_t) p[2] << 16) | ((uint32_t) p[3] << 24); }
+uint32_t get16 (const uint8_t* p) { return (uint32_t) p[0] | ((uint32_t) p[1] << 8); }
 
 /** Reverse the byte order of each whole frame (big-endian <-> little-endian). 8-bit
     frames are the same either way. A trailing partial frame is left as it is. */

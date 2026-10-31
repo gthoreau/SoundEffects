@@ -125,7 +125,7 @@ bool Engine::moveToSlot (uint64_t id, int slot)
     // it goes in at `slot` (past the end = last), pushing the rest down.
     auto seated = seatedInSlotOrder();
     seated.erase (std::remove (seated.begin(), seated.end(), w), seated.end());
-    seated.insert (seated.begin() + std::min ((size_t) slot, seated.size()), w);
+    seated.insert (seated.begin() + static_cast<std::ptrdiff_t> (std::min ((size_t) slot, seated.size())), w);
     int next = 0;
     for (auto* s : seated) s->slot = next++;
     return true;

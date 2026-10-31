@@ -160,11 +160,11 @@ int paste (SoundDocument& doc, const SoundDocument& clip)
     // frame width and mangles the audio. Matches the app's Resample-on-paste.
     std::unique_ptr<SoundDocument> conformed;
     const SoundDocument* clipPtr = &clip;
-    if (clip.bps != doc.bps || clip.rateHz != doc.rateHz)
+    if (clip.bps != doc.bps || ! sameRate (clip.rateHz, doc.rateHz))
     {
         conformed = std::make_unique<SoundDocument> (clip.clone());
         if (conformed->bps != doc.bps)       resampleSoundBits (*conformed, doc.bps);
-        if (conformed->rateHz != doc.rateHz) resampleSoundRate (*conformed, doc.rateHz);
+        if (! sameRate (conformed->rateHz, doc.rateHz)) resampleSoundRate (*conformed, doc.rateHz);
         clipPtr = conformed.get();
     }
     const SoundDocument& src = *clipPtr;

@@ -719,12 +719,12 @@ void SoundEffectsAudioProcessorEditor::exportSound()
 {
     const auto id = canvas.selectedWindowId();
     auto* wc = canvas.windowComponentFor (id);
-    se::WindowState sound;
-    if (wc == nullptr || ! se::captureWindowState (processorRef.engine(), id, sound)) return;
+    se::WindowState captured;
+    if (wc == nullptr || ! se::captureWindowState (processorRef.engine(), id, captured)) return;
 
-    auto popup = filepopups::exportSound (sound);
+    auto popup = filepopups::exportSound (captured);
     popup->onDismiss = [safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this),
-                        sound = std::make_shared<se::WindowState> (std::move (sound))] (int result)
+                        sound = std::make_shared<se::WindowState> (std::move (captured))] (int result)
     {
         if (result != 1 || safe == nullptr) return;
 

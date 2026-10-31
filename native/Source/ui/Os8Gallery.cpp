@@ -225,9 +225,9 @@ void Os8Gallery::paint (juce::Graphics& g)
     sectionTitle (g, "Window buttons", wb.getX(), wb.getY() - 28);
     const std::pair<os8::TitleBox, int> rows[] = { { os8::TitleBox::close, 11 }, { os8::TitleBox::mute, 32 },
                                                    { os8::TitleBox::solo, 51 }, { os8::TitleBox::hidePanel, 89 } };
-    for (const auto& [kind, y] : rows)
+    for (const auto& [kind, rowY] : rows)
         for (int pressed = 0; pressed < 2; ++pressed)
-            os8::paintTitleBarBox (g, { wb.getX() + 11 + pressed * 20, wb.getY() + y }, pressed == 1, kind);
+            os8::paintTitleBarBox (g, { wb.getX() + 11 + pressed * 20, wb.getY() + rowY }, pressed == 1, kind);
 }
 
 juce::Rectangle<int> Os8Gallery::windowButtonsArea()
