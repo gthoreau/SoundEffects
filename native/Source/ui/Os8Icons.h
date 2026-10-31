@@ -46,6 +46,9 @@ enum class Id
     keyboard,
     menuArrow,
     menuCheckmark,
+    loopBig,          // the Loop transport button (Transport-button 761:17286)
+    activeTrackDrag,  // the ghost of a Track being moved, duplicated or trashed
+    newTrackDrag,     // the ghost of a Track being added
 };
 
 /** The icon's natural size, in pixels. */

@@ -56,7 +56,7 @@ private:
     Os8CanvasToggle liveCanvas;
     Os8TransportButton liveRecord { os8::icon::Id::record }, liveStop { os8::icon::Id::stop },
                        livePause { os8::icon::Id::pause }, liveFF { os8::icon::Id::fastForward },
-                       liveLoop { os8::icon::Id::loop };
+                       liveLoop { os8::icon::Id::loopBig };
     Os8ComboPlay livePlay;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Os8Gallery)

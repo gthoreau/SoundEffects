@@ -12,7 +12,7 @@ struct Source { int width, height; const char* body; };
 // The Figma SVG export of each icon, minus its outer <svg> element.
 const Source kSources[] = {
     /* record */ { 10, 10, R"svg(<path d="M7 1H9V3H10V7H9V9H7V10H3V9H1V7H0V3H1V1H3V0H7V1Z" fill="#FD0000"/>)svg" },
-    /* stop */ { 9, 9, R"svg(<rect width="9" height="9" fill="#FD0000"/>)svg" },
+    /* stop */ { 8, 8, R"svg(<rect width="8" height="8" fill="#FD0000"/>)svg" },
     /* pause */ { 11, 10, R"svg(<path d="M4 10H0V0H4V10Z" fill="#FD0000"/><path d="M11 10H7V0H11V10Z" fill="#FD0000"/>)svg" },
     /* playForward */ { 7, 12, R"svg(<path d="M6 8H5V9H4V10H3V11H2V12H0V0H2V1H3V2H4V3H5V4H6V5H7V7H6V8Z" fill="#FD0000"/>)svg" },
     /* playBackward */ { 7, 12, R"svg(<path d="M1 8H2V9H3V10H4V11H5V12H7V0H5V1H4V2H3V3H2V4H1V5H0V7H1V8Z" fill="#FD0000"/>)svg" },
@@ -44,6 +44,9 @@ const Source kSources[] = {
     /* keyboard */ { 20, 12, R"svg(<path fill-rule="evenodd" d="M20 12H1V11H0V0H19V1H20V12ZM2 6H1V10H3V1H2V6ZM5 6H4V10H6V1H5V6ZM7 10H9V1H7V10ZM11 6H10V10H12V1H11V6ZM14 6H13V10H15V1H14V6ZM16 10H18V1H16V10Z" fill="black"/>)svg" },
     /* menuArrow */ { 6, 11, R"svg(<path d="M1 1H2V2H3V3H4V4H5V5H6V6H5V7H4V8H3V9H2V10H1V11H0V0H1V1Z" fill="black"/>)svg" },
     /* menuCheckmark */ { 9, 8, R"svg(<path d="M9 2H8V3H7V4H6V5H5V6H4V7H3V8H2V7H1V6H0V4H2V5H4V4H5V3H6V2H7V1H8V0H9V2Z" fill="black"/>)svg" },
+    /* loopBig */ { 14, 13, R"svg(<path d="M4 9H2V8H1V7H0V6H2V3H3V2H4V1H5V0H11V1H12V2H13V3H14V10H13V11H12V12H11V13H5V12H4V11H10V10H11V9H12V4H11V3H10V2H6V3H5V4H4V6H6V7H5V8H4V9Z" fill="#FD0000"/>)svg" },
+    /* activeTrackDrag */ { 16, 11, R"svg(<path fill-rule="evenodd" d="M16 11H0V0H16V11ZM5 2V5H4V4H3V5H1V6H3V7H4V6H5V9H6V7H7V6H8V8H9V6H10V7H12V8H13V6H15V5H14V4H13V5H12V4H11V3H10V5H9V3H8V5H7V4H6V2H5Z" fill="black"/>)svg" },
+    /* newTrackDrag */ { 16, 11, R"svg(<path fill-rule="evenodd" d="M16 11H0V0H16V11ZM1 6H15V5H1V6Z" fill="black"/>)svg" },
 };
 
 constexpr size_t kCount = sizeof (kSources) / sizeof (kSources[0]);

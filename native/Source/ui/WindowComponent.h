@@ -93,6 +93,7 @@ public:
     std::function<bool (uint64_t window)> recordReady;
     /** A take is running or paused in THIS Window. */
     bool isRecording() const;
+    static juce::MouseCursor trackDragCursor (os8::icon::Id);
 
     /** Shared clipboard slot (owned by the canvas). */
     std::unique_ptr<se::SoundDocument>* clipboard = nullptr;
@@ -339,7 +340,7 @@ private:
     Os8Button sourceButton { "Source" };
     Os8TransportButton recordButton { os8::icon::Id::record }, stopButton { os8::icon::Id::stop },
                        pauseButton { os8::icon::Id::pause }, fastForwardButton { os8::icon::Id::fastForward },
-                       loopButton { os8::icon::Id::loop };
+                       loopButton { os8::icon::Id::loopBig };
     Os8ComboPlay playButton;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WindowComponent)

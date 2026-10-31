@@ -26,6 +26,15 @@ Colour difference (Colour a, Colour b)
     const auto d = [] (juce::uint8 x, juce::uint8 y) { return (juce::uint8) std::abs ((int) x - (int) y); };
     return Colour (d (a.getRed(), b.getRed()), d (a.getGreen(), b.getGreen()), d (a.getBlue(), b.getBlue()));
 }
+
+/** `top` at `alpha` over `base` with Figma's LINEAR_BURN (base + top - 1, clamped). */
+Colour linearBurn (Colour base, Colour top, float alpha)
+{
+    const auto burn = [] (juce::uint8 x, juce::uint8 y) { return (juce::uint8) std::max (0, (int) x + (int) y - 255); };
+    const Colour burnt (burn (base.getRed(), top.getRed()), burn (base.getGreen(), top.getGreen()),
+                        burn (base.getBlue(), top.getBlue()));
+    return base.interpolatedWith (burnt, alpha);
+}
 } // namespace
 
 WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
@@ -279,9 +288,9 @@ void WindowComponent::resized()
     face (recordButton, 58);
     face (stopButton, 85);
     playButton.setTopLeftPosition (x0 + 112, t.getY() + 5);
-    face (pauseButton, 149);
-    face (fastForwardButton, 176);
-    face (loopButton, 203);
+    face (pauseButton, 148);
+    face (fastForwardButton, 175);
+    face (loopButton, 202);
 }
 
 bool WindowComponent::hitTest (int x, int y)
@@ -557,6 +566,14 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
     // The selection inverts what is under it: a DIFFERENCE layer, white (or #666
     // on a muted Window), as the waveform placeholder draws it.
     const Colour sel = muted ? gray500 : white;
+    // The playhead is a 1 px DIFFERENCE line too (#9d9d9d when muted), so it shows
+    // inside the inverted selection as well as outside it.
+    const Colour headInk = muted ? gray400 : white;
+    const Colour red = os8::colour::transportRed;
+
+    // The Tracks a take is writing into wear the Recording states (196:4395).
+    std::vector<int> recTracks;
+    if (isRecording()) recTracks = recorder->targetTracks();
 
     for (int t = 0; t < n; ++t)
     {
@@ -600,6 +617,22 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
         const size_t lenT = track.data.size();
         const int endX = std::clamp (xAtByte (lenT, maxSize), lane.getX(), lane.getRight());
 
+        // Is (x, y) inked by the waveform: a peak column, the line of silence, or a
+        // dot of absence. drawWave paints exactly these pixels.
+        const auto waveCovers = [&] (int x, int y)
+        {
+            if (y == (int) mid)
+            {
+                if (x >= lane.getX() && x < endX) return true;
+                if (x > endX && (x - endX - 1) % 3 == 0) return true;
+            }
+            const int col = x - waveOriginX();
+            if (t >= (int) peaks.size() || x >= endX || col < 0 || col >= (int) peaks[(size_t) t].size()) return false;
+            const auto r = peaks[(size_t) t][(size_t) col];
+            if (juce::exactlyEqual (r.getStart(), 0.0f) && juce::exactlyEqual (r.getEnd(), 0.0f)) return false;
+            return (float) y + 1.0f > mid - r.getEnd() * amp && (float) y < mid - r.getStart() * amp + 1.0f;
+        };
+
         // Silence (real samples) is a solid line; absence (past this track's end) a
         // dotted one — two different things, drawn differently.
         const auto drawWave = [&] (Colour colour)
@@ -621,23 +654,46 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
             for (int x = endX + 1; x < lane.getRight(); x += 3)
                 g.fillRect (x, (int) mid, 1, 1);
         };
-        drawWave (ink);
 
-        // The selection, inverted under a DIFFERENCE layer.
         const bool inSel = t >= d.firstSelTrack - 1 && t <= d.lastSelTrack - 1;
-        if (inSel && d.selEnd > d.selSt)
+        const bool hasRange = inSel && d.selEnd > d.selSt;
+        const bool rec = std::find (recTracks.begin(), recTracks.end(), t) != recTracks.end();
+        const int selX0 = hasRange ? std::max (xAtByte (d.selSt, maxSize), lane.getX()) : 0;
+        const int selX1 = hasRange ? std::min (xAtByte (d.selEnd, maxSize), lane.getRight()) : 0;
+
+        // Recording with no selection: the waveform itself turns red (30 % over the
+        // black line of silence when muted).
+        const bool recFaint = rec && ! hasRange && muted;
+        const Colour waveInk = rec && ! hasRange && ! muted ? red : ink;
+        if (recFaint)
         {
-            const int x0 = std::max (xAtByte (d.selSt, maxSize), lane.getX());
-            const int x1 = std::min (xAtByte (d.selEnd, maxSize), lane.getRight());
-            if (x1 > x0)
-            {
-                juce::Graphics::ScopedSaveState save (g);
-                const Rectangle<int> selRect (x0, lane.getY(), x1 - x0, lane.getHeight());
-                g.reduceClipRegion (selRect);
-                g.setColour (difference (white, sel));
-                g.fillRect (selRect);
-                drawWave (difference (ink, sel));
-            }
+            // 30 % red over whatever is under it: the bed, or the black line of
+            // silence the design leaves showing through.
+            g.setColour (black);
+            g.drawHorizontalLine ((int) mid, (float) lane.getX(), (float) endX);
+            drawWave (red.withAlpha (0.3f));
+        }
+        else
+        {
+            drawWave (waveInk);
+        }
+
+        // What the selection layer turns a pixel into.
+        const auto selected = [&] (Colour under, bool inked)
+        {
+            if (! rec)  return difference (under, sel);
+            if (! muted) return inked ? white : red;               // a red block, the wave white in it
+            return linearBurn (under, red, 0.3f);                 // red 30 % LINEAR_BURN
+        };
+
+        if (hasRange && selX1 > selX0)
+        {
+            juce::Graphics::ScopedSaveState save (g);
+            const Rectangle<int> selRect (selX0, lane.getY(), selX1 - selX0, lane.getHeight());
+            g.reduceClipRegion (selRect);
+            g.setColour (selected (white, false));
+            g.fillRect (selRect);
+            drawWave (selected (ink, true));
         }
         else if (inSel && d.selSt == d.selEnd)
         {
@@ -663,8 +719,23 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
             const int px = xAtByte (ph, maxSize);
             if (present && px >= lane.getX() && px < lane.getRight())
             {
-                g.setColour (black);
-                g.drawVerticalLine (px, (float) lane.getY(), (float) lane.getBottom());
+                // DIFFERENCE, pixel by pixel, against what the lane shows there.
+                const bool inRange = hasRange && px >= selX0 && px < selX1;
+                for (int y = lane.getY(); y < lane.getBottom(); ++y)
+                {
+                    const bool inked = waveCovers (px, y);
+                    Colour under = white;
+                    if (inked)
+                    {
+                        if (recFaint)
+                            under = (y == (int) mid ? black : white).interpolatedWith (red, 0.3f);
+                        else
+                            under = waveInk;
+                    }
+                    if (inRange) under = selected (under, inked);
+                    g.setColour (difference (under, headInk));
+                    g.fillRect (px, y, 1, 1);
+                }
             }
         }
 
@@ -1044,6 +1115,7 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
     {
         trackDrag = TrackDrag::add;
         dragPoint = p;
+        setMouseCursor (trackDragCursor (os8::icon::Id::newTrackDrag));
         return;
     }
     for (int t = 0; t < n; ++t)
@@ -1053,6 +1125,7 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
             dragTrack = t;
             dragPoint = p;
             dragDuplicate = e.mods.isAltDown();
+            setMouseCursor (trackDragCursor (os8::icon::Id::activeTrackDrag));
             return;
         }
 
@@ -1181,6 +1254,7 @@ void WindowComponent::mouseUp (const juce::MouseEvent& e)
     {
         const auto kind = trackDrag;
         trackDrag = TrackDrag::none;
+        setMouseCursor (juce::MouseCursor::DraggingHandCursor);   // still over the handle it left
         auto* d = doc();
         if (d == nullptr) { repaint(); return; }
 
@@ -1230,6 +1304,20 @@ void WindowComponent::mouseUp (const juce::MouseEvent& e)
     if (draggingTitle && onDropped) onDropped();
     if (pressedZoomButton >= 0) { pressedZoomButton = -1; repaint(); }
     draggingTitle = false; selecting = false; resizingWindow = false; overviewDragging = false;
+}
+
+juce::MouseCursor WindowComponent::trackDragCursor (os8::icon::Id icon)
+{
+    // The design's drag icons (208:5690: Active-track-drag, new-track-drag) as the
+    // pointer while a Track is carried, drawn at 2x for Retina screens.
+    const auto size = os8::icon::sizeOf (icon);
+    juce::Image image (juce::Image::ARGB, size.x * 2, size.y * 2, true);
+    {
+        juce::Graphics g (image);
+        g.addTransform (juce::AffineTransform::scale (2.0f));
+        os8::icon::draw (g, icon, {});
+    }
+    return juce::MouseCursor (juce::ScaledImage (image, 2.0), { size.x / 2, size.y / 2 });
 }
 
 void WindowComponent::mouseMove (const juce::MouseEvent& e)

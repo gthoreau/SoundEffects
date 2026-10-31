@@ -728,7 +728,8 @@ void transportIcon (juce::Graphics& g, icon::Id id, juce::Point<float> at, Trans
 
     if (state == TransportState::normal)
     {
-        g.setColour (colour::black.withAlpha (0.3f));
+        // The icons' DROP_SHADOW (1, 1) black 25 % (761:17286); Active turns it off.
+        g.setColour (colour::black.withAlpha (0.25f));
         g.fillPath (shape, juce::AffineTransform::translation (at + juce::Point<float> (1.0f, 1.0f)));
     }
     icon::draw (g, id, at);

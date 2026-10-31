@@ -209,7 +209,7 @@ void Os8Gallery::paint (juce::Graphics& g)
     sectionTitle (g, "Transport", ta.getX(), ta.getY() - 28);
     const os8::icon::Id faces[] = { os8::icon::Id::record, os8::icon::Id::stop, os8::icon::Id::playForward,
                                     os8::icon::Id::playBackward, os8::icon::Id::playPingPong, os8::icon::Id::pause,
-                                    os8::icon::Id::fastForward, os8::icon::Id::loop };
+                                    os8::icon::Id::fastForward, os8::icon::Id::loopBig };
     const os8::TransportState ts[] = { os8::TransportState::normal, os8::TransportState::active,
                                        os8::TransportState::disabled };
     for (int row = 0; row < 3; ++row)
