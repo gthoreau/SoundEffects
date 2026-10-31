@@ -58,7 +58,7 @@ Ordered by value over risk. P1 to P3 are user-visible. P4 to P6 are hygiene, saf
 ### P3. Selection, loop and routing changes without cloning the samples (M)
 - **Where:** `ui/WindowComponent.h:173` (`commit()`), `engine/Engine.cpp:182-191` (`commitEdit` → `SoundDocument::clone()` at `engine/SoundDocument.cpp:97`, a deep copy of every track).
 - **What:** a selection mouse-up (`WindowComponent.cpp:1315`, `:1372`), a speaker toggle (`:1141`), Set Loop, the Extend commands and Select Loop all clone the whole Sound to publish a few integers.
-- **Cost:** a 10-minute stereo 16-bit Sound is 106 MB: each click allocates and copies 106 MB on the message thread (tens of ms) and briefly holds **three** copies (ui, audio, the outgoing one until `collectRetired`).
+- **Cost:** a 10-minute stereo 16-bit Sound is 106 MB: each click allocates and copies 106 MB on the message thread (measured after the fix: 3.8 ms, not the "tens of ms" first guessed; the copy is fast, the 106 MB are the cost) and briefly holds **three** copies (ui, audio, the outgoing one until `collectRetired`).
 - **Fix:** a `SetMeta` engine command carrying `selSt/selEnd/firstSelTrack/lastSelTrack/loopSt/loopEnd` and the per-track `outLeft/outRight/volume` (bitmasks plus a small fixed array). It is applied in place to `audioDoc` in `drainCommands()` (the audio thread owns it, so no allocation is needed), and `commit()` uses it when the sample data didn't change. Edits that change samples keep `commitEdit`.
 - **Risk:** medium-low. It is an engine change: add an engine test (play-loop re-aims after a SetMeta exactly as after a SwapDoc) and run TSan.
 

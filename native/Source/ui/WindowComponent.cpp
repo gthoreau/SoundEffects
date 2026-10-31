@@ -1182,7 +1182,7 @@ void WindowComponent::commitSelectionField (int which)
     }
 
     se::setSelection (*d, st, en);
-    commit();
+    commitSelection();
     updateSelectionFields (true);
 }
 
@@ -1310,7 +1310,7 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
             {
                 auto& tr = d->tracks[(size_t) t];
                 (right == 1 ? tr.outRight : tr.outLeft) = ! (right == 1 ? tr.outRight : tr.outLeft);
-                commit();
+                commitSelection();
                 return;
             }
 
@@ -1352,7 +1352,7 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
             {
                 d->firstSelTrack = d->lastSelTrack = t + 1;
                 se::setSelection (*d, 0, d->tracks[(size_t) t].data.size());
-                commit(); return;
+                commitSelection(); return;
             }
             selecting = true; selAnchorTrack = t; selAnchorByte = byteAtX (p.getX(), maxSize);
             d->firstSelTrack = d->lastSelTrack = t + 1;
@@ -1484,7 +1484,7 @@ void WindowComponent::mouseUp (const juce::MouseEvent& e)
         return;
     }
 
-    if (selecting) commit();       // publish the selection so Play can loop it
+    if (selecting) commitSelection();   // publish the selection so Play can loop it
     const bool dropped = draggingTitle && titleLifted;
     if (titleLifted) mouseMove (e);   // the hover cursor again
     if (pressedZoomButton >= 0) { pressedZoomButton = -1; repaint(); }
@@ -1541,7 +1541,7 @@ void WindowComponent::selectAllAudio()
     d->firstSelTrack = 1;
     d->lastSelTrack  = d->numTracks();
     se::setSelection (*d, 0, d->maxTrackSize());
-    commit();   // publish, so Play can loop it — same as a drag's mouseUp
+    commitSelection();   // publish, so Play can loop it — same as a drag's mouseUp
 }
 
 void WindowComponent::togglePlayPause()
@@ -1757,22 +1757,22 @@ bool WindowComponent::perform (Action a)
         case Action::insertSilence: se::silenceSelection (*d); commit(); return true;          // zeros in place, same length
         case Action::rename:    beginNameEdit(); return true;
 
-        case Action::extendToBeginning: se::extendToBeginning (*d); commit(); return true;   // selection only: publish so Play follows
-        case Action::extendToEnd:       se::extendToEnd (*d);       commit(); return true;
-        case Action::extendAbove:       se::extendAbove (*d);       commit(); return true;
-        case Action::extendBelow:       se::extendBelow (*d);       commit(); return true;
+        case Action::extendToBeginning: se::extendToBeginning (*d); commitSelection(); return true;   // selection only: publish so Play follows
+        case Action::extendToEnd:       se::extendToEnd (*d);       commitSelection(); return true;
+        case Action::extendAbove:       se::extendAbove (*d);       commitSelection(); return true;
+        case Action::extendBelow:       se::extendBelow (*d);       commitSelection(); return true;
 
         case Action::selectSilence:
-            if (se::selectSilence (*d)) commit();
+            if (se::selectSilence (*d)) commitSelection();
             return true;
-        case Action::setLoop:    se::setLoop (*d);    commit(); return true;   // published: the next Play loops it
-        case Action::selectLoop: se::selectLoop (*d); commit(); return true;
+        case Action::setLoop:    se::setLoop (*d);    commitSelection(); return true;   // published: the next Play loops it
+        case Action::selectLoop: se::selectLoop (*d); commitSelection(); return true;
         case Action::selectExactly:
             openPopup (editpopups::selectExactly (*d, [safe = SafePointer<WindowComponent> (this)] (size_t bytes, int anchor)
             {
                 if (safe == nullptr || safe->doc() == nullptr) return;
                 se::selectExactly (*safe->doc(), bytes, static_cast<se::ExactlyAnchor> (anchor));
-                safe->commit();
+                safe->commitSelection();
             }));
             return true;
         case Action::selectPeak:
@@ -1780,7 +1780,7 @@ bool WindowComponent::perform (Action a)
             {
                 if (safe == nullptr || safe->doc() == nullptr) return;
                 se::selectPeak (*safe->doc(), margin, wholeSound);
-                safe->commit();
+                safe->commitSelection();
             }));
             return true;
 

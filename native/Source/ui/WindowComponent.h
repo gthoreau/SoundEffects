@@ -175,6 +175,10 @@ private:
     // Publish the edit AND invalidate the waveform cache (content may have changed
     // without a size change, e.g. silence — the size-based cache wouldn't notice).
     void commit()   { engine.commitEdit (id); cachedWidth = -1; summaryStale = true; repaint(); }
+    // Publish a change of selection, Set Loop region or speakers only: no sample
+    // is cloned (perf audit P3), and the waveform cache stays as it is. Anything
+    // that changes samples or tracks must use commit().
+    void commitSelection() { engine.commitMeta (id); repaint(); }
     void resizeToFit();
     /** Show one of the Edit/Selection popups centred over this Window, field focused. */
     void openPopup (editpopups::Built);

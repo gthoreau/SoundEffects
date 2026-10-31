@@ -169,6 +169,13 @@ public:
     /** Publish the current uiDoc to the audio thread. Call after mutating editDoc.
         Returns false if the command queue is full. */
     bool commitEdit (uint64_t id);
+    /** Publish ONLY the selection, the Set Loop region and each track's output
+        routing — what a click, a drag or the Selection menu changes — without
+        cloning a single sample (perf audit P3: commitEdit copies the whole Sound).
+        The audio thread writes them into its own document in place. Only for
+        changes that touch nothing else: every sample or track edit must still go
+        through commitEdit. Falls back to commitEdit past kPhaseTracks tracks. */
+    bool commitMeta (uint64_t id);
 
     // --- message thread: transport (applied on the audio thread, in order) ---
     bool play  (uint64_t id, const PlayOptions& opts = {});
@@ -240,9 +247,18 @@ public:
     }
 
 private:
+    /** What commitMeta() carries: plain values, so the Command stays trivially copyable. */
+    struct DocMeta
+    {
+        size_t   selSt = 0, selEnd = 0, loopSt = 0, loopEnd = 0;
+        int      firstSelTrack = 1, lastSelTrack = 1;
+        int      numTracks = 0;              // must match the audio document's, or it is ignored
+        uint64_t outLeft = 0, outRight = 0;  // bit t = track t routed to that side
+    };
+
     struct Command
     {
-        enum class Kind : uint8_t { AddWindow, RemoveWindow, Transport, SwapDoc,
+        enum class Kind : uint8_t { AddWindow, RemoveWindow, Transport, SwapDoc, SetMeta,
                                     CaptureStart, CaptureStop } kind {};
         enum class Tx   : uint8_t { Play, Stop, Pause, Advance, NormalSpeed, Seek,
                                     RateScale, Direction, RecordStart, RecordPause,
@@ -255,6 +271,7 @@ private:
         PlayDirection   direction = PlayDirection::forward;
         CaptureSetup    capture {};
         uint64_t        excludeMask = 0;
+        DocMeta         meta {};            // SetMeta
     };
 
     bool post (const Command& c) noexcept { return incoming.push (c); }

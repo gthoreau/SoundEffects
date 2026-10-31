@@ -190,6 +190,26 @@ bool Engine::commitEdit (uint64_t id)
     return true;
 }
 
+bool Engine::commitMeta (uint64_t id)
+{
+    auto* w = windowById (id);
+    if (w == nullptr || ! w->uiDoc) return false;
+    const SoundDocument& d = *w->uiDoc;
+    if (d.numTracks() > kPhaseTracks) return commitEdit (id);   // the masks hold 64 tracks
+
+    Command c; c.kind = Command::Kind::SetMeta; c.id = id;
+    c.meta.selSt = d.selSt;   c.meta.selEnd = d.selEnd;
+    c.meta.loopSt = d.loopSt; c.meta.loopEnd = d.loopEnd;
+    c.meta.firstSelTrack = d.firstSelTrack; c.meta.lastSelTrack = d.lastSelTrack;
+    c.meta.numTracks = d.numTracks();
+    for (int t = 0; t < d.numTracks(); ++t)
+    {
+        if (d.tracks[(size_t) t].outLeft)  c.meta.outLeft  |= uint64_t (1) << t;
+        if (d.tracks[(size_t) t].outRight) c.meta.outRight |= uint64_t (1) << t;
+    }
+    return post (c);
+}
+
 bool Engine::play (uint64_t id, const PlayOptions& opts)
 { Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Play; c.id=id; c.play=opts; return post (c); }
 bool Engine::stop (uint64_t id)
@@ -341,6 +361,25 @@ void Engine::drainCommands() noexcept
                 else
                 {
                     retiredDocs.push (c.doc); // window gone before swap applied
+                }
+                break;
+
+            case Command::Kind::SetMeta:
+                // In place: the audio thread owns audioDoc, and these are plain
+                // values. A document whose tracks differ (it cannot happen while
+                // every track edit goes through commitEdit) is left alone.
+                if (Window* w = liveById (c.id); w != nullptr && w->audioDoc != nullptr
+                                                 && w->audioDoc->numTracks() == c.meta.numTracks)
+                {
+                    SoundDocument& d = *w->audioDoc;
+                    d.selSt = c.meta.selSt;   d.selEnd = c.meta.selEnd;
+                    d.loopSt = c.meta.loopSt; d.loopEnd = c.meta.loopEnd;
+                    d.firstSelTrack = c.meta.firstSelTrack; d.lastSelTrack = c.meta.lastSelTrack;
+                    for (int t = 0; t < c.meta.numTracks; ++t)
+                    {
+                        d.tracks[(size_t) t].outLeft  = ((c.meta.outLeft  >> t) & 1u) != 0;
+                        d.tracks[(size_t) t].outRight = ((c.meta.outRight >> t) & 1u) != 0;
+                    }
                 }
                 break;
 

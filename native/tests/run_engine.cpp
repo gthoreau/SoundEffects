@@ -17,6 +17,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <initializer_list>
 #include <string>
 #include <thread>
@@ -1511,6 +1512,80 @@ void captureConcurrencyTests()
     check (frames.load() > 0, "capture stress: frames arrived while the message thread started and stopped");
 }
 
+// --- commitMeta (perf audit P3) -------------------------------------------------
+// The selection, the loop region and the speakers are published without cloning
+// the samples. It must be indistinguishable, to the ear, from publishing the whole
+// document: the same script rendered both ways gives the same bits.
+void metaTests()
+{
+    const auto makeDoc = []
+    {
+        se::DocumentInit init;
+        init.name = "meta"; init.numTracks = 2; init.bps = 8; init.rateHz = kRate; init.sizeBytes = 2000;
+        auto doc = std::make_unique<se::SoundDocument> (init);
+        for (int t = 0; t < 2; ++t)
+            for (size_t i = 0; i < 2000; ++i)
+                se::setSample (doc->tracks[(size_t) t].data.data(), i, (int) ((i * 3 + (size_t) t * 50) % 200) - 100, 8);
+        return doc;
+    };
+
+    std::vector<float> out[2];
+    for (int mode = 0; mode < 2; ++mode)
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t id = e.addWindow (makeDoc());
+        const auto publish = [&] { if (mode == 0) e.commitEdit (id); else e.commitMeta (id); };
+        const auto run = [&] (int blocks)
+        {
+            std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
+            for (int b = 0; b < blocks; ++b)
+            {
+                e.render (l.data(), r.data(), kBlock);
+                out[mode].insert (out[mode].end(), l.begin(), l.end());
+                out[mode].insert (out[mode].end(), r.begin(), r.end());
+            }
+            e.collectRetired();
+        };
+        se::PlayOptions o; o.loop = true;
+        e.play (id, o);
+        run (5);
+        auto* d = e.editDoc (id);
+        d->firstSelTrack = 1; d->lastSelTrack = 2;
+        se::setSelection (*d, 300, 900);              publish(); run (10);   // a loop re-aims at it
+        d->tracks[1].outLeft = false;                 publish(); run (5);    // a speaker off
+        d->firstSelTrack = d->lastSelTrack = 2;       publish(); run (5);    // one track
+        d->loopSt = 100; d->loopEnd = 500;            publish(); run (5);    // Set Loop
+        se::setSelection (*d, 0, 0);                  publish(); run (10);   // deselected
+        e.play (id, [] { se::PlayOptions p; p.loop = true; p.useLoopRegion = true; return p; }());
+        run (10);                                                            // the region plays
+    }
+    bool same = out[0].size() == out[1].size() && ! out[0].empty();
+    for (size_t i = 0; same && i < out[0].size(); ++i)
+        same = std::memcmp (&out[0][i], &out[1][i], sizeof (float)) == 0;
+    check (same, "commitMeta: the same script renders bit-identical to commitEdit");
+
+    // A document whose tracks changed without a commitEdit is left alone (it cannot
+    // happen in the app; the guard keeps the audio thread off a mismatched layout).
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t id = e.addWindow (makeDoc());
+        se::PlayOptions o; o.loop = true;
+        e.play (id, o);
+        renderBlocks (e, 2);
+        auto* d = e.editDoc (id);
+        d->firstSelTrack = 1; d->lastSelTrack = 1;
+        se::setSelection (*d, 200, 400);
+        check (e.commitMeta (id), "commitMeta: posted");
+        renderBlocks (e, 2);
+        check (e.windowById (id)->transport->uiPlaySt() == 200, "commitMeta: the loop follows the new selection");
+        d->addTrack();
+        se::setSelection (*d, 600, 800);
+        e.commitMeta (id);
+        renderBlocks (e, 2);
+        check (e.windowById (id)->transport->uiPlaySt() == 200, "commitMeta: ignored when the track count differs");
+    }
+}
+
 int main()
 {
     se::Engine engine;
@@ -1759,6 +1834,7 @@ int main()
     recordTests();
     captureConcurrencyTests();
     recordConcurrencyTests();
+    metaTests();
 
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());
