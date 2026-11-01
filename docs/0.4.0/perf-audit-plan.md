@@ -99,6 +99,8 @@ Ordered by value over risk. P1 to P3 are user-visible. P4 to P6 are hygiene, saf
 
 **G1. Profile playback once (S, measurement).** Run Instruments' Time Profiler on the standalone with 3–4 looping Windows, before and after P2, to confirm where the remaining paint time goes (`innerShadow` path clips, `GlyphArrangement` text, VU sliders).
 
+**G1 result (13.7, 2026-11-01).** Done: the remaining paint time while playing was `paintStatus` re-shaping text after a sub-pixel pan, now fixed. A per-lane waveform image cache was tried and dropped: since P2 the clipped wave stroke is ~15 % of paint time and the cache measured no gain. Worth revisiting only if full-Window repaints (hover, selection drags) show up in a profile.
+
 **G2. Text width and layout cache (S).** `ui/Os8.cpp:65` (`widthOf`) and `:70` (`drawText`) shape the string with a fresh `GlyphArrangement` on every call and every paint. The dropdown's ellipsis loop (`Os8.cpp:507-511`) re-measures once per dropped character (O(n²)). Fix: a small `(style, string) → width` cache, plus a binary search for the ellipsis.
 
 **G3. Opaque components (S).** No `setOpaque` anywhere: any repaint walks up to the canvas and the editor beneath it. Mark the opaque surfaces as opaque (the canvas background, side panels, Window body if its corners allow). It is cheap and composes with P2.

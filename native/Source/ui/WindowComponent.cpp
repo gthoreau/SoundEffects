@@ -165,12 +165,16 @@ void WindowComponent::refresh()
     {
         if (x != kNoHead) repaint (x - pad, rows.getY(), 1 + 2 * pad, rows.getHeight());
     };
+    // Only the rows a head is drawn in (the lane, under its frame's top row): a
+    // column the canvas transform rounds outward then stops short of the status row
+    // above the first track instead of re-laying its text every frame.
     for (size_t t = 0; t < heads.size(); ++t)
     {
         const int was = t < lastHeadX.size() ? lastHeadX[t] : kNoHead;
         if (heads[t] == was) continue;
-        column (was, trackRow ((int) t));
-        column (heads[t], trackRow ((int) t));
+        const auto lane = trackRow ((int) t).withTrimmedTop (1);
+        column (was, lane);
+        column (heads[t], lane);
     }
     for (size_t t = heads.size(); t < lastHeadX.size(); ++t)   // a track gone since
         column (lastHeadX[t], tracksArea());
@@ -680,10 +684,18 @@ void WindowComponent::paintStatus (Graphics& g, const se::SoundDocument& d)
     g.fillRect (s.getX(), s.getY(), 1, s.getHeight());
     g.fillRect (s.getRight() - 1, s.getY(), 1, s.getHeight());
 
+    // Zoomed out, a playhead column can still graze the row's bottom margin, where
+    // there is nothing but the outline: stop there rather than lay out the text
+    // (JUCE's shaping made this most of a playing Window's cost).
+    const auto content = s.withHeight (kStatusContentH);
+    if (! g.clipRegionIntersects (content)) return;
+    const auto clip = g.getClipBounds();
+
     // The mixer slot, boxed.
     const juce::Rectangle<int> box (s.getX() + 8, s.getY() + 7, 16, 16);
     g.drawRect (box, 1);
-    os8::drawText (g, slot > 0 ? juce::String (slot) : juce::String ("-"), os8::TextStyle::xSmallLabel,
+    if (clip.intersects (box))
+        os8::drawText (g, slot > 0 ? juce::String (slot) : juce::String ("-"), os8::TextStyle::xSmallLabel,
                    { (float) box.getX() + 1.0f, (float) box.getY() + 2.0f, 14.0f, 9.0f },
                    juce::Justification::horizontallyCentred);
 
@@ -699,11 +711,19 @@ void WindowComponent::paintStatus (Graphics& g, const se::SoundDocument& d)
     };
     const int limit = startField.getX() - 14 - 8;   // the start icon, and some air
     int x = box.getRight() + 6;
-    for (const auto& part : parts)
+    for (size_t i = 0; i < std::size (parts); ++i)
     {
-        const int w = os8::widthOf (part, os8::TextStyle::smallLabel);
+        // Measured once per string: a column passing under the row needs widths
+        // for the layout, but only the part it crosses drawn.
+        if (parts[i] != statusParts[i])
+        {
+            statusParts[i] = parts[i];
+            statusWidths[i] = os8::widthOf (parts[i], os8::TextStyle::smallLabel);
+        }
+        const int w = statusWidths[i];
         if (x + w > limit) break;
-        os8::drawText (g, part, os8::TextStyle::smallLabel, { (float) x, (float) s.getY() + 10.0f, (float) w, 10.0f });
+        if (clip.intersects (juce::Rectangle<int> (x - 2, s.getY() + 8, w + 4, 14)))
+            os8::drawText (g, parts[i], os8::TextStyle::smallLabel, { (float) x, (float) s.getY() + 10.0f, (float) w, 10.0f });
         x += w + 6;
     }
 

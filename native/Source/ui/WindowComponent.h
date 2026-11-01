@@ -327,6 +327,11 @@ private:
         lastHeadX, and paintTracks draws lastHeadX, so a head is drawn only where
         refresh() repaints and will erase it. */
     std::vector<int> playheadXs() const;
+    // The status row's rate/bits/tracks/length strings and their measured widths.
+    juce::String statusParts[4];
+    int statusWidths[4] = {};
+    // How far down the status row anything but its side outline is drawn.
+    static constexpr int kStatusContentH = 24;
     size_t lastSelSt = (size_t) -1, lastSelEnd = (size_t) -1;
     int    lastUnit = -1;
 
