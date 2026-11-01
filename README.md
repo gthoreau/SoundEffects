@@ -20,8 +20,8 @@ unsynchronised loopers you arrange spatially.
 
 ## Download
 
-**SoundEffects 0.4.0** — universal (Apple Silicon + Intel), macOS 11 Big Sur or
-later, about 5.5 MB.
+**SoundEffects 0.4.1** — the app plus the **VST3** and **Audio Unit** plug-ins,
+universal (Apple Silicon + Intel), macOS 11 Big Sur or later.
 
 This repository is private, so there's no public download page. **The app is
 handed out directly — ask me and I'll send it.** It arrives one of two ways, and
@@ -29,8 +29,8 @@ they install identically:
 
 | | |
 |---|---|
-| `SoundEffects-0.4.0-macOS.dmg` | A disk image. Open it and drag the app into Applications. |
-| `SoundEffects-0.4.0-macOS.zip` | The app in an archive, for when it came by email. Unzip and move the app into Applications. |
+| `SoundEffects-0.4.1-macOS.dmg` | A disk image. Open it and drag the app into Applications; the plug-ins are in its `Plug-ins` folder. |
+| `SoundEffects-0.4.1-macOS.zip` | The same in an archive, for when it came by email. Unzip, move the app into Applications. |
 
 <details>
 <summary>Why two formats?</summary>
@@ -71,6 +71,30 @@ Prefer the command line? This clears the quarantine flag and skips the whole dan
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/SoundEffects.app
+```
+
+### The plug-ins
+
+The `Plug-ins` folder holds `SoundEffects.vst3` and `SoundEffects.component`
+(Audio Unit). In the Finder, **Go → Go to Folder…** and copy:
+
+| | |
+|---|---|
+| `SoundEffects.vst3` | into `~/Library/Audio/Plug-Ins/VST3` (create the folder if it is not there) |
+| `SoundEffects.component` | into `~/Library/Audio/Plug-Ins/Components` |
+
+Then restart your DAW or rescan its plug-ins. In Ableton Live, SoundEffects is
+under **Plug-ins → SoundEffects**.
+The whole app runs inside it: canvas, mixer, effects, recording from the DAW's
+input. The canvas is saved with your set.
+
+If an older `SoundEffects.vst3` is in `/Library/Audio/Plug-Ins/VST3` (the
+computer-wide folder), replace or remove it, so the DAW does not find two. If the
+plug-ins came from a download and the DAW won't load them, clear the quarantine
+flag the same way:
+
+```bash
+xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/SoundEffects.vst3 ~/Library/Audio/Plug-Ins/Components/SoundEffects.component
 ```
 
 ---
@@ -123,7 +147,8 @@ Worth knowing before you spend an evening on a patch:
 - **There is no undo**, and there never will be. That one is deliberate: the
   menu item is there and always greyed. See the original's own alert text in the
   spec.
-- **The plugin** (VST3/AU) builds from the same sources but is not released.
+- **MIDI from the DAW** does nothing yet in the plug-in. The Keyboard palette
+  plays as in the app.
 - **The canvas is only saved when you ask, or when you quit.** A crash loses what
   you did since the last ⌘S.
 - **Not back yet from the original:** the Preferences pages, the level meter,
@@ -161,8 +186,8 @@ automatically at configure time.
 ./native/packaging/package.sh
 ```
 
-That configures a universal Release build, builds the standalone app, signs it
-ad-hoc, and writes both `SoundEffects-<version>-macOS.dmg` and `.zip` into
+That configures a universal Release build, builds the standalone app and the
+VST3 and AU plug-ins, signs them ad-hoc, and writes both `SoundEffects-<version>-macOS.dmg` and `.zip` into
 `native/dist/`. Pass `--dmg` or `--zip` for just one. The version comes from
 `project(SoundEffects VERSION …)` in [native/CMakeLists.txt](native/CMakeLists.txt) — bump it there and the
 script and both filenames follow.
@@ -177,8 +202,8 @@ For a plain development build (Debug, host architecture only):
 cmake -B native/build -S native -G Ninja && cmake --build native/build
 ```
 
-The same sources also build a **VST3** and an **AU** plugin (`SoundEffects_VST3`,
-`SoundEffects_AU`); only the standalone app is packaged for release today.
+The plug-ins are the `SoundEffects_VST3` and `SoundEffects_AU` targets of the
+same build.
 
 The 0.4.0 work, its decisions and its journal are in
 [docs/0.4.0/PLAN.md](docs/0.4.0/PLAN.md); what comes next is in
