@@ -323,7 +323,9 @@ private:
     std::vector<int> lastHeadX;                 // per track, kNoHead when none is drawn
     size_t lastBlockSt = 0, lastBlockEnd = 0;   // the overview's block, as last drawn
     static constexpr int kNoHead = std::numeric_limits<int>::min();
-    /** Where each track's playhead is drawn right now (kNoHead: none), as paintTracks does it. */
+    /** Where each track's playhead is now (kNoHead: none). refresh() samples it into
+        lastHeadX, and paintTracks draws lastHeadX, so a head is drawn only where
+        refresh() repaints and will erase it. */
     std::vector<int> playheadXs() const;
     size_t lastSelSt = (size_t) -1, lastSelEnd = (size_t) -1;
     int    lastUnit = -1;

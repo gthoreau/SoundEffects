@@ -727,8 +727,6 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
     const int n = d.numTracks();
     const size_t maxSize = d.maxTrackSize();
 
-    auto* wsnap = engineWindow();
-    const bool playing = wsnap && wsnap->transport->uiState() == se::TransportState::playing;
 
     const Colour ink = muted ? kWaveMuted : black;
     // The selection inverts what is under it: a DIFFERENCE layer, white (or #666
@@ -881,33 +879,30 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
             }
         }
 
-        // Per-track playhead, each track at its OWN loop phase.
-        if (playing && lenT > 0)
+        // Per-track playhead, each track at its OWN loop phase, where refresh() last
+        // sampled it, not where the transport is now. refresh() repaints only the
+        // column it left and the one it landed on; re-reading the position here, a
+        // frame later, put a short Sound's head several px outside its own column:
+        // clipped away (invisible), or drawn where no later repaint erases it.
+        const int px = (size_t) t < lastHeadX.size() ? lastHeadX[(size_t) t] : kNoHead;
+        if (lenT > 0 && px != kNoHead && px >= lane.getX() && px < lane.getRight())
         {
-            // Where THIS track is reading: its own length, phase and direction (the
-            // transport publishes it per track, so the playhead can run backward).
-            size_t ph = 0;
-            const bool present = wsnap->transport->uiTrackPosition (t, ph);
-            const int px = xAtByte (ph, maxSize);
-            if (present && px >= lane.getX() && px < lane.getRight())
+            // DIFFERENCE, pixel by pixel, against what the lane shows there.
+            const bool inRange = hasRange && px >= selX0 && px < selX1;
+            for (int y = lane.getY(); y < lane.getBottom(); ++y)
             {
-                // DIFFERENCE, pixel by pixel, against what the lane shows there.
-                const bool inRange = hasRange && px >= selX0 && px < selX1;
-                for (int y = lane.getY(); y < lane.getBottom(); ++y)
+                const bool inked = waveCovers (px, y);
+                Colour under = white;
+                if (inked)
                 {
-                    const bool inked = waveCovers (px, y);
-                    Colour under = white;
-                    if (inked)
-                    {
-                        if (recFaint)
-                            under = (y == (int) mid ? black : white).interpolatedWith (red, 0.3f);
-                        else
-                            under = waveInk;
-                    }
-                    if (inRange) under = underSelection (under, inked);
-                    g.setColour (difference (under, headInk));
-                    g.fillRect (px, y, 1, 1);
+                    if (recFaint)
+                        under = (y == (int) mid ? black : white).interpolatedWith (red, 0.3f);
+                    else
+                        under = waveInk;
                 }
+                if (inRange) under = underSelection (under, inked);
+                g.setColour (difference (under, headInk));
+                g.fillRect (px, y, 1, 1);
             }
         }
 
