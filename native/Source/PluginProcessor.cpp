@@ -2,6 +2,8 @@
 
 #include "PluginEditor.h"
 
+#include <algorithm>
+
 SoundEffectsAudioProcessor::SoundEffectsAudioProcessor()
     : juce::AudioProcessor (BusesProperties()
           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
@@ -121,23 +123,32 @@ void SoundEffectsAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     auto* left  = buffer.getWritePointer (0);
     auto* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : left;
 
-    // The device / host input, copied aside first: the buffer is shared with the
-    // output, which render() is about to overwrite. Always copied (a few channels
-    // by one block), whether or not a recording is running, so the audio thread
-    // never branches on UI state here.
-    const int numIn = std::min (getTotalNumInputChannels(), inputCopy.getNumChannels());
-    const float* inputs[8] {};
-    const int nIn = std::min (numIn, 8);
-    if (numFrames <= inputCopy.getNumSamples())
-        for (int ch = 0; ch < nIn; ++ch)
+    // A host may send a block larger than prepareToPlay announced (an offline
+    // bounce, some hosts' first block): the engine's scratch and the input copy are
+    // sized for the announced one, so a big block is rendered in chunks of it —
+    // otherwise everything past the first chunk would come out silent.
+    const int chunk = std::max (1, inputCopy.getNumSamples());
+    const int numIn = std::min ({ getTotalNumInputChannels(), inputCopy.getNumChannels(), 8 });
+
+    for (int offset = 0; offset < numFrames; offset += chunk)
+    {
+        const int n = std::min (chunk, numFrames - offset);
+
+        // The device / host input, copied aside first: the buffer is shared with the
+        // output, which render() is about to overwrite. Always copied (a few channels
+        // by one block), whether or not a recording is running, so the audio thread
+        // never branches on UI state here.
+        const float* inputs[8] {};
+        for (int ch = 0; ch < numIn; ++ch)
         {
-            inputCopy.copyFrom (ch, 0, buffer, ch, 0, numFrames);
+            inputCopy.copyFrom (ch, 0, buffer, ch, offset, n);
             inputs[ch] = inputCopy.getReadPointer (ch);
         }
 
-    // The engine sums every open window into the output. (When numChannels == 1,
-    // left == right, so the render collapses to mono at the buffer edge.)
-    engineImpl.render (left, right, numFrames, inputs, numFrames <= inputCopy.getNumSamples() ? nIn : 0);
+        // The engine sums every open window into the output. (When numChannels == 1,
+        // left == right, so the render collapses to mono at the buffer edge.)
+        engineImpl.render (left + offset, right + offset, n, inputs, numIn);
+    }
 
     // Clear any extra output channels beyond stereo.
     for (int ch = 2; ch < buffer.getNumChannels(); ++ch)
