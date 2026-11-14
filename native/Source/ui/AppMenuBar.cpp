@@ -88,11 +88,18 @@ void Os8AppMenuLookAndFeel::getIdealPopupMenuItemSizeWithOptions (const juce::St
     // an icon, and fit the frame to the widest row, as the design's menus are.
     const auto label = text.upToFirstOccurrenceOf ("   ", false, false);
     const auto tail = text.fromFirstOccurrenceOf ("   ", false, false);
+    const bool hasIcon = tail == iconRowMark();
+    // Two rows may share a label (Zoom Sound's and Zoom Canvas's "Zoom In"): the
+    // shortcut JUCE appended tells them apart. An icon row has no tail to go by,
+    // and the first match it gets is the one with the icon (Zoom Sound's).
     const cmd::Spec* spec = nullptr;
     for (const auto& row : cmd::table())
-        if (label == row.name) { spec = &row; break; }
+        if (label == row.name)
+        {
+            if (spec == nullptr) spec = &row;
+            if (! row.keys.empty() && row.keys.front().getTextDescriptionWithIcons() == tail) { spec = &row; break; }
+        }
 
-    const bool hasIcon = tail == iconRowMark();
     auto shortcut = spec != nullptr && ! spec->keys.empty() ? cmd::describe (spec->keys.front()) : juce::String();
     // A row that shows its own text for a command (the sound list's slot keys):
     // JUCE's rendering of a bare digit is the design's.

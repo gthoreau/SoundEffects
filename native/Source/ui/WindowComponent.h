@@ -117,7 +117,8 @@ public:
         selectSilence, setLoop, selectLoop,
         selectAudioSource,   // the Source button / ⌘⇧R: the popup
         record,     // start a take, or carry on with a paused one
-        rename
+        rename,
+        zoomIn, zoomOut, fitWindow, fitSelection   // Sound ▸ Zoom Sound: the view only
     };
     /** Do it; false when it does not apply right now (nothing to paste, say). */
     bool perform (Action);

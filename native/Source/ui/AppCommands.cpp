@@ -78,13 +78,26 @@ const std::vector<Spec>& table()
         { playBackward,      "Play Backward",        "Sound", {} },
         { playPingPong,      "Play Ping-pong",       "Sound", { key (KP::spaceKey, kAlt) } },
 
+        // Zoom Sound. Figma's ⌘+ / ⌘= / ⌘⇧= collide on a Mac keyboard (+ is ⇧=), so
+        // the keys are the plan's (docs/0.5.0/PLAN.md, Decisions). A shifted key
+        // arrives as its shifted character on a US layout (⇧= is '+', ⇧0 is ')'),
+        // so both spellings are bound.
+        { zoomSoundIn,       "Zoom In",              "Sound", { key ('=', kCmd), key ('+', kCmd) } },
+        { zoomSoundOut,      "Zoom Out",             "Sound", { key ('-', kCmd) } },
+        { fitWindow,         "Fit Window",           "Sound", { key ('0', kCmd | kShift), key (')', kCmd | kShift) } },
+        { fitSelection,      "Fit Selection",        "Sound", { key ('=', kCmd | kShift), key ('+', kCmd | kShift) } },
+
         // --- Canvas --------------------------------------------------------------------
         { toggleColourTheme, "Hide Color Theme",     "Canvas", {} },
         { toggleGrid,        "Free Canvas",          "Canvas", { key ('G') } },
         { toggleKeyboard,    "Hide Keyboard",        "Canvas", { key ('K') } },
         { toggleSidePanels,  "Hide Side Panels",     "Canvas", { key ('.', kCmd) } },
-        { zoom100,           "Zoom 100%",            "Canvas", { key ('0', kCmd) } },
-        { zoomToFit,         "Zoom to Fit",          "Canvas", { key ('1', kCmd) } },
+        // Zoom Canvas: + and - bare (with or without the ⇧ a US + needs); ⌘1 and
+        // ⌘0 the other way round from 0.4, as the spec has them.
+        { zoomCanvasIn,      "Zoom In",              "Canvas", { key ('+'), key ('+', kShift), key ('=') } },
+        { zoomCanvasOut,     "Zoom Out",             "Canvas", { key ('-'), key ('_', kShift) } },
+        { zoom100,           "Zoom 100%",            "Canvas", { key ('1', kCmd) } },
+        { zoomToFit,         "Zoom to Fit",          "Canvas", { key ('0', kCmd) } },
 
         // The sound list's shortcut column: the menu shows each sound's own name
         // on these rows, not the names here.

@@ -1716,6 +1716,10 @@ bool WindowComponent::canPerform (Action a) const
         case Action::playForward: case Action::playBackward: case Action::playPingPong: case Action::cycleDirection:
         case Action::toggleAdvance:
             return ! isRecording();   // recording forces Forward, plays at normal speed
+        case Action::zoomIn:            return viewSpanFrac > minSpanFrac();
+        case Action::zoomOut: case Action::fitWindow:
+                                        return viewSpanFrac < 1.0;
+        case Action::fitSelection:      return d->maxTrackSize() > 0 && d->selEnd > d->selSt;
         case Action::playPause: case Action::stop: case Action::toggleLoop:
         case Action::selectAll: case Action::rename:
         case Action::leaveSilence:
@@ -1776,6 +1780,24 @@ bool WindowComponent::perform (Action a)
         case Action::crop:      se::crop (*d); commit(); resizeToFit(); return true;             // keep only the selection
         case Action::insertSilence: se::silenceSelection (*d); commit(); return true;          // zeros in place, same length
         case Action::rename:    beginNameEdit(); return true;
+
+        // The zoom bar's own steps (zoom out, zoom in, whole sound), plus Fit Selection.
+        case Action::zoomIn:    zoomBy (0.5); repaint(); return true;
+        case Action::zoomOut:   zoomBy (2.0); repaint(); return true;
+        case Action::fitWindow: viewStartFrac = 0.0; viewSpanFrac = 1.0; cachedWidth = -1; repaint(); return true;
+        case Action::fitSelection:
+        {
+            // The selection's span fills the waveform; one shorter than the closest
+            // zoom is centred at that zoom instead.
+            const double size = (double) d->maxTrackSize();
+            const double centre = ((double) d->selSt + (double) d->selEnd) * 0.5 / size;
+            viewSpanFrac = std::max ((double) (d->selEnd - d->selSt) / size, minSpanFrac());
+            viewStartFrac = centre - viewSpanFrac * 0.5;
+            clampView();
+            cachedWidth = -1;
+            repaint();
+            return true;
+        }
 
         case Action::extendToBeginning: se::extendToBeginning (*d); commitSelection(); return true;   // selection only: publish so Play follows
         case Action::extendToEnd:       se::extendToEnd (*d);       commitSelection(); return true;

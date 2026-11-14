@@ -646,6 +646,11 @@ void CanvasComponent::setZoom (float newZoom)
     zoomAround (newZoom, getLocalBounds().getCentre().toFloat());
 }
 
+void CanvasComponent::zoomStep (bool in)
+{
+    setZoom (in ? zoom * 1.25f : zoom / 1.25f);
+}
+
 void CanvasComponent::zoomToFit (int clearBottom)
 {
     juce::Rectangle<int> all;
@@ -776,8 +781,6 @@ bool CanvasComponent::keyPressed (const juce::KeyPress& k)
     }
     if (code == juce::KeyPress::escapeKey && panMode) { setPanMode (false); return true; }
     if (code == '0') { resetView(); return true; }
-    if (code == '=' || code == '+') { zoomAround (zoom * 1.25f, getLocalBounds().getCentre().toFloat()); return true; }
-    if (code == '-' || code == '_') { zoomAround (zoom / 1.25f, getLocalBounds().getCentre().toFloat()); return true; }
     return false;
 }
 

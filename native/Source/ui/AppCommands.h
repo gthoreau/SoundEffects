@@ -34,9 +34,11 @@ enum : juce::CommandID
     soundColour = 0x5ec0, rename, armRecord, directRecording, selectAudioSource,
     stop, play, pause, flipDirection, fastForward, loop, mute, solo,
     playForward, playBackward, playPingPong,   // bound, not in a menu (D flips instead)
+    zoomSoundIn, zoomSoundOut, fitWindow, fitSelection,   // Sound ▸ Zoom Sound
 
     // Canvas (the 0.4 Window menu)
-    toggleColourTheme = 0x5f00, toggleSidePanels, toggleKeyboard, toggleGrid, zoom100, zoomToFit,
+    toggleColourTheme = 0x5f00, toggleSidePanels, toggleKeyboard, toggleGrid,
+    zoomCanvasIn, zoomCanvasOut, zoom100, zoomToFit,   // Canvas ▸ Zoom Canvas
 
     // Canvas: the sound list. Keys 1..9, 0 focus mixer slots 1..10 (and their Window).
     focusSlot1 = 0x5f20, focusSlot10 = focusSlot1 + 9,

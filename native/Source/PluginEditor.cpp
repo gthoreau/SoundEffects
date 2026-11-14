@@ -277,6 +277,11 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
             active = true;
             r.shortName = canvas.isMosaicMode() ? "Free Canvas" : "Grid Canvas";
             break;
+        case cmd::zoomSoundIn:   active = can (WindowComponent::Action::zoomIn); break;
+        case cmd::zoomSoundOut:  active = can (WindowComponent::Action::zoomOut); break;
+        case cmd::fitWindow:     active = can (WindowComponent::Action::fitWindow); break;
+        case cmd::fitSelection:  active = can (WindowComponent::Action::fitSelection); break;
+        case cmd::zoomCanvasIn: case cmd::zoomCanvasOut:
         case cmd::zoom100:       active = true; break;
         case cmd::zoomToFit:     active = canvas.hasWindows(); break;
 
@@ -363,6 +368,12 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
             return true;
         case cmd::toggleKeyboard: setKeyboardShown (! keyboard.isVisible()); return true;
         case cmd::toggleGrid:     canvas.setMosaicMode (! canvas.isMosaicMode()); return true;
+        case cmd::zoomSoundIn:    return act (WindowComponent::Action::zoomIn);
+        case cmd::zoomSoundOut:   return act (WindowComponent::Action::zoomOut);
+        case cmd::fitWindow:      return act (WindowComponent::Action::fitWindow);
+        case cmd::fitSelection:   return act (WindowComponent::Action::fitSelection);
+        case cmd::zoomCanvasIn:   canvas.zoomStep (true);  return true;
+        case cmd::zoomCanvasOut:  canvas.zoomStep (false); return true;
         case cmd::zoom100:        canvas.setZoom (1.0f); return true;
         case cmd::zoomToFit:
             // The palettes float over the canvas's foot: keep what they hide out of the fit.
@@ -388,7 +399,7 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::getMenuForIndex (int index, co
         for (auto id : ids) m.addCommandItem (&commandManager, id);
     };
     // A command item whose row carries an icon, as the Transport menu's first rows do.
-    const auto addWithIcon = [&m, this] (juce::CommandID id, os8::icon::Id icon)
+    const auto addWithIcon = [this] (juce::PopupMenu& menu, juce::CommandID id, os8::icon::Id icon)
     {
         juce::ApplicationCommandInfo info (id);
         commandManager.getTargetForCommand (id, info);
@@ -399,7 +410,7 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::getMenuForIndex (int index, co
         item.commandManager = &commandManager;
         item.setImage (os8::icon::makeDrawable (icon));
         Os8AppMenuLookAndFeel::markIconRow (item);
-        m.addItem (std::move (item));
+        menu.addItem (std::move (item));
     };
 
     switch (index)
@@ -442,14 +453,23 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::getMenuForIndex (int index, co
             m.addSeparator();
             add ({ cmd::armRecord, cmd::directRecording, cmd::selectAudioSource });
             m.addSeparator();
-            addWithIcon (cmd::stop, os8::icon::Id::stop);
-            addWithIcon (cmd::play, os8::icon::Id::playForward);
-            addWithIcon (cmd::pause, os8::icon::Id::pause);
+            addWithIcon (m, cmd::stop, os8::icon::Id::stop);
+            addWithIcon (m, cmd::play, os8::icon::Id::playForward);
+            addWithIcon (m, cmd::pause, os8::icon::Id::pause);
             add ({ cmd::flipDirection });
-            addWithIcon (cmd::fastForward, os8::icon::Id::fastForward);
-            addWithIcon (cmd::loop, os8::icon::Id::loop);
+            addWithIcon (m, cmd::fastForward, os8::icon::Id::fastForward);
+            addWithIcon (m, cmd::loop, os8::icon::Id::loop);
             m.addSeparator();
             add ({ cmd::mute, cmd::solo });
+            m.addSeparator();
+            {
+                juce::PopupMenu zoom;
+                addWithIcon (zoom, cmd::zoomSoundIn, os8::icon::Id::zoomIn);
+                addWithIcon (zoom, cmd::zoomSoundOut, os8::icon::Id::zoomOut);
+                addWithIcon (zoom, cmd::fitWindow, os8::icon::Id::zoomReset);
+                zoom.addCommandItem (&commandManager, cmd::fitSelection);
+                m.addSubMenu ("Zoom Sound", zoom);
+            }
             break;
 
         case 4:
@@ -568,8 +588,10 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::canvasMenu()
     m.addCommandItem (&commandManager, cmd::toggleKeyboard);
     m.addCommandItem (&commandManager, cmd::toggleSidePanels);
     m.addSeparator();
-    m.addCommandItem (&commandManager, cmd::zoom100);
-    m.addCommandItem (&commandManager, cmd::zoomToFit);
+    juce::PopupMenu zoom;
+    for (auto id : { cmd::zoomCanvasIn, cmd::zoomCanvasOut, cmd::zoom100, cmd::zoomToFit })
+        zoom.addCommandItem (&commandManager, id);
+    m.addSubMenu ("Zoom Canvas", zoom);
     return m;
 }
 

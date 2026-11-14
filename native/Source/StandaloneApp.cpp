@@ -975,15 +975,17 @@ private:
         ours->refreshNow();
         bool ok = writePng (ours->createComponentSnapshot (ours->getLocalBounds(), true, 1.0f), png);
 
-        const auto names = ours->getMenuBarNames();
-        for (int m = 0; m < names.size(); ++m)
+        // Each menu, and each submenu it holds as <name>-menu-<Title>-<Row>.png
+        // (Zoom Sound, Zoom Canvas, the Color list).
+        std::function<bool (const juce::PopupMenu&, const juce::String&)> drawMenu;
+        drawMenu = [&png, &drawMenu] (const juce::PopupMenu& menu, const juce::String& suffix)
         {
-            auto menu = ours->getMenuForIndex (m, names[m]);
             auto& lf = Os8AppMenuLookAndFeel::instance();
             const juce::PopupMenu::Options options;
             const int border = lf.getPopupMenuBorderSizeWithOptions (options);
 
             int width = 0, height = 0;
+            bool fine = true;
             std::vector<std::pair<juce::PopupMenu::Item, int>> rows;
             for (juce::PopupMenu::MenuItemIterator it (menu); it.next();)
             {
@@ -1000,6 +1002,8 @@ private:
                 width = juce::jmax (width, w);
                 rows.emplace_back (item, h);
                 height += h;
+                if (item.subMenu != nullptr)
+                    fine = drawMenu (*item.subMenu, suffix + "-" + item.text.upToFirstOccurrenceOf (":", false, false)) && fine;
             }
 
             juce::Image image (juce::Image::ARGB, width + 2 * border, height + 2 * border, true);
@@ -1013,8 +1017,12 @@ private:
                 lf.drawPopupMenuItemWithOptions (g, { 0, y, width + 2 * border, h }, false, item, options);
                 y += h;
             }
-            ok = ok && writePng (image, png.getSiblingFile (png.getFileNameWithoutExtension() + "-menu-" + names[m] + ".png"));
-        }
+            return writePng (image, png.getSiblingFile (png.getFileNameWithoutExtension() + "-menu-" + suffix + ".png")) && fine;
+        };
+
+        const auto names = ours->getMenuBarNames();
+        for (int m = 0; m < names.size(); ++m)
+            ok = drawMenu (ours->getMenuForIndex (m, names[m]), names[m]) && ok;
 
         processor->editorBeingDeleted (editor.get());
         editor = nullptr;

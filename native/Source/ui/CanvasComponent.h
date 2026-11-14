@@ -70,6 +70,8 @@ public:
         gesture happened somewhere else entirely, and the middle of the board you are
         looking at is what you meant to keep. */
     void  setZoom (float newZoom);
+    /** One step in (×1.25) or out, about the viewport's centre: Zoom Canvas ▸ + / -. */
+    void  zoomStep (bool in);
 
     /** Window ▸ Zoom to Fit: zoom out until every Window is in view (never in past
         100 %), the lot parked at the viewport's top-left inset as the grid places it.
