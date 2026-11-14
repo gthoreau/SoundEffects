@@ -37,6 +37,7 @@ Agreed with the author on 2026-11-14, where the spec is silent or contradicts it
 | Magnetophon design gaps | The author's design is light on detail: fill gaps with the existing OS8 conventions, then tweak with the author. |
 | MIDI | The author has the hardware (KeyStep 37, Push 3 / LinnStrument). **All of it ships in 0.5.0**: notes, MPE pitch slide, and DAW MIDI in the plug-in. |
 | MIDI voice model | The keyboard palette is mono: last-note priority with a held-note stack. MPE per-note pitch bend → continuous rate via `setRateScale` (zone range, 48 semitones by default); plain pitch bend ±2 semitones. |
+| Recording with Set Loop | With Loop on and a region set, a take stays inside the region: the transport loops it and the take records round and round inside it, into the selected tracks (2 at most) or into new tracks padded with silence up to the region. Loop off ignores the region. Chosen by the author 2026-11-14 ("A: take follows region"); built in 5.2. |
 | Asset names | `Assets/<assetId> <name> - track T.wav`. `assetId` is a per-canvas counter stored in the `.sefx`; old projects get ids on open and their files are renamed on the next save. |
 
 ## Figma node index
@@ -139,7 +140,6 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - **⌘T.** Sound ▸ Color's row shows no shortcut in Figma (the spec table says ⌘T). 2.1 binds ⌘T to drop the colour list down under the selected Window's title bar; confirm, or say if it should cycle colours instead.
 - **Figma fix to make:** the rule above Mute in `569:13467` is a 1 px rectangle, not a `Menu_separator` (the app draws the normal separator). (Direct Recording's ⌘R was corrected to ⇧R in Figma on 2026-11-14.)
 
-- **Set Loop while recording — settled in 5.2 as option A, the author to confirm.** With Loop on and a region set, a take stays inside the region, round and round (into the selected tracks, or into new tracks padded with silence up to the region), and the transport loops the region, so the grey outside is not heard. Option B would keep ignoring the region and drop the grey look while recording.
 - **Paused playhead (seen in 5.3, older than step 5).** A paused Window draws no playhead (`WindowComponent::playheadXs` draws only while playing), so Pause, and FF released back into Pause, give no sign of where playback is held. Say if it should stay drawn while paused.
 - **Set Loop look with Loop off.** 4.2 greys the outside only while the Window's Loop is on, since play-once ignores the region (3.2); the zoom bar still shows the region either way. Say if it should grey whenever a region is set.
 
