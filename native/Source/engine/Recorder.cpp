@@ -83,6 +83,7 @@ bool Recorder::start (uint64_t window, const RecordSetup& s)
     if (cs.kind == AudioSourceKind::canvas && cs.tapWindow == 0) cs.excludeWindow = window;   // the Window it records into is left out of the mix
     PlayOptions play;
     play.loop = setup.loop && where == Where::selection;
+    play.allTracks = true;   // the other tracks are the backing
 
     engine.captureRing().discard();
     engine.captureRing().resetDropped();
@@ -109,6 +110,7 @@ void Recorder::resume()
     // The tracks written so far were published at the pause; capture and play carry on.
     PlayOptions play;
     play.loop = setup.loop && where == Where::selection;
+    play.allTracks = true;   // the other tracks are the backing
     engine.captureRing().discard();
     if (! engine.recordResume (win, play, mask())) return;
     st = State::recording;

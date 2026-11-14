@@ -473,6 +473,125 @@ void loopOnPinTests()
     }
 }
 
+// 3.2, Bug 2: loop off, a selection plays only its tracks, over its span, once.
+void playOnceSelectionTests()
+{
+    using se::PlayDirection;
+    const se::PlayOptions once;
+    const auto at = [] (se::Transport& tr, int t) { size_t p = 0; return tr.uiTrackPosition (t, p) ? (long) p : -1L; };
+
+    // The bug: a selection on track 2 used to play track 1 over the span as well.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->firstSelTrack = doc->lastSelTrack = 2;
+        doc->selSt = 20; doc->selEnd = 60;
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        check (at (tr, 0) == -1 && at (tr, 1) == 20, "bug 2: the unselected track has no playhead");
+        check (tr.uiPlaySt() == 20 && tr.uiPlayEnd() == 60 && tr.uiFirstPlayTrack() == 2 && tr.uiLastPlayTrack() == 2,
+               "bug 2: the published region is the selection, in its tracks");
+        std::vector<float> l;
+        const auto r = rawRight (tr, *doc, 100, l);
+        std::vector<int> ri; for (size_t i = 0; i < 40; ++i) ri.push_back (indexOf (r[i]));
+        check (silent (l, 0, l.size()), "bug 2: the unselected track is silent");
+        check (ri == walk (20, 40, 0, 1, false, 40) && silent (r, 40, 100) && tr.state() == se::TransportState::stopped,
+               "bug 2: the selected track plays 20..59, once, then the transport stops");
+    }
+    // Two of three tracks: the third stays out.
+    {
+        auto doc = rampDocument ({ 100, 100, 100 });
+        doc->firstSelTrack = 1; doc->lastSelTrack = 2;
+        doc->selSt = 10; doc->selEnd = 30;
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        renderTransport (tr, *doc, 5);
+        check (at (tr, 0) == 15 && at (tr, 1) == 15 && at (tr, 2) == -1, "bug 2: tracks 1-2 selected, track 3 out");
+    }
+    // Backward and ping-pong over a selection: still only its tracks, then a stop.
+    for (int d = 1; d < 3; ++d)
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->firstSelTrack = doc->lastSelTrack = 2;
+        doc->selSt = 30; doc->selEnd = 50;
+        se::Transport tr (kRate);
+        tr.setDirection ((PlayDirection) d, *doc);
+        tr.play (*doc, once);
+        std::vector<float> l;
+        const auto r = rawRight (tr, *doc, 100, l);
+        const int n = d == 1 ? 20 : 40;
+        std::vector<int> ri; for (int i = 0; i < n; ++i) ri.push_back (indexOf (r[(size_t) i]));
+        const auto want = d == 1 ? walk (30, 20, 19, -1, false, 20) : walk (30, 20, 0, 1, true, 40);
+        check (silent (l, 0, l.size()) && ri == want && tr.state() == se::TransportState::stopped,
+               d == 1 ? "bug 2: backward, the selected track alone, 49..30" : "bug 2: ping-pong, the selected track alone, one round trip");
+    }
+    // A direction change mid-pass when track 1 is not selected: the stop point is the
+    // selected track's (the re-anchor used to take it from track 1).
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->firstSelTrack = doc->lastSelTrack = 2;
+        doc->selSt = 10; doc->selEnd = 100;
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        renderTransport (tr, *doc, 60);                    // reads 70 next
+        tr.setDirection (PlayDirection::backward, *doc);
+        const bool kept = at (tr, 1) == 70 && at (tr, 0) == -1;
+        const auto o = renderTransport (tr, *doc, 200);    // past the 2 ms crossfade: 70 down to 10
+        check (kept && o.frames == 61 && o.right.back() == 10 && silent (o.rawL, 0, o.rawL.size()) && tr.state() == se::TransportState::stopped,
+               "bug 2: turned round mid-pass, the selected track runs back to 10 and stops");
+    }
+    // A selected track shorter than the span: silent past its end, the pass still ends at the span's end.
+    {
+        auto doc = rampDocument ({ 100, 30 });
+        doc->firstSelTrack = 1; doc->lastSelTrack = 2;
+        doc->selSt = 20; doc->selEnd = 60;
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        const auto o = renderTransport (tr, *doc, 100);
+        check (o.frames == 40 && isSequence (o.left, walk (20, 40, 0, 1, false, 40)) && o.right[9] == 29,
+               "bug 2: a short selected track plays to its end, the pass runs the span");
+    }
+    // The Recorder's play (allTracks): every track over the span, the backing.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->firstSelTrack = doc->lastSelTrack = 2;
+        doc->selSt = 20; doc->selEnd = 60;
+        se::PlayOptions rec; rec.allTracks = true;
+        se::Transport tr (kRate);
+        tr.play (*doc, rec);
+        const auto o = renderTransport (tr, *doc, 100);
+        check (o.frames == 40 && isSequence (o.left, walk (20, 40, 0, 1, false, 40)) && isSequence (o.right, walk (20, 40, 0, 1, false, 40)),
+               "bug 2: allTracks (a punch-in's backing) still plays every track over the span");
+    }
+    // No selection: every track, the whole sound, once (unchanged).
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        doc->firstSelTrack = doc->lastSelTrack = 2;        // a caret on track 2 is not a selection
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        const auto o = renderTransport (tr, *doc, 200);
+        check (o.frames == 100 && isSequence (o.left, walk (0, 100, 0, 1, false, 100))
+               && std::vector<int> (o.right.begin(), o.right.begin() + 60) == walk (0, 60, 0, 1, false, 60)
+               && tr.uiFirstPlayTrack() == 1 && tr.uiLastPlayTrack() == 2,
+               "bug 2: no selection, every track plays the whole sound once");
+    }
+    // Through the Engine, as the Play button sends it (loop off, useLoopRegion).
+    {
+        se::Engine engine;
+        engine.prepare (kRate, kBlock);
+        auto doc = rampDocument ({ 100, 100 });
+        doc->firstSelTrack = doc->lastSelTrack = 1;
+        doc->selSt = 40; doc->selEnd = 50;
+        const uint64_t id = engine.addWindow (std::move (doc));
+        se::PlayOptions o; o.useLoopRegion = true;
+        engine.play (id, o);
+        std::vector<float> l ((size_t) kBlock, 0.0f), r ((size_t) kBlock, 0.0f);
+        engine.render (l.data(), r.data(), kBlock);
+        std::vector<int> li; for (int i = 0; i < 10; ++i) li.push_back (indexOf (l[(size_t) i]));
+        check (li == walk (40, 10, 0, 1, false, 10) && silent (r, 0, r.size()) && silent (l, 10, l.size()),
+               "bug 2: through the engine, the Play button plays the selected track's span alone");
+    }
+}
+
 std::unique_ptr<se::SoundDocument> sineDocument (size_t len);
 
 // 12.8: deselecting (and every live re-aim) — a track that cannot keep its own frame
@@ -1969,6 +2088,7 @@ int main()
 
     directionTests();
     loopOnPinTests();
+    playOnceSelectionTests();
     directionEngineTests();
     switchingTests();
     concurrencyTests();

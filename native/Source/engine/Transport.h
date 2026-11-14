@@ -34,6 +34,10 @@ struct PlayOptions
     bool   loop = false;            // loop button: loops the selection
     bool   useLoopRegion = false;   // loop the Set Loop region, when one is set, not the selection
     double rateScale = 1.0;         // Keyboard's chromatic auditioning (§8 #18)
+    /** Play-once over a selection sounds EVERY track, not just the selected ones.
+        The Recorder's: punching into a selection, the other tracks are the backing.
+        Off (Play), only the selected tracks play, over the selected span (0.5.0 Bug 2). */
+    bool   allTracks = false;
 };
 
 class Transport

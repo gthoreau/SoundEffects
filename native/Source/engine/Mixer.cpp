@@ -32,6 +32,7 @@ bool readSpan (const PlayContext& ctx, int track, size_t lenFrames, size_t fs,
     switch (ctx.mode)
     {
         case LoopMode::once:
+            if (track < ctx.firstSelTrack - 1 || track > ctx.lastSelTrack - 1) return false;
             lo = ctx.selSt / fs;
             S  = ctx.selEnd > ctx.selSt ? (ctx.selEnd - ctx.selSt) / fs : 0;
             wrap = false;

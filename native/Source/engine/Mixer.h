@@ -29,7 +29,8 @@ constexpr int kPhaseTracks = 64;
 /**
  * How the monotonic transport position maps to each track's read position.
  *  - once:      one span `[selSt, selEnd)` is played through, once, and the same span
- *               for every track; a track shorter than the read point is absent.
+ *               for every track in [firstSelTrack, lastSelTrack] (kAllTracks: all of
+ *               them); a track shorter than the read point is absent.
  *  - all:       each track loops over ITS OWN length independently.
  *               Different lengths phase against each other (the core weirdness).
  *  - selection: the selected time range loops in phase; only the selected tracks
@@ -46,11 +47,14 @@ constexpr int kPhaseTracks = 64;
  */
 enum class LoopMode { once, all, selection };
 
+/** lastSelTrack for a play-once that sounds every track, however many there are. */
+constexpr int kAllTracks = 1 << 20;
+
 struct PlayContext
 {
     LoopMode mode = LoopMode::once;
     size_t   selSt = 0, selEnd = 0;      // once / selection: the played byte range
-    int      firstSelTrack = 1, lastSelTrack = 1;   // selection mode: 1-based scope
+    int      firstSelTrack = 1, lastSelTrack = 1;   // once / selection: 1-based scope
     PlayDirection dir = PlayDirection::forward;
     std::array<double, kPhaseTracks> phase {};     // bytes, one per track
 };

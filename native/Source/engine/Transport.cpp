@@ -96,7 +96,9 @@ void Transport::anchor (const SoundDocument& doc, PlayContext next) noexcept
         if (was.inSpan && was.frame < lenFrames) { haveRef = true; refFrame = was.frame; refUp = was.up; }
     }
 
-    bool up0 = true; size_t span0 = 0;
+    // The once stop point is taken from the topmost track that plays (they all share
+    // one span; a track outside the selected range has none).
+    bool up0 = true; size_t span0 = 0; int t0 = -1;
     for (int t = 0; t < n; ++t)
     {
         const size_t lenFrames = doc.tracks[static_cast<size_t> (t)].data.size() / fs;
@@ -125,19 +127,19 @@ void Transport::anchor (const SoundDocument& doc, PlayContext next) noexcept
         else
             ph = fresh;
 
-        if (t == 0) { up0 = up; span0 = S; }
+        if (plays && t0 < 0) { t0 = t; up0 = up; span0 = S; }
     }
     // A track the document gained since carries on from the last one's phase.
     for (int t = std::max (n, 1); t < kPhaseTracks; ++t) next.phase[static_cast<size_t> (t)] = next.phase[static_cast<size_t> (std::max (n, 1) - 1)];
 
-    if (next.mode == LoopMode::once && n > 0)
+    if (next.mode == LoopMode::once && t0 >= 0)
     {
         // Play out what is left of the pass, then stop: to the end of the span going
         // up or down; a ping-pong finishes its round trip (a bounce off the far end,
         // then back, or off the near end and across).
         const int64_t s = static_cast<int64_t> (span0);
         const int64_t stopU = next.dir == PlayDirection::pingPong ? (up0 ? 2 * s : 3 * s) : s;
-        stopPos = static_cast<double> (stopU) * static_cast<double> (fs) - next.phase[0];
+        stopPos = static_cast<double> (stopU) * static_cast<double> (fs) - next.phase[static_cast<size_t> (t0)];
     }
 
     startCrossfade (old);
@@ -198,10 +200,20 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
     }
     else
     {
-        // Play once, through one span: the selection, else the whole sound.
+        // Play once, through one span: the selection, in the selected tracks only
+        // (unless allTracks), else the whole sound in every track.
         ctx.mode = LoopMode::once;
+        ctx.firstSelTrack = 1; ctx.lastSelTrack = kAllTracks;
         size_t a = 0, b = doc.maxTrackSize();
-        if (hasSelection) { a = doc.selSt; b = doc.selEnd; }
+        if (hasSelection)
+        {
+            a = doc.selSt; b = doc.selEnd;
+            if (! opts.allTracks)
+            {
+                ctx.firstSelTrack = doc.firstSelTrack; ctx.lastSelTrack = doc.lastSelTrack;
+                regionFirst = doc.firstSelTrack; regionLast = doc.lastSelTrack;
+            }
+        }
         if (b < a) b = a;
         b = a + (b - a) - (b - a) % fs;
         ctx.selSt = a; ctx.selEnd = b;
