@@ -2069,6 +2069,113 @@ void metaTests()
     }
 }
 
+// --- 0.5.0 step 4.1: Selection ▸ Unset Loop -----------------------------------
+// The region is cleared and nothing else moves; a loop that is playing the region
+// follows through Transport::render's live re-aim, as it does for Set Loop.
+void unsetLoopTests()
+{
+    {
+        se::DocumentInit init; init.numTracks = 2; init.sizeBytes = 8;
+        se::SoundDocument d (init);
+        check (! se::hasLoop (d) && ! se::unsetLoop (d), "unset loop: nothing set, nothing done (the menu row greys)");
+        d.selSt = d.selEnd = 3;
+        se::setLoop (d);
+        check (! se::hasLoop (d), "unset loop: a caret's Set Loop sets no region");
+        d.selSt = 2; d.selEnd = 6; d.firstSelTrack = d.lastSelTrack = 2;
+        se::setLoop (d);
+        check (se::hasLoop (d), "unset loop: Set Loop on a selection sets one");
+        d.selSt = 1; d.selEnd = 4;
+        check (se::unsetLoop (d) && ! se::hasLoop (d) && d.loopSt == 0 && d.loopEnd == 0,
+               "unset loop: the region is cleared");
+        check (d.selSt == 1 && d.selEnd == 4 && d.firstSelTrack == 2 && d.lastSelTrack == 2,
+               "unset loop: the selection is left alone");
+        check (! se::unsetLoop (d), "unset loop: twice does nothing the second time");
+        se::selectLoop (d);
+        check (d.selSt == 0 && d.selEnd == 0, "unset loop: Select Set Loop then gives a caret at 0 (it greys)");
+    }
+
+    se::PlayOptions region; region.loop = true; region.useLoopRegion = true;   // the Play button, loop on
+    const auto at = [] (se::Transport& tr, int t) { size_t p = 0; return tr.uiTrackPosition (t, p) ? (long) p : -1L; };
+
+    // Playing the region, a selection elsewhere: Unset Loop hands the loop to the selection.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->selSt = 30; doc->selEnd = 50; doc->firstSelTrack = 1; doc->lastSelTrack = 2;
+        se::setLoop (*doc);
+        doc->selSt = 60; doc->selEnd = 80; doc->firstSelTrack = doc->lastSelTrack = 2;
+        se::Transport tr (kRate);
+        tr.play (*doc, region);
+        renderTransport (tr, *doc, 25);
+        check (tr.uiPlaySt() == 30 && tr.uiPlayEnd() == 50 && at (tr, 0) >= 30 && at (tr, 0) < 50,
+               "unset loop, playing: the region loops before");
+        se::unsetLoop (*doc);
+        std::vector<float> l;
+        const auto r = rawRight (tr, *doc, 200, l);
+        check (tr.state() == se::TransportState::playing && tr.uiPlaySt() == 60 && tr.uiPlayEnd() == 80
+               && tr.uiFirstPlayTrack() == 2 && tr.uiLastPlayTrack() == 2,
+               "unset loop, playing: the loop re-aims at the selection, still playing");
+        std::vector<int> ri;
+        for (size_t i = 100; i < 200; ++i) ri.push_back (indexOf (r[i]));
+        bool inSel = true;
+        for (int v : ri) inSel = inSel && v >= 60 && v < 80;
+        check (inSel && silent (l, 100, 200) && at (tr, 0) == -1, "unset loop, playing: only the selected track sounds, over its span");
+    }
+    // Playing the region, a caret: Unset Loop hands it to the whole sound, each track its own length.
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        doc->selSt = 30; doc->selEnd = 50;
+        se::setLoop (*doc);
+        doc->selSt = doc->selEnd = 10;
+        se::Transport tr (kRate);
+        tr.play (*doc, region);
+        renderTransport (tr, *doc, 25);
+        se::unsetLoop (*doc);
+        const auto o = renderTransport (tr, *doc, 300);
+        check (tr.uiLoopMode() == se::LoopMode::all && tr.uiPlaySt() == 0 && tr.uiPlayEnd() == 100,
+               "unset loop, caret: the whole sound loops");
+        // After the crossfade each track walks its own length: the right one wraps at 60.
+        bool wrapsAt60 = false, leftPast50 = false;
+        for (size_t i = 1; i < o.right.size(); ++i) wrapsAt60 = wrapsAt60 || (o.right[i - 1] == 59 && o.right[i] == 0);
+        for (int v : o.left) leftPast50 = leftPast50 || v >= 60;
+        check (wrapsAt60 && leftPast50, "unset loop, caret: each track loops its own length again");
+    }
+    // Through the Engine, as the menu commits it (commitMeta).
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto d0 = rampDocument ({ 100 });
+        d0->selSt = 20; d0->selEnd = 40;
+        se::setLoop (*d0);
+        d0->selSt = 60; d0->selEnd = 90;
+        const uint64_t id = e.addWindow (std::move (d0));
+        e.play (id, region);
+        renderBlocks (e, 2);
+        auto* tr = e.windowById (id)->transport.get();
+        check (tr->uiPlaySt() == 20 && tr->uiPlayEnd() == 40, "unset loop, engine: the region plays");
+        auto* d = e.editDoc (id);
+        check (se::unsetLoop (*d) && e.commitMeta (id), "unset loop, engine: committed");
+        renderBlocks (e, 2);
+        check (tr->uiPlaySt() == 60 && tr->uiPlayEnd() == 90 && tr->state() == se::TransportState::playing,
+               "unset loop, engine: the playing loop follows to the selection");
+        e.collectRetired();
+    }
+    // Loop off: play-once never reads the region (3.2), so Unset Loop mid-pass changes nothing.
+    {
+        auto doc = rampDocument ({ 100 });
+        doc->selSt = 30; doc->selEnd = 50;
+        se::setLoop (*doc);
+        doc->selSt = doc->selEnd = 0;
+        se::PlayOptions once; once.useLoopRegion = true; once.fromCaret = true;
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        const auto a = renderTransport (tr, *doc, 5);
+        se::unsetLoop (*doc);
+        const auto b = renderTransport (tr, *doc, 200);
+        std::vector<int> all = a.left; all.insert (all.end(), b.left.begin(), b.left.end());
+        check (all == walk (0, 100, 0, 1, false, 100) && tr.state() == se::TransportState::stopped,
+               "unset loop, loop off: the pass in flight plays on to the end, untouched");
+    }
+}
+
 int main()
 {
     se::Engine engine;
@@ -2310,6 +2417,7 @@ int main()
     loopOnPinTests();
     playOnceSelectionTests();
     playFromCaretTests();
+    unsetLoopTests();
     directionEngineTests();
     switchingTests();
     concurrencyTests();

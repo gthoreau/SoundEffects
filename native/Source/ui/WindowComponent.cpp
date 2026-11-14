@@ -1709,7 +1709,8 @@ bool WindowComponent::canPerform (Action a) const
         case Action::extendAbove:       return d->firstSelTrack > 1;
         case Action::extendBelow:       return d->lastSelTrack < d->numTracks();
         case Action::setLoop:           return d->maxTrackSize() > 0;   // a caret clears the region
-        case Action::selectLoop:        return d->maxTrackSize() > 0 && d->loopEnd > d->loopSt;
+        case Action::unsetLoop:         return se::hasLoop (*d);
+        case Action::selectLoop:        return d->maxTrackSize() > 0 && se::hasLoop (*d);
         case Action::selectSilence:     return d->maxTrackSize() > 0 && d->selSt == d->selEnd;   // needs a caret
         case Action::shiftSound: case Action::selectExactly: case Action::selectPeak:
             return d->maxTrackSize() > 0;   // "can only be applied to an existing sound"
@@ -1825,6 +1826,8 @@ bool WindowComponent::perform (Action a)
             if (se::selectSilence (*d)) commitSelection();
             return true;
         case Action::setLoop:    se::setLoop (*d);    commitSelection(); return true;   // published: the next Play loops it
+        case Action::unsetLoop:  if (! se::unsetLoop (*d)) return false;
+                                 commitSelection(); return true;   // a playing loop re-aims at the selection
         case Action::selectLoop: se::selectLoop (*d); commitSelection(); return true;
         case Action::selectExactly:
             openPopup (editpopups::selectExactly (*d, [safe = SafePointer<WindowComponent> (this)] (size_t bytes, int anchor)

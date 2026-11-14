@@ -56,6 +56,18 @@ void setLoop (SoundDocument& doc)
     doc.loopEnd = doc.selEnd;
 }
 
+bool hasLoop (const SoundDocument& doc) noexcept
+{
+    return doc.loopEnd > doc.loopSt;
+}
+
+bool unsetLoop (SoundDocument& doc)
+{
+    if (! hasLoop (doc)) return false;
+    doc.loopSt = doc.loopEnd = 0;
+    return true;
+}
+
 bool selectLoop (SoundDocument& doc)
 {
     if (doc.maxTrackSize() == 0) return false;

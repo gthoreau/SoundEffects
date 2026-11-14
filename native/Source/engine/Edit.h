@@ -34,6 +34,14 @@ void setSelection (SoundDocument& doc, size_t start, size_t end);
     caret included (CODE 4 @0x1f10). */
 void setLoop (SoundDocument& doc);
 
+/** Is a Set Loop region set? (A caret's Set Loop leaves an empty one: none.) */
+bool hasLoop (const SoundDocument& doc) noexcept;
+
+/** Selection ▸ Unset Loop (0.5.0, no 1995 original) — the region is cleared, so the
+    Play button loops the selection or the whole sound again; the selection is left
+    alone. False (nothing done) when no region is set. */
+bool unsetLoop (SoundDocument& doc);
+
 /** Selection ▸ Select Loop — the loop region becomes the selection, across every
     track. False (nothing done) on an empty sound (CODE 4 @0x1f62). */
 bool selectLoop (SoundDocument& doc);

@@ -114,7 +114,7 @@ public:
         leaveSilence, shiftSound,   // open their popup; the edit happens on Apply
         extendToBeginning, extendToEnd, extendAbove, extendBelow,
         selectExactly, selectPeak,  // popups too
-        selectSilence, setLoop, selectLoop,
+        selectSilence, setLoop, unsetLoop, selectLoop,
         selectAudioSource,   // the Source button / ⌘⇧R: the popup
         record,     // start a take, or carry on with a paused one
         rename,
