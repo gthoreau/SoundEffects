@@ -1513,14 +1513,9 @@ void EffectsPanelComponent::Content::paintHeader (Graphics& g)
     paintBevelFrame (g, { 0, 0, kFrameW, kHeaderH }, false, w != nullptr ? os8::themeColour (w->tint) : colour::gray100);
 
     // The mixer slot, boxed, as in the Sound window's own status row.
-    const Rectangle<int> box (9, 27, 16, 16);
-    g.setColour (colour::black);
-    g.drawRect (box, 1);
     // Window::slot is 0-based; the panel, the strips and the Window show it 1-based.
-    os8::drawText (g, w != nullptr && w->slot >= 0 ? juce::String (w->slot + 1) : juce::String ("-"),
-                   os8::TextStyle::xSmallLabel,
-                   { (float) box.getX() + 1.0f, (float) box.getY() + 2.0f, 14.0f, 9.0f },
-                   juce::Justification::horizontallyCentred);
+    const Rectangle<int> box (9, 27, 16, 16);
+    os8::paintSlotBox (g, box.getPosition(), w != nullptr && w->slot >= 0 ? juce::String (w->slot + 1) : juce::String ("-"));
 
     if (doc == nullptr)
     {

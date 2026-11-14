@@ -86,6 +86,18 @@ void drawText (juce::Graphics& g, const juce::String& text, TextStyle s,
     glyphs.draw (g);
 }
 
+void paintSlotBox (juce::Graphics& g, juce::Point<int> topLeft, const juce::String& text)
+{
+    const juce::Rectangle<int> box (topLeft.x, topLeft.y, 16, 16);
+    g.setColour (juce::Colours::black);
+    g.drawRect (box, 1);
+    // Rounded x, as the mixer strip's drawSlotNumber: a half-pixel x smears this
+    // pixel face.
+    const float w = (float) widthOf (text, TextStyle::xSmallLabel);
+    const float x = std::round ((float) box.getX() + (float) box.getWidth() * 0.5f - w * 0.5f);
+    drawText (g, text, TextStyle::xSmallLabel, { x, (float) box.getY() + 3.5f, w, 9.0f });
+}
+
 juce::Colour themeColour (int index) noexcept
 {
     if (index < 0 || index >= kNumThemes) return colour::gray100;   // Placeholder-gray-100

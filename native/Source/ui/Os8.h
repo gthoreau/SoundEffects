@@ -61,6 +61,11 @@ void drawText (juce::Graphics&, const juce::String&, TextStyle,
     styles — every one matched). */
 int widthOf (const juce::String& text, TextStyle);
 
+/** The mixer-slot square ("mixer-channel-number" in 526:4845): a 16 x 16 black
+    outline at `topLeft` with `text` centred on a whole pixel, 3.5 px down. The
+    Sound window's status row and the Effects panel header both draw it here. */
+void paintSlotBox (juce::Graphics&, juce::Point<int> topLeft, const juce::String& text);
+
 // --- colours: the System/* styles -------------------------------------------
 
 namespace colour {
