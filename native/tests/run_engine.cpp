@@ -329,6 +329,150 @@ void directionTests()
     }
 }
 
+// --- 0.5.0 step 3: playback range ------------------------------------------
+// Ramps are 8-bit mono at the device rate, so bytes == frames. Track 0 is heard on
+// the left, track 1 on the right; where a test needs to know whether a track SOUNDS
+// rather than where it reads, `silent` checks the raw samples (a ramp is 0.0 only at
+// index 50, so a run of zeros is silence).
+
+bool silent (const std::vector<float>& v, size_t from, size_t to)
+{
+    for (size_t i = from; i < to && i < v.size(); ++i) if (v[i] != 0.0f) return false;
+    return true;
+}
+
+std::vector<float> rawRight (se::Transport& tr, const se::SoundDocument& doc, int frames, std::vector<float>& left)
+{
+    std::vector<float> l ((size_t) frames, 0.0f), r ((size_t) frames, 0.0f);
+    tr.render (doc, l.data(), r.data(), frames);
+    left = l;
+    return r;
+}
+
+// 3.1: today's loop-on behaviour, pinned before the play-once and caret changes.
+// Every PlayOptions here is one the Keyboard, the Recorder or 0.4's Play button
+// passes; none of steps 3.2 / 3.3 may change what these hear.
+void loopOnPinTests()
+{
+    se::PlayOptions loop; loop.loop = true;
+    se::PlayOptions region; region.loop = true; region.useLoopRegion = true;   // the Play button's
+    const auto at = [] (se::Transport& tr, int t) { size_t p = 0; return tr.uiTrackPosition (t, p) ? (long) p : -1L; };
+
+    // No selection: every track loops over ITS OWN length, from 0, drifting apart.
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        se::Transport tr (kRate);
+        tr.play (*doc, region);
+        const auto o = renderTransport (tr, *doc, 350);
+        check (tr.uiLoopMode() == se::LoopMode::all && o.frames == 350
+               && isSequence (o.left, walk (0, 100, 0, 1, false, 350)) && isSequence (o.right, walk (0, 60, 0, 1, false, 350)),
+               "loop pin: no selection, tracks of 100 and 60 each loop over their own length from 0");
+        check (tr.uiPlaySt() == 0 && tr.uiPlayEnd() == 100 && tr.uiFirstPlayTrack() == 1 && tr.uiLastPlayTrack() == 2,
+               "loop pin: no selection, the published region is the whole sound, every track");
+        check (at (tr, 0) == 50 && at (tr, 1) == 50, "loop pin: no selection, each playhead on its own frame (350 mod 100, 350 mod 60)");
+    }
+    // A caret is no selection: the whole sound loops from 0, wherever the caret is.
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        doc->selSt = doc->selEnd = 70;
+        se::Transport tr (kRate);
+        tr.play (*doc, region);
+        const auto o = renderTransport (tr, *doc, 120);
+        check (o.left.front() == 0 && o.right.front() == 0 && isSequence (o.left, walk (0, 100, 0, 1, false, 120))
+               && isSequence (o.right, walk (0, 60, 0, 1, false, 120)),
+               "loop pin: a caret loops the whole sound from 0 (0.4 Play, the Keyboard)");
+    }
+    // A selection loops its span in its tracks only, in phase; the rest is silent.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->firstSelTrack = doc->lastSelTrack = 2;
+        doc->selSt = 20; doc->selEnd = 60;
+        se::Transport tr (kRate);
+        tr.play (*doc, region);
+        std::vector<float> l;
+        const auto r = rawRight (tr, *doc, 200, l);
+        std::vector<int> ri; for (float v : r) ri.push_back (indexOf (v));
+        check (silent (l, 0, l.size()) && ri == walk (20, 40, 0, 1, false, 200),
+               "loop pin: a selection on track 2 loops 20..59 on track 2 alone");
+        check (at (tr, 0) == -1 && at (tr, 1) == 20, "loop pin: the unselected track has no playhead");
+        check (tr.uiLoopMode() == se::LoopMode::selection && tr.uiPlaySt() == 20 && tr.uiPlayEnd() == 60
+               && tr.uiFirstPlayTrack() == 2 && tr.uiLastPlayTrack() == 2,
+               "loop pin: the published region is the selection, in its tracks");
+    }
+    // A selected track shorter than the selection is absent past its end, then comes back.
+    {
+        auto doc = rampDocument ({ 100, 40 });
+        doc->firstSelTrack = 1; doc->lastSelTrack = 2;
+        doc->selSt = 20; doc->selEnd = 60;
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        std::vector<float> l;
+        const auto r = rawRight (tr, *doc, 80, l);
+        std::vector<int> li; for (float v : l) li.push_back (indexOf (v));
+        std::vector<int> ri; for (size_t i = 0; i < 20; ++i) ri.push_back (indexOf (r[i]));
+        check (li == walk (20, 40, 0, 1, false, 80) && ri == walk (20, 20, 0, 1, false, 20)
+               && silent (r, 20, 40) && indexOf (r[40]) == 20 && silent (r, 60, 80),
+               "loop pin: a 40-frame track in a 20..60 loop plays 20..39, is silent to 60, then again");
+    }
+    // Set Loop: the Play button loops the region on every track; the selection is ignored.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->loopSt = 30; doc->loopEnd = 50;
+        doc->firstSelTrack = doc->lastSelTrack = 2;
+        doc->selSt = 70; doc->selEnd = 90;
+        se::Transport tr (kRate);
+        tr.play (*doc, region);
+        const auto o = renderTransport (tr, *doc, 70);
+        check (isSequence (o.left, walk (30, 20, 0, 1, false, 70)) && isSequence (o.right, walk (30, 20, 0, 1, false, 70)),
+               "loop pin: Set Loop loops 30..49 on every track, over a selection elsewhere");
+        check (tr.uiPlaySt() == 30 && tr.uiPlayEnd() == 50 && tr.uiFirstPlayTrack() == 1 && tr.uiLastPlayTrack() == 2,
+               "loop pin: the published region is the Set Loop region, every track");
+    }
+    // Set Loop with a caret: the region all the same.
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        doc->loopSt = 30; doc->loopEnd = 50;
+        doc->selSt = doc->selEnd = 80;
+        se::Transport tr (kRate);
+        tr.play (*doc, region);
+        const auto o = renderTransport (tr, *doc, 50);
+        check (isSequence (o.left, walk (30, 20, 0, 1, false, 50)) && isSequence (o.right, walk (30, 20, 0, 1, false, 50)),
+               "loop pin: Set Loop with a caret loops the region");
+    }
+    // Without useLoopRegion (the Keyboard), a set region is ignored: the selection loops.
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->loopSt = 30; doc->loopEnd = 50;
+        doc->firstSelTrack = 1; doc->lastSelTrack = 2;
+        doc->selSt = 60; doc->selEnd = 70;
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        const auto o = renderTransport (tr, *doc, 30);
+        check (isSequence (o.left, walk (60, 10, 0, 1, false, 30)) && isSequence (o.right, walk (60, 10, 0, 1, false, 30)),
+               "loop pin: the Keyboard's loop ignores Set Loop and loops the selection");
+    }
+    // A Set Loop region that the shorter track does not reach: it is silent throughout.
+    {
+        auto doc = rampDocument ({ 100, 20 });
+        doc->loopSt = 30; doc->loopEnd = 50;
+        se::Transport tr (kRate);
+        tr.play (*doc, region);
+        std::vector<float> l;
+        const auto r = rawRight (tr, *doc, 60, l);
+        check (silent (r, 0, r.size()) && at (tr, 1) == -1 && at (tr, 0) == 30,
+               "loop pin: a track that ends before the region is silent, with no playhead");
+    }
+    // Block after block, the loop keeps running (it never stops).
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        se::Transport tr (kRate);
+        tr.play (*doc, region);
+        for (int k = 0; k < 40; ++k) renderTransport (tr, *doc, kBlock);
+        check (tr.state() == se::TransportState::playing && at (tr, 0) == (40 * kBlock) % 100 && at (tr, 1) == (40 * kBlock) % 60,
+               "loop pin: a loop runs on for ever, each track on its own lap");
+    }
+}
+
 std::unique_ptr<se::SoundDocument> sineDocument (size_t len);
 
 // 12.8: deselecting (and every live re-aim) — a track that cannot keep its own frame
@@ -1824,6 +1968,7 @@ int main()
     }
 
     directionTests();
+    loopOnPinTests();
     directionEngineTests();
     switchingTests();
     concurrencyTests();
