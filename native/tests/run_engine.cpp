@@ -12,6 +12,7 @@
 #include "engine/Recorder.h"
 #include "engine/Resample.h"
 #include "engine/SampleFormat.h"
+#include "engine/TransportButtons.h"
 
 #include <atomic>
 #include <chrono>
@@ -2176,6 +2177,283 @@ void unsetLoopTests()
     }
 }
 
+// --- 0.5.0 step 5.1: the transport buttons' model, one block per row of the spec
+// table ("Transport buttons"), plus the initial state from its note. ---------------
+bool cuesAre (const se::TransportCues& c, std::initializer_list<se::TransportCue> want)
+{
+    if (c.count != static_cast<int> (want.size())) return false;
+    int i = 0;
+    for (auto w : want) if (c.list[static_cast<size_t> (i++)] != w) return false;
+    return true;
+}
+
+bool lights (const se::TransportButtons& b, se::RecordLight rec, bool stop, bool play, bool pause, bool ff)
+{
+    return b.record() == rec && b.stopOn() == stop && b.playOn() == play && b.pauseOn() == pause && b.ffOn() == ff;
+}
+
+void transportButtonsTests()
+{
+    using B = se::TransportButtons;
+    using Q = se::TransportCue;
+    using R = se::RecordLight;
+    using S = se::RollState;
+
+    // --- the note: initial state ---------------------------------------------------
+    {
+        const B b = B::initial();
+        check (lights (b, R::off, false, false, false, false) && b.loopOn(),
+               "buttons initial: everything off but Loop");
+        check (b.directionEnabled() && b.ffEnabled() && b.loopEnabled() && ! b.takeOpen(),
+               "buttons initial: Direction, FF and Loop enabled, no take");
+    }
+
+    // --- Record: R / click arms and disarms ------------------------------------------
+    {
+        B b = B::initial();
+        auto c = b.pressRecord();
+        check (c.empty() && b.record() == R::armed && ! b.playOn(), "record: R arms (blinks), nothing starts");
+        check (! b.directionEnabled() && ! b.ffEnabled() && ! b.loopEnabled(), "record armed: Direction, FF, Loop disabled");
+        check (b.ffDown().empty() && ! b.ffOn(), "record armed: FF does nothing");
+        b.toggleLoop();
+        check (b.loopOn(), "record armed: Loop cannot be toggled");
+        c = b.pressRecord();
+        check (c.empty() && b.record() == R::off && b.directionEnabled() && b.ffEnabled() && b.loopEnabled() && b.loopOn(),
+               "record: R again disarms; Direction, FF, Loop back as they were");
+
+        b.toggleLoop();   // Loop off before arming: it stays off through arm/disarm
+        b.pressRecord(); b.pressRecord();
+        check (! b.loopOn(), "record: disarming gives Loop back its own state (off)");
+    }
+    {
+        // Armed, then Play: recording starts.
+        B b = B::initial();
+        b.pressRecord();
+        auto c = b.pressPlay();
+        check (cuesAre (c, { Q::takeStart }) && lights (b, R::on, false, true, false, false) && b.takeOpen(),
+               "record armed + Play: Record on, the take starts");
+        // Space does the same.
+        B s = B::initial();
+        s.pressRecord();
+        check (cuesAre (s.space(), { Q::takeStart }) && s.record() == R::on, "record armed + Space: the take starts");
+    }
+    {
+        // Play already on, then R: recording starts at once.
+        B b = B::initial();
+        b.pressPlay();
+        auto c = b.pressRecord();
+        check (cuesAre (c, { Q::takeStart }) && lights (b, R::on, false, true, false, false),
+               "record while playing: Record on at once, the take joins the rolling transport");
+        // Disarm mid-take: the take ends, playback carries on.
+        c = b.pressRecord();
+        check (cuesAre (c, { Q::takeEnd }) && lights (b, R::off, false, true, false, false) && ! b.takeOpen(),
+               "record: disarm mid-take ends the take, Play stays on");
+        check (b.directionEnabled() && b.ffEnabled() && b.loopEnabled(), "record: disarm mid-take re-enables Direction, FF, Loop");
+    }
+    {
+        // ⇧R: direct recording, from every state.
+        B b = B::initial();
+        auto c = b.directRecord();
+        check (cuesAre (c, { Q::takeStart }) && lights (b, R::on, false, true, false, false) && ! b.ffEnabled(),
+               "direct recording from the initial state: Record and Play on, the take starts");
+        check (b.directRecord().empty(), "direct recording while recording: nothing");
+
+        B p = B::initial(); p.pressPlay(); p.pressPause();
+        c = p.directRecord();
+        check (cuesAre (c, { Q::takeStart }) && lights (p, R::on, false, true, false, false),
+               "direct recording from Pause: Pause off, Record and Play on");
+
+        B s = B::initial(); s.pressStop();
+        s.directRecord();
+        check (lights (s, R::on, false, true, false, false), "direct recording from Stop: Stop off");
+
+        B a = B::initial(); a.pressRecord();
+        check (cuesAre (a.directRecord(), { Q::takeStart }) && a.record() == R::on, "direct recording from armed: starts");
+    }
+    {
+        // A take that cannot start puts Record back off.
+        B b = B::initial(); b.pressRecord(); b.pressPlay();
+        b.takeRefused (false);
+        check (lights (b, R::off, false, false, false, false) && ! b.takeOpen(), "record refused from stopped: all off again");
+        B p = B::initial(); p.pressPlay(); p.pressRecord();
+        p.takeRefused (true);
+        check (lights (p, R::off, false, true, false, false), "record refused while playing: Play stays on");
+    }
+
+    // --- Stop: latches; Record, Play, Pause off ---------------------------------------
+    {
+        B b = B::initial();
+        b.pressPlay();
+        auto c = b.pressStop();
+        check (cuesAre (c, { Q::stop }) && lights (b, R::off, true, false, false, false), "stop from Play: latches, Play off");
+        c = b.pressStop();
+        check (cuesAre (c, { Q::stop }) && b.stopOn(), "stop again: stays latched");
+
+        B r = B::initial(); r.directRecord();
+        c = r.pressStop();
+        check (cuesAre (c, { Q::stop }) && lights (r, R::off, true, false, false, false) && ! r.takeOpen(),
+               "stop while recording: the take and playback stop, Record off");
+        check (r.directionEnabled() && r.ffEnabled() && r.loopEnabled(), "stop after a take: Direction, FF, Loop enabled");
+
+        B p = B::initial(); p.pressPlay(); p.pressPause();
+        p.pressStop();
+        check (lights (p, R::off, true, false, false, false), "stop from Pause: Pause off");
+
+        B a = B::initial(); a.pressRecord();
+        a.pressStop();
+        check (a.record() == R::off, "stop with Record armed: disarms");
+    }
+
+    // --- Direction: disabled while Record is armed or on ------------------------------
+    {
+        B b = B::initial();
+        check (b.directionEnabled(), "direction: enabled initially");
+        b.directRecord();
+        check (! b.directionEnabled(), "direction: disabled while recording");
+        b.pressPause();
+        check (! b.directionEnabled(), "direction: disabled while the take is held (armed)");
+        b.pressStop();
+        check (b.directionEnabled(), "direction: enabled after Stop");
+    }
+
+    // --- Play: latches; Pause off; armed Record on ------------------------------------
+    {
+        B b = B::initial();
+        auto c = b.pressPlay();
+        check (cuesAre (c, { Q::play }) && lights (b, R::off, false, true, false, false), "play from initial: latches on");
+        check (b.pressPlay().empty() && b.playOn(), "play again: push-on, nothing more");
+        b.pressPause();
+        c = b.pressPlay();
+        check (cuesAre (c, { Q::resume }) && lights (b, R::off, false, true, false, false), "play from Pause: Pause off, resumes");
+        b.pressStop();
+        c = b.pressPlay();
+        check (cuesAre (c, { Q::play }) && lights (b, R::off, false, true, false, false), "play from Stop: Stop off");
+    }
+
+    // --- Pause: latches; Play off; Record on -> armed ----------------------------------
+    {
+        B b = B::initial();
+        check (b.pressPause().empty() && ! b.pauseOn(), "pause with nothing rolling: nothing to hold");
+        b.pressPlay();
+        auto c = b.pressPause();
+        check (cuesAre (c, { Q::pause }) && lights (b, R::off, false, false, true, false), "pause from Play: latches, Play off");
+        check (b.pressPause().empty() && b.pauseOn(), "pause again: push-on, stays paused");
+        check (cuesAre (b.space(), { Q::resume }) && b.playOn(), "space from Pause: plays");
+        check (cuesAre (b.space(), { Q::pause }) && b.pauseOn(), "space from Play: pauses");
+
+        B r = B::initial(); r.directRecord();
+        c = r.pressPause();
+        check (cuesAre (c, { Q::takePause }) && lights (r, R::armed, false, false, true, false) && r.takeOpen(),
+               "pause while recording: Record back to armed (blinks), the take held");
+        c = r.pressPlay();
+        check (cuesAre (c, { Q::takeResume }) && lights (r, R::on, false, true, false, false),
+               "play on a held take: Record on, the same take carries on");
+        r.pressPause();
+        c = r.pressRecord();
+        check (cuesAre (c, { Q::takeEnd }) && lights (r, R::off, false, false, true, false) && ! r.takeOpen(),
+               "disarm a held take: it ends, Pause stays on");
+        c = r.pressPlay();
+        check (cuesAre (c, { Q::resume }), "play after that: plain playback, no take");
+
+        B a = B::initial(); a.pressPlay(); a.pressPause(); a.pressRecord();
+        c = a.pressPlay();
+        check (cuesAre (c, { Q::takeStart }) && a.record() == R::on, "armed while paused, then Play: a new take starts");
+    }
+
+    // --- FF: momentary, in its three cases --------------------------------------------
+    {
+        // IF Play is on.
+        B b = B::initial(); b.pressPlay();
+        const B before = b;
+        auto c = b.ffDown();
+        check (cuesAre (c, { Q::fastOn }) && lights (b, R::off, false, true, false, true), "FF held from Play: FF on");
+        check (b.ffDown().empty(), "FF held: a repeat press does nothing");
+        c = b.ffUp();
+        check (cuesAre (c, { Q::fastOff }) && b == before, "FF let go from Play: FF off, Play still on");
+    }
+    {
+        // IF Pause is on.
+        B b = B::initial(); b.pressPlay(); b.pressPause();
+        const B before = b;
+        auto c = b.ffDown();
+        check (cuesAre (c, { Q::resume, Q::fastOn }) && lights (b, R::off, false, true, false, true),
+               "FF held from Pause: FF and Play on, Pause off");
+        c = b.ffUp();
+        check (cuesAre (c, { Q::fastOff, Q::pause }) && b == before, "FF let go from Pause: back to Pause");
+    }
+    {
+        // IF Stop is on.
+        B b = B::initial(); b.pressStop();
+        const B before = b;
+        auto c = b.ffDown();
+        check (cuesAre (c, { Q::play, Q::fastOn }) && lights (b, R::off, false, true, false, true),
+               "FF held from Stop: FF and Play on, Stop off");
+        c = b.ffUp();
+        check (cuesAre (c, { Q::stop }) && b == before, "FF let go from Stop: back to Stop");
+    }
+    {
+        // The initial state (not in the table): as Stop, and back to the initial state.
+        B b = B::initial();
+        b.ffDown();
+        check (b.playOn() && b.ffOn() && ! b.stopOn(), "FF held from the initial state: plays");
+        auto c = b.ffUp();
+        check (cuesAre (c, { Q::stop }) && b == B::initial(), "FF let go from the initial state: back to it, Stop unlit");
+    }
+    {
+        // Another press while FF is held: FF lets go where it is, nothing is restored.
+        B b = B::initial(); b.pressStop();
+        b.ffDown();
+        auto c = b.space();
+        check (cuesAre (c, { Q::fastOff }) && lights (b, R::off, false, true, false, false),
+               "space while FF held from Stop: FF off, playback stays on");
+        check (b.ffUp().empty() && b.playOn(), "FF let go after that: nothing to restore");
+
+        B p = B::initial(); p.pressPlay(); p.pressPause(); p.ffDown();
+        c = p.pressPause();
+        check (cuesAre (c, { Q::fastOff, Q::pause }) && p.pauseOn() && ! p.ffOn(), "pause while FF held: pauses, FF off");
+
+        B s = B::initial(); s.pressPlay(); s.ffDown();
+        c = s.pressStop();
+        check (cuesAre (c, { Q::stop }) && lights (s, R::off, true, false, false, false) && s.ffUp().empty(),
+               "stop while FF held: stops, the release does nothing");
+
+        B r = B::initial(); r.pressPlay(); r.ffDown();
+        c = r.pressRecord();
+        check (cuesAre (c, { Q::fastOff, Q::takeStart }) && r.record() == R::on && ! r.ffOn(),
+               "R while FF held: FF off, then recording starts");
+    }
+
+    // --- Loop: toggles (on initially) -------------------------------------------------
+    {
+        B b = B::initial();
+        b.toggleLoop();
+        check (! b.loopOn(), "loop: L turns it off");
+        b.toggleLoop();
+        check (b.loopOn(), "loop: L again turns it on");
+        b.pressPlay(); b.toggleLoop();
+        check (! b.loopOn() && b.playOn(), "loop: toggles while playing, playback untouched");
+    }
+
+    // --- following the engine -------------------------------------------------------
+    {
+        B b = B::initial(); b.pressPlay();
+        b.engineChanged (S::stopped, S::stopped);
+        check (b.playOn(), "engine: no edge (a cue not applied yet) changes nothing");
+        b.engineChanged (S::playing, S::stopped);
+        check (lights (b, R::off, true, false, false, false), "engine: a pass that runs out latches Stop");
+
+        B k = B::initial();
+        k.engineChanged (S::stopped, S::playing);
+        check (lights (k, R::off, false, true, false, false), "engine: the Keyboard starts it, Play lights");
+
+        B r = B::initial(); r.directRecord();
+        r.engineChanged (S::playing, S::stopped);
+        check (r.record() == R::on, "engine: a take's transport stopping is the Recorder's to report");
+        r.ended();
+        check (lights (r, R::off, true, false, false, false) && ! r.takeOpen(), "ended: a punch-out ends as a Stop");
+    }
+}
+
 int main()
 {
     se::Engine engine;
@@ -2413,6 +2691,7 @@ int main()
                "select loop: the loop region, every track");
     }
 
+    transportButtonsTests();
     directionTests();
     loopOnPinTests();
     playOnceSelectionTests();
