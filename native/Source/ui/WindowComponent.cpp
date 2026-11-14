@@ -1564,6 +1564,18 @@ void WindowComponent::selectAllAudio()
     commitSelection();   // publish, so Play can loop it — same as a drag's mouseUp
 }
 
+se::PlayOptions WindowComponent::playButtonOptions() const
+{
+    // Loop plays the Set Loop region when there is one, else the selection
+    // (Transport falls back by itself when the region is empty). With no selection
+    // it starts at the caret, on every track (0.5.0 step 3.3).
+    se::PlayOptions o;
+    o.loop = loopEnabled;
+    o.useLoopRegion = true;
+    o.fromCaret = true;
+    return o;
+}
+
 void WindowComponent::togglePlayPause()
 {
     if (isRecording())
@@ -1583,10 +1595,7 @@ void WindowComponent::togglePlayPause()
     // the top.
     if (state == se::TransportState::stopped)
     {
-        // Loop plays the Set Loop region when there is one, else the selection
-        // (Transport falls back by itself when the region is empty).
-        se::PlayOptions o; o.loop = loopEnabled; o.useLoopRegion = true;
-        engine.play (id, o);
+        engine.play (id, playButtonOptions());
         advanceEnabled = false;         // play() resets advanceScale
     }
     else engine.pause (id);
@@ -1765,7 +1774,15 @@ bool WindowComponent::perform (Action a)
             // advance() starts playback if the transport is stopped, so engaging it
             // also rolls — the same as the button.
             if (advanceEnabled) engine.normalSpeed (id);
-            else                engine.advance (id);
+            else
+            {
+                // Rolling from Stop, it starts where Play would (the transport's
+                // last options may be the Keyboard's or the Recorder's).
+                auto* w = engineWindow();
+                if (w == nullptr || w->transport->uiState() == se::TransportState::stopped)
+                    engine.play (id, playButtonOptions());
+                engine.advance (id);
+            }
             advanceEnabled = ! advanceEnabled;
             updateTransportButtons();
             repaint();

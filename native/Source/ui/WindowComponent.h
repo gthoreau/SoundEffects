@@ -254,6 +254,7 @@ private:
 
     // --- transport ----------------------------------------------------------------
     void togglePlayPause();
+    se::PlayOptions playButtonOptions() const;
     void updateTransportButtons();
 
     /** Select every track end to end (triple-click, ⌘A) and publish it. */

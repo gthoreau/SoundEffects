@@ -81,6 +81,7 @@ void Transport::anchor (const SoundDocument& doc, PlayContext next) noexcept
     const int n = std::min (doc.numTracks(), kPhaseTracks);
     const PlayContext old = ctx;
     const double fresh = 0.25 * static_cast<double> (fs) - pos;   // u = 0: the span's start
+    next.silentUntil.fill (0.0);   // the caret's first lap is over once anything re-aims
 
     // The reference (12.8): the topmost track the OLD mapping had reading a frame of
     // its own. A track that cannot keep its frame follows it, so deselecting does not
@@ -160,6 +161,51 @@ void Transport::setDirection (PlayDirection d, const SoundDocument& doc) noexcep
     anchor (doc, next);
 }
 
+void Transport::aimLapsFromCaret (const SoundDocument& doc, size_t c) noexcept
+{
+    // pos is an arbitrary origin for a loop; starting it at the caret keeps forward
+    // on the plain mapping (phase 0: track t reads pos mod its length), so its first
+    // lap is the caret to its end and every later lap lines up with pos as usual.
+    const size_t fs = static_cast<size_t> (std::max (1, doc.frameSize()));
+    const size_t cf = c / fs;
+    pos = static_cast<double> (c);
+    const int n = std::min (doc.numTracks(), kPhaseTracks);
+    for (int t = 0; t < n; ++t)
+    {
+        const auto i = static_cast<size_t> (t);
+        const size_t L = doc.tracks[i].data.size() / fs;
+        if (L == 0) continue;
+        // The next lap of a track the caret is past: going up, the next multiple of
+        // its length on the pos clock; going down, when the read point (falling from
+        // the caret) reaches its last frame.
+        const double nextLapUp = static_cast<double> (((cf + L - 1) / L) * L * fs);
+        switch (dir)
+        {
+            case PlayDirection::forward:
+                ctx.phase[i] = 0.0;
+                if (cf >= L) ctx.silentUntil[i] = nextLapUp;
+                break;
+            case PlayDirection::backward:
+                if (cf <= L) ctx.phase[i] = phaseToRead (dir, L, cf - 1, false, pos, fs);
+                else
+                {
+                    ctx.silentUntil[i] = pos + static_cast<double> ((cf - L) * fs);
+                    ctx.phase[i] = phaseToRead (dir, L, L - 1, false, ctx.silentUntil[i], fs);
+                }
+                break;
+            case PlayDirection::pingPong:
+                if (cf < L) ctx.phase[i] = phaseToRead (dir, L, cf, true, pos, fs);
+                else
+                {
+                    ctx.silentUntil[i] = nextLapUp;
+                    ctx.phase[i] = phaseToRead (dir, L, 0, true, nextLapUp, fs);
+                }
+                break;
+        }
+    }
+    // A track beyond kPhaseTracks shares the last slot, as everywhere.
+}
+
 void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
 {
     playOpts = opts;
@@ -177,6 +223,16 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
     ctx = {};
     ctx.dir = dir;
     double phase = 0.0;
+    bool perTrackPhases = false;   // set by aimLapsFromCaret, not the single fill below
+
+    // Play from the caret: no selection, a caret strictly inside the sound. At 0 or
+    // at (past) the end it is the start of the sound, as before.
+    size_t caret = 0;
+    if (opts.fromCaret && ! hasSelection)
+    {
+        const size_t c = doc.selSt - doc.selSt % fs;
+        if (c < doc.maxTrackSize()) caret = c;
+    }
 
     if (opts.loop)
     {
@@ -196,6 +252,11 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
         {
             pos = 0.0;
             regionEnd = doc.maxTrackSize();
+            if (caret > 0)
+            {
+                aimLapsFromCaret (doc, caret);
+                perTrackPhases = true;
+            }
         }
     }
     else
@@ -205,7 +266,13 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
         ctx.mode = LoopMode::once;
         ctx.firstSelTrack = 1; ctx.lastSelTrack = kAllTracks;
         size_t a = 0, b = doc.maxTrackSize();
-        if (hasSelection)
+        if (caret > 0)
+        {
+            // From the caret to the end; backward, from the caret down to the start.
+            if (dir == PlayDirection::backward) b = caret;
+            else                                a = caret;
+        }
+        else if (hasSelection)
         {
             a = doc.selSt; b = doc.selEnd;
             if (! opts.allTracks)
@@ -223,7 +290,7 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
         stopPos = pos + (dir == PlayDirection::pingPong ? 2.0 * span : span);
         regionSt = a; regionEnd = b;
     }
-    ctx.phase.fill (phase);
+    if (! perTrackPhases) ctx.phase.fill (phase);
 
     uiLoopModeCode.store (static_cast<uint8_t> (ctx.mode), std::memory_order_relaxed);
     publishRegion (regionSt, regionEnd, regionFirst, regionLast);

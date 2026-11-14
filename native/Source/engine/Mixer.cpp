@@ -59,7 +59,9 @@ TrackRead readFor (const PlayContext& ctx, int track, size_t lenFrames, size_t f
     bool wrap = true;
     if (! readSpan (ctx, track, lenFrames, fs, lo, S, wrap)) return r;
 
-    const double ph = ctx.phase[static_cast<size_t> (std::min (track, kPhaseTracks - 1))];
+    const size_t slot = static_cast<size_t> (std::min (track, kPhaseTracks - 1));
+    if (pos < ctx.silentUntil[slot]) return r;  // from a caret: waiting for its next lap
+    const double ph = ctx.phase[slot];
     const int64_t u = static_cast<int64_t> (std::floor ((pos + ph) / static_cast<double> (fs)));
     const int64_t s = static_cast<int64_t> (S);
 

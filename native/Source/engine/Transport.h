@@ -38,6 +38,12 @@ struct PlayOptions
         The Recorder's: punching into a selection, the other tracks are the backing.
         Off (Play), only the selected tracks play, over the selected span (0.5.0 Bug 2). */
     bool   allTracks = false;
+    /** With no selection, start at the caret (selSt == selEnd), on every track (0.5.0
+        step 3.3; the Play button's). Loop off: from the caret to the end, once. Loop
+        on: from the caret, then each track loops over its whole length; a track the
+        caret is past stays silent until its next lap. A caret at 0 or at the end
+        plays as it always did, from the start. */
+    bool   fromCaret = false;
 };
 
 class Transport
@@ -144,6 +150,9 @@ private:
         the way it was heading; a track that has no such frame in the new span
         restarts at the span's start. The old mapping fades out underneath. */
     void anchor (const SoundDocument& doc, PlayContext next) noexcept;
+    /** Loop on, no selection, from caret `c` (bytes, frame-aligned, 0 < c < the
+        longest track): sets pos and each track's phase and silentUntil. */
+    void aimLapsFromCaret (const SoundDocument& doc, size_t c) noexcept;
     void publishRegion (size_t st, size_t end, int first, int last) noexcept;
     void publishTrackPositions (const SoundDocument& doc) noexcept;
     void startCrossfade (const PlayContext& from) noexcept;

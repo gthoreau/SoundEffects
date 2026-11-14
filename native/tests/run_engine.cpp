@@ -592,6 +592,226 @@ void playOnceSelectionTests()
     }
 }
 
+// 3.3: play from the caret (decisions table): no selection, a caret — every track
+// starts at the caret. Loop off: to the end of each track, once. Loop on: from the
+// caret, then each track loops over its whole length; a caret past a track's end
+// leaves it silent until its next lap. The playhead is drawn only where it sounds.
+void playFromCaretTests()
+{
+    using se::PlayDirection;
+    se::PlayOptions once; once.useLoopRegion = true; once.fromCaret = true;          // the Play button, loop off
+    se::PlayOptions loop = once; loop.loop = true;                                   // ...loop on
+    const auto at = [] (se::Transport& tr, int t) { size_t p = 0; return tr.uiTrackPosition (t, p) ? (long) p : -1L; };
+    const auto caretAt = [] (se::SoundDocument& d, size_t c, int track) { d.selSt = d.selEnd = c; d.firstSelTrack = d.lastSelTrack = track; };
+
+    // --- loop off ---
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        caretAt (*doc, 30, 1);
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        check (at (tr, 0) == 30 && at (tr, 1) == 30 && tr.uiPlaySt() == 30 && tr.uiPlayEnd() == 100,
+               "caret, loop off: every track starts at the caret; the region is caret..end");
+        std::vector<float> l;
+        const auto r = rawRight (tr, *doc, 200, l);
+        std::vector<int> li, ri;
+        for (int i = 0; i < 70; ++i) li.push_back (indexOf (l[(size_t) i]));
+        for (int i = 0; i < 30; ++i) ri.push_back (indexOf (r[(size_t) i]));
+        check (li == walk (30, 70, 0, 1, false, 70) && ri == walk (30, 30, 0, 1, false, 30)
+               && silent (r, 30, r.size()) && silent (l, 70, l.size()) && tr.state() == se::TransportState::stopped,
+               "caret, loop off: each track to its own end, once, then stop");
+    }
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        caretAt (*doc, 40, 2);                              // a caret in track 2 only
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        const auto o = renderTransport (tr, *doc, 10);
+        check (o.left.front() == 40 && o.right.front() == 40 && tr.uiFirstPlayTrack() == 1 && tr.uiLastPlayTrack() == 2,
+               "caret, loop off: a caret in one track plays ALL tracks");
+    }
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        caretAt (*doc, 70, 1);                              // past track 2's end
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        const bool noHead = at (tr, 1) == -1;
+        std::vector<float> l;
+        const auto r = rawRight (tr, *doc, 100, l);
+        std::vector<int> li; for (int i = 0; i < 30; ++i) li.push_back (indexOf (l[(size_t) i]));
+        check (noHead && silent (r, 0, r.size()) && li == walk (70, 30, 0, 1, false, 30) && tr.state() == se::TransportState::stopped,
+               "caret, loop off: a caret past a track's end leaves it silent, with no playhead");
+    }
+    for (size_t c : { (size_t) 0, (size_t) 100 })           // at the start, or at the end
+    {
+        auto doc = rampDocument ({ 100 });
+        caretAt (*doc, c, 1);
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        const auto o = renderTransport (tr, *doc, 200);
+        check (o.frames == 100 && isSequence (o.left, walk (0, 100, 0, 1, false, 100)),
+               c == 0 ? "caret, loop off: a caret at 0 plays the whole sound (unchanged)"
+                      : "caret, loop off: a caret at the end plays the whole sound from the start");
+    }
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        caretAt (*doc, 30, 1);
+        se::Transport tr (kRate);
+        tr.setDirection (PlayDirection::backward, *doc);
+        tr.play (*doc, once);
+        const auto o = renderTransport (tr, *doc, 100);
+        check (o.frames == 30 && isSequence (o.left, walk (0, 30, 29, -1, false, 30)) && isSequence (o.right, walk (0, 30, 29, -1, false, 30)),
+               "caret, loop off, backward: from the caret down to the start");
+    }
+    {
+        auto doc = rampDocument ({ 100 });
+        caretAt (*doc, 30, 1);
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        tr.advance (*doc);                                  // FF while rolling
+        const auto o = renderTransport (tr, *doc, 5);
+        check (o.left[0] == 30 && o.left[1] == 32 && o.left[2] == 34, "caret, loop off: Advance carries on from the caret at 2x");
+        tr.stop();
+        tr.advance (*doc);                                  // FF from Stop: the last Play's options
+        check (at (tr, 0) == 30, "caret: Advance from Stop starts at the caret too");
+    }
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        caretAt (*doc, 30, 1);
+        se::PlayOptions plain;                              // the Recorder's / an old caller's
+        se::Transport tr (kRate);
+        tr.play (*doc, plain);
+        check (at (tr, 0) == 0 && at (tr, 1) == 0, "caret: without fromCaret, play-once starts at 0 (the Recorder)");
+    }
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->firstSelTrack = doc->lastSelTrack = 2;
+        doc->selSt = 20; doc->selEnd = 40;
+        se::Transport tr (kRate);
+        tr.play (*doc, once);
+        check (at (tr, 0) == -1 && at (tr, 1) == 20, "caret: a selection is not a caret (Bug 2 rule)");
+    }
+
+    // --- loop on ---
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        caretAt (*doc, 30, 1);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        check (tr.uiLoopMode() == se::LoopMode::all && at (tr, 0) == 30 && at (tr, 1) == 30, "caret, loop on: every track starts at the caret");
+        const auto o = renderTransport (tr, *doc, 300);
+        check (isSequence (o.left, walk (0, 100, 30, 1, false, 300)) && isSequence (o.right, walk (0, 60, 30, 1, false, 300)),
+               "caret, loop on: a partial first lap, then each track loops its whole length");
+    }
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        caretAt (*doc, 70, 1);                              // past track 2's end: its next lap is at 120
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        const bool noHead = at (tr, 1) == -1;
+        std::vector<float> l;
+        const auto r = rawRight (tr, *doc, 200, l);
+        std::vector<int> li, ri;
+        for (float v : l) li.push_back (indexOf (v));
+        for (size_t i = 50; i < r.size(); ++i) ri.push_back (indexOf (r[i]));
+        check (noHead && silent (r, 0, 50) && ri == walk (0, 60, 0, 1, false, 150) && li == walk (0, 100, 70, 1, false, 200),
+               "caret, loop on: a caret past a track's end leaves it silent until its next lap, then it loops");
+        check (at (tr, 1) == (270 % 60), "caret, loop on: its playhead appears with its sound");
+    }
+    {
+        auto doc = rampDocument ({ 100, 40 });
+        caretAt (*doc, 80, 1);                              // exactly on track 2's lap boundary
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        const auto o = renderTransport (tr, *doc, 50);
+        check (isSequence (o.right, walk (0, 40, 0, 1, false, 50)), "caret, loop on: a caret on a lap boundary starts that track at once, from 0");
+    }
+    {
+        auto doc = rampDocument ({ 100, 60 });
+        caretAt (*doc, 100, 1);                             // at the end: the start, as before
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        const auto o = renderTransport (tr, *doc, 150);
+        check (isSequence (o.left, walk (0, 100, 0, 1, false, 150)) && isSequence (o.right, walk (0, 60, 0, 1, false, 150)),
+               "caret, loop on: a caret at the end loops from the start");
+    }
+    {
+        auto doc = rampDocument ({ 100, 20 });
+        caretAt (*doc, 30, 1);
+        se::Transport tr (kRate);
+        tr.setDirection (PlayDirection::backward, *doc);
+        tr.play (*doc, loop);
+        std::vector<float> l;
+        const auto r = rawRight (tr, *doc, 150, l);
+        std::vector<int> li, ri;
+        for (float v : l) li.push_back (indexOf (v));
+        for (size_t i = 10; i < r.size(); ++i) ri.push_back (indexOf (r[i]));
+        check (li == walk (0, 100, 29, -1, false, 150) && silent (r, 0, 10) && ri == walk (0, 20, 19, -1, false, 140),
+               "caret, loop on, backward: down from the caret; a shorter track comes in when the read point reaches it");
+    }
+    {
+        auto doc = rampDocument ({ 100 });
+        caretAt (*doc, 30, 1);
+        se::Transport tr (kRate);
+        tr.setDirection (PlayDirection::pingPong, *doc);
+        tr.play (*doc, loop);
+        const auto o = renderTransport (tr, *doc, 250);
+        check (isSequence (o.left, walk (0, 100, 30, 1, true, 250)), "caret, loop on, ping-pong: up from the caret, then bounces");
+    }
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->loopSt = 50; doc->loopEnd = 60;
+        caretAt (*doc, 30, 1);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        const auto o = renderTransport (tr, *doc, 30);
+        check (isSequence (o.left, walk (50, 10, 0, 1, false, 30)), "caret, loop on: a Set Loop region wins over the caret");
+    }
+    {
+        auto doc = rampDocument ({ 100, 100 });
+        doc->firstSelTrack = doc->lastSelTrack = 2;
+        doc->selSt = 20; doc->selEnd = 40;
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        check (tr.uiLoopMode() == se::LoopMode::selection && at (tr, 0) == -1 && at (tr, 1) == 20,
+               "caret, loop on: a selection loops as before (3.1)");
+    }
+    {
+        // Moving the caret while it loops re-aims nothing (a running loop is never re-aimed by a caret).
+        auto doc = rampDocument ({ 100 });
+        caretAt (*doc, 30, 1);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        renderTransport (tr, *doc, 10);
+        caretAt (*doc, 80, 1);
+        renderTransport (tr, *doc, 1);
+        check (at (tr, 0) == 41, "caret, loop on: moving the caret mid-loop does not move the playhead");
+    }
+    {
+        // A direction change during a track's wait ends the wait: it joins on the others' frame.
+        auto doc = rampDocument ({ 100, 60 });
+        caretAt (*doc, 70, 1);
+        se::Transport tr (kRate);
+        tr.play (*doc, loop);
+        renderTransport (tr, *doc, 10);                     // track 1 reads 80 next; track 2 waiting
+        tr.setDirection (PlayDirection::backward, *doc);
+        check (at (tr, 0) == 80 && at (tr, 1) == 20, "caret, loop on: turned round mid-wait, the waiting track joins (80 mod 60)");
+    }
+    // Through the Engine, as the Play button sends it.
+    {
+        se::Engine engine;
+        engine.prepare (kRate, kBlock);
+        auto doc = rampDocument ({ 100, 60 });
+        caretAt (*doc, 30, 1);
+        const uint64_t id = engine.addWindow (std::move (doc));
+        engine.play (id, once);
+        std::vector<float> l ((size_t) kBlock, 0.0f), r ((size_t) kBlock, 0.0f);
+        engine.render (l.data(), r.data(), kBlock);
+        check (indexOf (l[0]) == 30 && indexOf (r[0]) == 30 && indexOf (l[63]) == 93 && silent (r, 30, (size_t) kBlock),
+               "caret: through the engine, the Play button starts every track at the caret");
+    }
+}
+
 std::unique_ptr<se::SoundDocument> sineDocument (size_t len);
 
 // 12.8: deselecting (and every live re-aim) — a track that cannot keep its own frame
@@ -2089,6 +2309,7 @@ int main()
     directionTests();
     loopOnPinTests();
     playOnceSelectionTests();
+    playFromCaretTests();
     directionEngineTests();
     switchingTests();
     concurrencyTests();

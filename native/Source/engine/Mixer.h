@@ -57,6 +57,10 @@ struct PlayContext
     int      firstSelTrack = 1, lastSelTrack = 1;   // once / selection: 1-based scope
     PlayDirection dir = PlayDirection::forward;
     std::array<double, kPhaseTracks> phase {};     // bytes, one per track
+    /** all mode, played from a caret (0.5.0): track t is silent while pos is below
+        this — a caret past a track's end leaves it silent until its next lap. 0 = never;
+        a re-anchor clears it. */
+    std::array<double, kPhaseTracks> silentUntil {};
 };
 
 /** Where one track reads, at transport position `pos`. */
