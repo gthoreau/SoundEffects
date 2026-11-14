@@ -88,6 +88,11 @@ public:
 
     TransportState state() const noexcept { return currentState; }
 
+    /** The frame track `preferTrack` (0-based) reads right now, or, when it is
+        silent, the topmost track that is reading; 0 when none is. Audio thread: a
+        take that joins a rolling transport starts writing here (0.5.0 step 5.2). */
+    size_t readingFrame (const SoundDocument& doc, int preferTrack) const noexcept;
+
     // --- UI snapshot: safe to read from the message thread while audio runs ---
     /** Monotonic transport byte position (the shared clock; see uiTrackPosition()). */
     size_t uiPlayhead() const noexcept { return uiPos.load (std::memory_order_relaxed); }
@@ -132,6 +137,9 @@ public:
     /** Tracks that stay silent while they are being recorded into (bit t = track t,
         0-based). Audio thread, set by the record commands. */
     uint64_t excludeMask = 0;
+    /** A take is open on this transport: the live loop re-aim waits (see render()).
+        Separate from excludeMask, which outlives a disarmed take (0.5.0). */
+    bool takeOpen = false;
 
     /** Fill left/right (planar, deviceRate) with up to `frames` frames from `doc`. */
     int render (const SoundDocument& doc, float* left, float* right, int frames) noexcept;

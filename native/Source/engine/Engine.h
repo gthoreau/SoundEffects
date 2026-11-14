@@ -200,6 +200,20 @@ public:
     bool recordPause  (uint64_t id);
     bool recordResume (uint64_t id, const PlayOptions& play, uint64_t excludeMask);
     bool recordStop   (uint64_t id);
+    /** Start a take on a transport that is ALREADY rolling or paused, without
+        restarting it (0.5.0: Record armed while Play is on, ⇧R while playing). It
+        turns Forward with the usual re-anchor and a paused one resumes; a stopped
+        one plays with `play`. The frame it joins at is published (captureStartFrame),
+        read from track `refTrack` (0-based) or the topmost one that is reading. */
+    bool recordJoin   (uint64_t id, const CaptureSetup& setup, const PlayOptions& play, uint64_t excludeMask, int refTrack);
+    /** End the capture only: the transport carries on as it is (disarm mid-take).
+        The tracks it wrote stay silent until the transport next plays or stops. */
+    bool recordEnd    (uint64_t id);
+    /** Bumped by the audio thread each time a take begins (recordStart / recordJoin),
+        after captureStartFrame() is set for it. */
+    uint32_t captureStartGen() const noexcept { return capStartGen.load (std::memory_order_acquire); }
+    /** The Sound frame the last take began on (see recordJoin; 0 for recordStart). */
+    size_t captureStartFrame() const noexcept { return capStartFrame.load (std::memory_order_relaxed); }
 
     /** Free Windows/documents the audio thread has retired. Msg thread, periodic. */
     void collectRetired();
@@ -262,7 +276,7 @@ private:
                                     CaptureStart, CaptureStop } kind {};
         enum class Tx   : uint8_t { Play, Stop, Pause, Advance, NormalSpeed, Seek,
                                     RateScale, Direction, RecordStart, RecordPause,
-                                    RecordResume, RecordStop } tx {};
+                                    RecordResume, RecordStop, RecordJoin, RecordEnd } tx {};
         uint64_t        id = 0;
         Window*         window = nullptr;   // AddWindow: ownership transfers to audio
         SoundDocument*  doc = nullptr;      // SwapDoc: ownership transfers to audio
@@ -271,6 +285,7 @@ private:
         PlayDirection   direction = PlayDirection::forward;
         CaptureSetup    capture {};
         uint64_t        excludeMask = 0;
+        int             refTrack = -1;      // RecordJoin
         DocMeta         meta {};            // SetMeta
     };
 
@@ -307,6 +322,8 @@ private:
     std::atomic<float> inputGainValue { 1.0f };
     std::atomic<bool>  monitorOn { false };
     std::atomic<bool>  capRunning { false };
+    std::atomic<uint32_t> capStartGen { 0 };
+    std::atomic<size_t>   capStartFrame { 0 };
 
     double deviceRate = 48000.0;
 };

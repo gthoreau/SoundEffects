@@ -30,6 +30,7 @@
 #include "engine/Edit.h"
 #include "engine/Engine.h"
 #include "engine/Recorder.h"
+#include "engine/TransportButtons.h"
 #include "AppPrefs.h"
 #include "EditPopups.h"
 #include "Os8Widgets.h"
@@ -97,6 +98,9 @@ public:
     std::function<bool (uint64_t window)> recordReady;
     /** A take is running or paused in THIS Window. */
     bool isRecording() const;
+    /** The Recorder says a take in this Window is over (Stop, a disarm, or a
+        punch-out reaching the selection's end). */
+    void takeFinished();
     static juce::MouseCursor trackDragCursor (os8::icon::Id);
 
     /** Shared clipboard slot (owned by the canvas). */
@@ -116,7 +120,8 @@ public:
         selectExactly, selectPeak,  // popups too
         selectSilence, setLoop, unsetLoop, selectLoop,
         selectAudioSource,   // the Source button / ⌘⇧R: the popup
-        record,     // start a take, or carry on with a paused one
+        record,          // Record button / R: arm, disarm (0.5.0)
+        directRecord,    // ⇧R: Record and Play on, the take starts
         rename,
         zoomIn, zoomOut, fitWindow, fitSelection   // Sound ▸ Zoom Sound: the view only
     };
@@ -126,7 +131,9 @@ public:
     bool canPerform (Action) const;
 
     bool isPlaying() const;
-    bool isLoopOn() const noexcept    { return loopEnabled; }
+    bool isLoopOn() const noexcept    { return buttons.loopOn(); }
+    /** Record is armed or on (the Arm Record menu row's tick). */
+    bool isArmed() const noexcept     { return buttons.record() != se::RecordLight::off; }
     bool isAdvanceOn() const noexcept { return advanceEnabled; }
     se::PlayDirection direction() const;
     void setDirection (se::PlayDirection);
@@ -253,7 +260,10 @@ private:
     void commitSelectionField (int which);   // 0 start, 1 length, 2 end
 
     // --- transport ----------------------------------------------------------------
-    void togglePlayPause();
+    /** Do what a press of the transport buttons cued (TransportButtons). */
+    void applyCues (const se::TransportCues&);
+    /** Back to the direction the Window had before a take forced Forward. */
+    void restoreDirectionAfterTake();
     se::PlayOptions playButtonOptions() const;
     void updateTransportButtons();
 
@@ -283,7 +293,12 @@ private:
 
     se::Engine& engine;
     uint64_t id;
-    bool loopEnabled = true;
+    // What the transport buttons show (0.5.0 step 5): the initial state for a new or
+    // newly opened Sound is everything off but Loop.
+    se::TransportButtons buttons = se::TransportButtons::initial();
+    se::RollState lastRoll = se::RollState::stopped;   // the engine's, as last seen by refresh()
+    bool haveDirBeforeTake = false;
+    se::PlayDirection dirBeforeTake = se::PlayDirection::forward;
     // 2x speed. Mirrors Transport::advanceScale, which play() resets to 1.0 — so
     // anything that (re)starts playback must clear this too.
     bool advanceEnabled = false;

@@ -19,7 +19,7 @@ uint64_t Recorder::mask() const noexcept
     return m;
 }
 
-bool Recorder::start (uint64_t window, const RecordSetup& s)
+bool Recorder::start (uint64_t window, const RecordSetup& s, bool join)
 {
     if (st != State::idle) return false;
     SoundDocument* doc = engine.editDoc (window);
@@ -28,11 +28,12 @@ bool Recorder::start (uint64_t window, const RecordSetup& s)
     setup = s;
     win = window;
     targets.clear();
-    written = cursor = 0;
+    written = cursor = offset = 0;
     dirtyFrom = static_cast<size_t> (-1); dirtyTo = 0;
     punchedOut = false;
     sumToMono = false;
     const size_t fs = static_cast<size_t> (doc->frameSize());
+    const bool region = setup.loop && doc->loopEnd > doc->loopSt;   // the take follows Set Loop
 
     if (doc->selSt == doc->selEnd)
     {
@@ -66,14 +67,22 @@ bool Recorder::start (uint64_t window, const RecordSetup& s)
         where = Where::selection;
         for (int t = doc->firstSelTrack; t <= doc->lastSelTrack; ++t) targets.push_back (t - 1);
         sumToMono = targets.size() == 1;
-        startFrame = doc->selSt / fs;
-        spanFrames = (doc->selEnd - doc->selSt) / fs;
-        // A track shorter than the selection's end is padded with silence so there
-        // is room to write.
+    }
+
+    spanned = region || where == Where::selection;
+    loops = region || (where == Where::selection && setup.loop);
+    if (spanned)
+    {
+        const size_t a = region ? doc->loopSt : doc->selSt;
+        const size_t b = region ? doc->loopEnd : doc->selEnd;
+        startFrame = a / fs;
+        spanFrames = (b - a) / fs;
+        // A track shorter than the span's end is padded with silence so there is
+        // room to write (and a new track covers the whole region).
         for (int t : targets)
         {
             auto& d = doc->tracks[static_cast<size_t> (t)].data;
-            if (d.size() < doc->selEnd) d.resize (doc->selEnd, silentByte (doc->bps));
+            if (d.size() < b) d.resize (b, silentByte (doc->bps));
         }
     }
 
@@ -81,16 +90,21 @@ bool Recorder::start (uint64_t window, const RecordSetup& s)
 
     CaptureSetup cs = setup.source;
     if (cs.kind == AudioSourceKind::canvas && cs.tapWindow == 0) cs.excludeWindow = window;   // the Window it records into is left out of the mix
-    PlayOptions play;
-    play.loop = setup.loop && where == Where::selection;
-    play.allTracks = true;   // the other tracks are the backing
+    playOpts = {};
+    playOpts.loop = loops;
+    playOpts.useLoopRegion = region;
+    playOpts.allTracks = true;   // the other tracks are the backing
 
     engine.captureRing().discard();
     engine.captureRing().resetDropped();
     // Publish the (still empty) new tracks first, so the transport's document has
     // them excluded rather than missing; then capture and play begin together.
     engine.commitEdit (window);
-    if (! engine.recordStart (window, cs, play, mask())) return false;
+    wantGen = engine.captureStartGen() + 1;
+    offsetPending = join;
+    const bool ok = join ? engine.recordJoin (window, cs, playOpts, mask(), where == Where::selection ? targets[0] : -1)
+                         : engine.recordStart (window, cs, playOpts, mask());
+    if (! ok) return false;
 
     st = State::recording;
     if (onChanged) onChanged (win);
@@ -108,11 +122,8 @@ void Recorder::resume()
 {
     if (st != State::paused) return;
     // The tracks written so far were published at the pause; capture and play carry on.
-    PlayOptions play;
-    play.loop = setup.loop && where == Where::selection;
-    play.allTracks = true;   // the other tracks are the backing
     engine.captureRing().discard();
-    if (! engine.recordResume (win, play, mask())) return;
+    if (! engine.recordResume (win, playOpts, mask())) return;
     st = State::recording;
 }
 
@@ -138,6 +149,28 @@ void Recorder::stop()
     st = State::finishing; after = State::idle; waitTicks = 0;
 }
 
+void Recorder::end()
+{
+    switch (st)
+    {
+        case State::idle:
+            return;
+        case State::recording:
+            engine.recordEnd (win);
+            st = State::finishing; after = State::idle; waitTicks = 0;
+            return;
+        case State::finishing:
+            after = State::idle;   // a pause was settling: the capture is stopping anyway
+            return;
+        case State::paused:
+            // Published at the pause; the transport stays paused.
+            engine.recordEnd (win);
+            st = State::idle;
+            if (onFinished) onFinished (win);
+            return;
+    }
+}
+
 void Recorder::write (const std::vector<int32_t>& l, const std::vector<int32_t>& r)
 {
     SoundDocument* doc = engine.editDoc (win);
@@ -147,13 +180,14 @@ void Recorder::write (const std::vector<int32_t>& l, const std::vector<int32_t>&
 
     for (size_t i = 0; i < l.size(); ++i)
     {
+        const size_t at = offset + cursor;   // a joined take begins part-way
         size_t frame;
-        if (where == Where::newTracks)
-            frame = cursor;
+        if (! spanned)
+            frame = at;
         else
         {
-            if (! setup.loop && cursor >= spanFrames) { punchedOut = true; break; }   // punch-out
-            frame = startFrame + (cursor % std::max<size_t> (1, spanFrames));
+            if (! loops && at >= spanFrames) { punchedOut = true; break; }   // punch-out
+            frame = startFrame + (at % std::max<size_t> (1, spanFrames));
         }
 
         for (size_t k = 0; k < targets.size() && k < 2; ++k)
@@ -170,6 +204,16 @@ void Recorder::write (const std::vector<int32_t>& l, const std::vector<int32_t>&
 
 void Recorder::drain (bool all)
 {
+    if (offsetPending)
+    {
+        // Joined: nothing is captured until the audio thread has applied the join
+        // and said which frame it joined at.
+        if (static_cast<int32_t> (engine.captureStartGen() - wantGen) < 0) return;
+        const size_t f = engine.captureStartFrame();
+        offset = ! spanned ? f
+               : (f >= startFrame && f < startFrame + spanFrames) ? f - startFrame : 0;
+        offsetPending = false;
+    }
     constexpr size_t kChunk = 4096;
     bufL.resize (kChunk); bufR.resize (kChunk);
     // A tick takes at most this many chunks (~1.4 s at 48 kHz), so a source that

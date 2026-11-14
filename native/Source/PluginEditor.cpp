@@ -112,7 +112,7 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     };
     p.recorder().onFinished = [this] (uint64_t window)
     {
-        if (auto* wc = canvas.windowComponentFor (window)) wc->invalidateWaveform();
+        if (auto* wc = canvas.windowComponentFor (window)) { wc->invalidateWaveform(); wc->takeFinished(); }
     };
 
     canvas.onSourceRequested = [this] (uint64_t window) { openSourcePopup (window); };
@@ -242,11 +242,13 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::soundColour:   active = engineWindow != nullptr; break;
         case cmd::rename:        active = w != nullptr; break;
         case cmd::selectAudioSource: active = can (WindowComponent::Action::selectAudioSource); break;
+        case cmd::armRecord:     active = can (WindowComponent::Action::record); r.setTicked (w != nullptr && w->isArmed()); break;
+        case cmd::directRecording: active = can (WindowComponent::Action::directRecord); break;
         case cmd::stop:          active = w != nullptr; break;
         case cmd::play:          active = w != nullptr && ! w->isPlaying(); break;
         case cmd::pause:         active = w != nullptr && w->isPlaying(); break;
-        case cmd::loop:          active = w != nullptr; r.setTicked (w != nullptr && w->isLoopOn()); break;
-        case cmd::fastForward:   active = w != nullptr; r.setTicked (w != nullptr && w->isAdvanceOn()); break;
+        case cmd::loop:          active = can (WindowComponent::Action::toggleLoop); r.setTicked (w != nullptr && w->isLoopOn()); break;
+        case cmd::fastForward:   active = can (WindowComponent::Action::toggleAdvance); r.setTicked (w != nullptr && w->isAdvanceOn()); break;
         case cmd::mute:
             active = engineWindow != nullptr;
             r.setTicked (engineWindow != nullptr && engineWindow->muted.load (std::memory_order_relaxed));
@@ -287,8 +289,8 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::zoomToFit:     active = canvas.hasWindows(); break;
 
         // Undo is always inactive (that's the joke). Everything else here is a
-        // command whose feature lands in a later step: listed, greyed — Arm Record
-        // and Direct Recording (step 5), Hide Color Theme (step 7).
+        // command whose feature lands in a later step: listed, greyed — Hide Color
+        // Theme (step 7).
         default:                 active = false; break;
     }
 
@@ -348,6 +350,8 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         case cmd::rename:        return act (WindowComponent::Action::rename);
         case cmd::selectAudioSource: return act (WindowComponent::Action::selectAudioSource);
         case cmd::stop:          return act (WindowComponent::Action::stop);
+        case cmd::armRecord:     return act (WindowComponent::Action::record);
+        case cmd::directRecording: return act (WindowComponent::Action::directRecord);
         case cmd::loop:          return act (WindowComponent::Action::toggleLoop);
         case cmd::fastForward:   return act (WindowComponent::Action::toggleAdvance);
         case cmd::playForward:   return act (WindowComponent::Action::playForward);

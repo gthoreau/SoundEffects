@@ -248,6 +248,16 @@ bool Engine::recordResume (uint64_t id, const PlayOptions& play, uint64_t mask)
 { Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::RecordResume; c.id=id; c.play=play; c.excludeMask=mask; return post (c); }
 bool Engine::recordStop (uint64_t id)
 { Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::RecordStop; c.id=id; return post (c); }
+bool Engine::recordJoin (uint64_t id, const CaptureSetup& setup, const PlayOptions& play, uint64_t mask, int refTrack)
+{
+    Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::RecordJoin; c.id=id;
+    c.capture=setup; c.play=play; c.excludeMask=mask; c.refTrack=refTrack;
+    if (! post (c)) return false;
+    if (auto* w = windowById (id)) w->direction.store (static_cast<uint8_t> (PlayDirection::forward), std::memory_order_relaxed);
+    return true;
+}
+bool Engine::recordEnd (uint64_t id)
+{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::RecordEnd; c.id=id; return post (c); }
 
 PlayDirection Engine::direction (uint64_t id) noexcept
 {
@@ -289,8 +299,9 @@ void Engine::applyTransport (Window& w, const Command& c) noexcept
     const SoundDocument& d = *w.audioDoc;
     switch (c.tx)
     {
-        case Command::Tx::Play:        w.transport->play (d, c.play);   break;
-        case Command::Tx::Stop:        w.transport->stop();             break;
+        // A plain Play or Stop ends what a take that was disarmed left silent.
+        case Command::Tx::Play:        w.transport->excludeMask = 0; w.transport->takeOpen = false; w.transport->play (d, c.play); break;
+        case Command::Tx::Stop:        w.transport->excludeMask = 0; w.transport->takeOpen = false; w.transport->stop();           break;
         case Command::Tx::Pause:       w.transport->pause();            break;
         case Command::Tx::Advance:     w.transport->advance (d);        break;
         case Command::Tx::NormalSpeed: w.transport->normalSpeed();      break;
@@ -304,8 +315,32 @@ void Engine::applyTransport (Window& w, const Command& c) noexcept
             capActive = true;
             capRunning.store (true, std::memory_order_release);
             w.transport->excludeMask = c.excludeMask;
+            w.transport->takeOpen = true;
             w.transport->setDirection (PlayDirection::forward, d);
             w.transport->play (d, c.play);
+            capStartFrame.store (0, std::memory_order_relaxed);
+            capStartGen.fetch_add (1, std::memory_order_release);
+            break;
+        case Command::Tx::RecordJoin:
+            // The transport is not restarted: it turns Forward where it is (re-anchored
+            // under the usual crossfade) and the take begins on the frame it reads.
+            cap = c.capture;
+            capActive = true;
+            capRunning.store (true, std::memory_order_release);
+            w.transport->excludeMask = c.excludeMask;
+            w.transport->takeOpen = true;
+            w.transport->setDirection (PlayDirection::forward, d);
+            if (w.transport->state() == TransportState::paused)       w.transport->pause();
+            else if (w.transport->state() == TransportState::stopped) w.transport->play (d, c.play);
+            capStartFrame.store (w.transport->readingFrame (d, c.refTrack), std::memory_order_relaxed);
+            capStartGen.fetch_add (1, std::memory_order_release);
+            break;
+        case Command::Tx::RecordEnd:
+            // Disarm: the capture ends, the transport carries on untouched; the tracks
+            // written stay excluded (a Play or Stop clears that).
+            capActive = false;
+            capRunning.store (false, std::memory_order_release);
+            w.transport->takeOpen = false;   // a loop follows the selection again
             break;
         case Command::Tx::RecordPause:
             capActive = false;
@@ -316,6 +351,7 @@ void Engine::applyTransport (Window& w, const Command& c) noexcept
             capActive = true;
             capRunning.store (true, std::memory_order_release);
             w.transport->excludeMask = c.excludeMask;
+            w.transport->takeOpen = true;
             if (w.transport->state() == TransportState::paused) w.transport->pause();
             else if (w.transport->state() == TransportState::stopped) w.transport->play (d, c.play);
             break;
@@ -324,6 +360,7 @@ void Engine::applyTransport (Window& w, const Command& c) noexcept
             capRunning.store (false, std::memory_order_release);
             w.transport->stop();
             w.transport->excludeMask = 0;
+            w.transport->takeOpen = false;
             break;
     }
 }

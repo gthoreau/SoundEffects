@@ -23,6 +23,12 @@
 //   With Loop off the recording is a punch-in/out: it starts at the selection's
 //   start and ends by itself at its end. With Loop on it records round and round
 //   inside the selection, over what was there, until stopped or paused.
+//   - Loop on and a Set Loop region (0.5.0 step 5.2): the take stays inside the
+//     region, round and round, into the selected tracks or into new ones (padded
+//     with silence up to the region's end); the transport loops the region.
+//   Joining (0.5.0: Record pressed while Play is on): the transport is not
+//   restarted; the take begins on the frame it is reading, so new tracks start
+//   with silence up to there and a span is entered at that point.
 //
 // Latency: the audio thread stamps nothing; frame k of the capture is written to
 // position k of the pass. The interface's round-trip delay is not compensated.
@@ -58,10 +64,12 @@ public:
 
     /** Begin a take in `window`. False when it cannot (3+ tracks selected, a take is
         already running, no such Window). */
-    bool start (uint64_t window, const RecordSetup& setup);
+    bool start (uint64_t window, const RecordSetup& setup, bool join = false);
     void pause();
     void resume();
     void stop();
+    /** Disarm: the take ends, the transport carries on as it is (0.5.0). */
+    void end();
 
     /** Message thread, regularly (30 Hz): drain, convert, write, and finish what is finishing. */
     void service();
@@ -110,6 +118,12 @@ private:
     bool sumToMono = false;      // selection over one track
     size_t startFrame = 0;       // selection: first frame, in the Sound's frames
     size_t spanFrames = 0;       // selection: its length
+    bool spanned = false;        // writes inside [startFrame, +spanFrames): a selection or the Set Loop region
+    bool loops = false;          // ...round and round (else a punch-out at its end)
+    PlayOptions playOpts;        // how the transport plays under the take
+    size_t offset = 0;           // where in the take (from 0, or from the span's start) writing began
+    bool offsetPending = false;  // joined: wait for the audio thread to say where
+    uint32_t wantGen = 0;
     size_t cursor = 0;           // frames written into the take (selection: modulo the span when looping)
     size_t written = 0;
     size_t dirtyFrom = static_cast<size_t> (-1), dirtyTo = 0;   // see takeWrittenFrames()

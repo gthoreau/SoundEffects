@@ -974,21 +974,22 @@ void deselectSyncTests()
         check (tr.uiLoopMode() == se::LoopMode::all && at (tr, 0) == 46 && at (tr, 1) == 46,
                "paused: on resume the deselection lands on the paused frame");
     }
-    // Case 10: while a take runs (excludeMask) the aim is frozen; it lands after.
+    // Case 10: while a take runs (takeOpen) the aim is frozen; it lands after.
     {
         auto doc = rampDocument ({ 100, 100 });
         selectTracks (*doc, 2, 2, 20, 60);
         se::Transport tr (kRate);
         tr.play (*doc, loop);
         tr.excludeMask = 2;                                // track 2 is being written
+        tr.takeOpen = true;
         renderTransport (tr, *doc, 25);
         doc->selSt = doc->selEnd = 0;
         renderTransport (tr, *doc, 1);
         check (tr.uiLoopMode() == se::LoopMode::selection && at (tr, 1) == 46, "recording: no re-aim mid-take");
-        tr.excludeMask = 0;                                // the take ends
+        tr.takeOpen = false;                               // the take ends (a disarm keeps the track silent)
         renderTransport (tr, *doc, 1);
         check (tr.uiLoopMode() == se::LoopMode::all && at (tr, 0) == 47 && at (tr, 1) == 47,
-               "recording: the deselection lands when the take ends");
+               "recording: the deselection lands when the take ends, even with the track still silent (a disarm)");
     }
     // Case 11: no click — a sine through the deselection.
     {
@@ -1694,6 +1695,177 @@ void recordTests()
 // A Recorder driven from the message thread while the audio thread renders: takes
 // started, paused, resumed and stopped back to back, each with its ring drained,
 // conversion and document writes, under TSan.
+// --- 0.5.0 step 5.2: a take that joins a rolling transport, a disarm that ends the
+// take and leaves playback alone, and a take that follows the Set Loop region. ------
+void takeJoinTests()
+{
+    const float level = 20.0f / 128.0f;   // dcDocument (20): what the existing track sounds at
+
+    // Join a transport that is playing: no restart, the new track starts with
+    // silence up to the frame it joined at.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t w = e.addWindow (dcDocument (20, "w"));   // 8-bit, 512 frames
+        auto* win = e.windowById (w);
+        e.setDirection (w, se::PlayDirection::backward);
+        e.play (w, {});
+        se::Recorder rec (e);
+        std::vector<float> ol, orr;
+        for (int i = 0; i < 3; ++i) renderWithInput (e, { 0.25f }, ol, orr);   // backward: 512 -> 320
+        const size_t before = win->transport->uiPlayhead();
+        se::RecordSetup s; s.source.kind = se::AudioSourceKind::external; s.source.stereo = false; s.incomingStereo = false;
+        check (rec.start (w, s, true), "join: a take starts on a playing transport");
+        renderWithInput (e, { 0.25f }, ol, orr); rec.service();
+        check (win->transport->uiPlayhead() == before + (size_t) kBlock, "join: the transport is not restarted");
+        check (e.direction (w) == se::PlayDirection::forward && win->transport->direction() == se::PlayDirection::forward,
+               "join: the transport turns Forward where it is");
+        checkClose (ol[kBlock - 1], level, 1.0e-4f, "join: the existing track keeps sounding, the new one is silent");
+        const size_t joinedAt = e.captureStartFrame();
+        check (joinedAt == 512 - 1 - (size_t) (3 * kBlock), "join: the frame it joined at is the one the track was reading");
+        pump (e, rec, 2, { 0.25f });
+        rec.stop();
+        settleRec (e, rec, { 0.25f });
+        const auto* d = e.editDoc (w);
+        check (d->numTracks() == 2, "join: one new track");
+        check (at (*d, 1, joinedAt - 1) == 0 && at (*d, 1, joinedAt) == 32 && at (*d, 1, joinedAt + 3 * kBlock - 1) == 32,
+               "join: silence up to the join, the take from there");
+        check (d->tracks[1].data.size() == joinedAt + (size_t) (3 * kBlock), "join: the take is as long as what was captured");
+    }
+
+    // Join a paused transport: it resumes from where it was held.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t w = e.addWindow (dcDocument (20, "w"));
+        auto* win = e.windowById (w);
+        e.play (w, {});
+        renderBlocks (e, 2);
+        e.pause (w);
+        renderBlocks (e, 3);
+        const size_t held = win->transport->uiPlayhead();
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false;
+        rec.start (w, s, true);
+        std::vector<float> ol, orr;
+        renderWithInput (e, { 0.25f }, ol, orr); rec.service();
+        check (win->transport->uiState() == se::TransportState::playing && win->transport->uiPlayhead() == held + (size_t) kBlock,
+               "join paused: resumes from where it was held");
+        rec.stop(); settleRec (e, rec, { 0.25f });
+        check (at (*e.editDoc (w), 1, (size_t) (2 * kBlock)) == 32 && at (*e.editDoc (w), 1, (size_t) (2 * kBlock) - 1) == 0,
+               "join paused: the take begins at the held frame");
+    }
+
+    // Disarm mid-take (Recorder::end): the capture ends, the transport plays on
+    // untouched, the new track stays silent until the next Play or Stop.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t w = e.addWindow (dcDocument (20, "w"));
+        auto* win = e.windowById (w);
+        se::PlayOptions loopAll; loopAll.loop = true;
+        e.play (w, loopAll);
+        renderBlocks (e, 2);
+        se::Recorder rec (e);
+        int finished = 0;
+        rec.onFinished = [&] (uint64_t) { ++finished; };
+        se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false; s.loop = true;
+        rec.start (w, s, true);
+        pump (e, rec, 3, { 0.5f });
+        const size_t before = win->transport->uiPlayhead();
+        rec.end();
+        settleRec (e, rec, { 0.5f });
+        check (finished == 1 && rec.state() == se::Recorder::State::idle && ! e.captureRunning(), "end: the take is over, capture stopped");
+        check (win->transport->uiState() == se::TransportState::playing, "end: the transport still plays");
+        std::vector<float> ol, orr;
+        const size_t now = win->transport->uiPlayhead();
+        renderWithInput (e, { 0.5f }, ol, orr);
+        check (now > before && win->transport->uiPlayhead() == now + (size_t) kBlock, "end: the playhead carries on, no reset");
+        checkClose (ol[0], level, 1.0e-4f, "end: no step in the output (only the old track, as during the take)");
+        check (e.editDoc (w)->numTracks() == 2 && at (*e.editDoc (w), 1, 3 * kBlock) == 64, "end: the take is kept");
+        check (win->transport->excludeMask != 0, "end: the new track stays silent while this pass plays on");
+        check (! win->transport->takeOpen, "end: a loop may re-aim again (the take no longer freezes it)");
+        e.stop (w); renderBlocks (e, 1);
+        check (win->transport->excludeMask == 0, "end: a Stop lets the new track sound again");
+
+        // Ending a paused take: the transport stays paused.
+        rec.start (w, s, true);
+        pump (e, rec, 2, { 0.5f });
+        rec.pause(); settleRec (e, rec, { 0.5f }, se::Recorder::State::paused);
+        rec.end();
+        renderBlocks (e, 1);
+        check (rec.state() == se::Recorder::State::idle && win->transport->uiState() == se::TransportState::paused,
+               "end a paused take: idle, the transport still paused");
+    }
+
+    // Join a play-once pass over a selection: a punch-in part-way, out at the end.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto doc = blankSound (1, kRate);
+        doc->tracks[0].data.assign (2000, 0);
+        doc->selSt = 200; doc->selEnd = 600; doc->firstSelTrack = doc->lastSelTrack = 1;   // frames 100..299
+        const uint64_t w = e.addWindow (std::move (doc));
+        e.play (w, {});
+        renderBlocks (e, 1);   // reading frame 164
+        se::Recorder rec (e);
+        int finished = 0;
+        rec.onFinished = [&] (uint64_t) { ++finished; };
+        se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false;
+        rec.start (w, s, true);
+        settleRec (e, rec, { 0.25f });
+        const auto* d = e.editDoc (w);
+        check (finished == 1, "join selection: the punch-out still ends the take at the selection's end");
+        check (at (*d, 0, 163) == 0 && at (*d, 0, 164) == 8192 && at (*d, 0, 299) == 8192 && at (*d, 0, 300) == 0,
+               "join selection: punched in where it joined, out at the end, nothing after");
+    }
+
+    // Loop on and a Set Loop region: the take stays inside it, round and round.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto doc = blankSound (1, kRate);
+        doc->tracks[0].data.assign (2000, 0);
+        doc->loopSt = 200; doc->loopEnd = 600;   // frames 100..299; no selection
+        const uint64_t w = e.addWindow (std::move (doc));
+        auto* win = e.windowById (w);
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false; s.loop = true;
+        check (rec.start (w, s), "region: a take starts");
+        pump (e, rec, 3, { 0.25f });    // 192 frames: 100..291
+        pump (e, rec, 1, { 0.5f });     // 64 more: 292..299 then 100..155
+        check (win->transport->uiPlaySt() == 200 && win->transport->uiPlayEnd() == 600, "region: the transport loops the region");
+        rec.stop(); settleRec (e, rec, { 0.5f });
+        const auto* d = e.editDoc (w);
+        check (d->numTracks() == 2 && d->tracks[1].data.size() == 600, "region: a new track, padded to the region's end and no further");
+        check (at (*d, 1, 99) == 0 && at (*d, 1, 100) == 16384 && at (*d, 1, 156) == 8192 && at (*d, 1, 291) == 8192
+               && at (*d, 1, 292) == 16384 && at (*d, 1, 299) == 16384,
+               "region: silence before it, and the take wraps inside it");
+
+        // Loop off: the region is ignored, as play-once ignores it.
+        s.loop = false;
+        rec.start (w, s);
+        pump (e, rec, 2, { 0.25f });
+        rec.stop(); settleRec (e, rec, { 0.25f });
+        check (at (*e.editDoc (w), 2, 0) == 8192 && e.editDoc (w)->tracks[2].data.size() == (size_t) (2 * kBlock) * 2,
+               "region, Loop off: a new track from 0, as before");
+    }
+
+    // A region and a selection over one track: the selected track, inside the region.
+    {
+        se::Engine e; e.prepare (kRate, kBlock);
+        auto doc = blankSound (2, kRate);
+        for (auto& t : doc->tracks) t.data.assign (400, 0);   // 200 frames: shorter than the region's end
+        doc->loopSt = 200; doc->loopEnd = 600;
+        doc->selSt = 0; doc->selEnd = 100; doc->firstSelTrack = doc->lastSelTrack = 2;
+        const uint64_t w = e.addWindow (std::move (doc));
+        se::Recorder rec (e);
+        se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false; s.loop = true;
+        rec.start (w, s);
+        pump (e, rec, 2, { 0.25f });
+        rec.stop(); settleRec (e, rec, { 0.25f });
+        const auto* d = e.editDoc (w);
+        check (d->tracks[1].data.size() == 600 && at (*d, 1, 99) == 0 && at (*d, 1, 100) == 8192 && at (*d, 1, 227) == 8192
+               && at (*d, 1, 228) == 0, "region + selection: written into the selected track, inside the region");
+        check (d->tracks[0].data.size() == 400, "region + selection: the other track untouched");
+    }
+}
+
 void recordConcurrencyTests()
 {
     se::Engine e;
@@ -2705,6 +2877,7 @@ int main()
     captureTests();
     convertTests();
     recordTests();
+    takeJoinTests();
     captureConcurrencyTests();
     recordConcurrencyTests();
     metaTests();

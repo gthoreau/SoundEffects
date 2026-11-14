@@ -299,6 +299,23 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
     publishTrackPositions (doc);
 }
 
+size_t Transport::readingFrame (const SoundDocument& doc, int preferTrack) const noexcept
+{
+    if (currentState == TransportState::stopped) return 0;
+    const int n = std::min (doc.numTracks(), kPhaseTracks);
+    if (preferTrack >= 0 && preferTrack < n)
+    {
+        const TrackRead r = trackRead (doc, preferTrack, pos, ctx);
+        if (r.present) return r.frame;
+    }
+    for (int t = 0; t < n; ++t)
+    {
+        const TrackRead r = trackRead (doc, t, pos, ctx);
+        if (r.present) return r.frame;
+    }
+    return 0;
+}
+
 void Transport::stop() noexcept
 {
     setState (TransportState::stopped);
@@ -346,10 +363,10 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
     // track whose playhead is inside the new range does not move at all — it just
     // wraps at the new ends — and one that is outside restarts at the range's start
     // (the end, going backward), under the crossfade.
-    // While a take runs (excludeMask) the aim is frozen: the Recorder writes the span
+    // While a take runs (takeOpen) the aim is frozen: the Recorder writes the span
     // it snapshotted, and the written tracks' playheads must not jump. A selection
     // drawn or cleared mid-take re-aims on the first block after the take ends.
-    if (playOpts.loop && ctx.mode != LoopMode::once && excludeMask == 0)
+    if (playOpts.loop && ctx.mode != LoopMode::once && ! takeOpen)
     {
         const Aim a = loopAim (doc, playOpts);
         const bool same = a.mode == ctx.mode
