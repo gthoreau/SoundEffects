@@ -691,13 +691,18 @@ void WindowComponent::paintStatus (Graphics& g, const se::SoundDocument& d)
     if (! g.clipRegionIntersects (content)) return;
     const auto clip = g.getClipBounds();
 
-    // The mixer slot, boxed.
+    // The mixer slot, boxed (mixer-channel-number in 526:4845). The digits are
+    // centred on a whole pixel, as the mixer strip's drawSlotNumber does: a
+    // half-pixel x smears this pixel face. Figma sets the text 3.5 px down.
     const juce::Rectangle<int> box (s.getX() + 8, s.getY() + 7, 16, 16);
     g.drawRect (box, 1);
     if (clip.intersects (box))
-        os8::drawText (g, slot > 0 ? juce::String (slot) : juce::String ("-"), os8::TextStyle::xSmallLabel,
-                   { (float) box.getX() + 1.0f, (float) box.getY() + 2.0f, 14.0f, 9.0f },
-                   juce::Justification::horizontallyCentred);
+    {
+        const juce::String n = slot > 0 ? juce::String (slot) : juce::String ("-");
+        const float w = (float) os8::widthOf (n, os8::TextStyle::xSmallLabel);
+        const float x = std::round ((float) box.getX() + (float) box.getWidth() * 0.5f - w * 0.5f);
+        os8::drawText (g, n, os8::TextStyle::xSmallLabel, { x, (float) box.getY() + 3.5f, w, 9.0f });
+    }
 
     // Rate, bits, tracks, length — 6 px apart, and dropped from the right when the
     // window is too narrow for them beside the selection readout.
