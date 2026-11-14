@@ -125,7 +125,13 @@ private:
     WindowComponent* targetWindow() const { return canvas.selectedWindowComponent(); }
     /** Is the user typing into a text field? Single-key shortcuts stand down then. */
     static bool isTyping();
-    juce::PopupMenu windowMenu();
+    juce::PopupMenu canvasMenu();
+    /** The 24 colour themes for the selected Sound (Sound ▸ Color, and ⌘T). */
+    juce::PopupMenu colourMenu();
+    /** Sound ▸ "Color: [name]" with its dot and the colourMenu() submenu. */
+    juce::PopupMenu::Item colourRow();
+    /** ⌘T: drop colourMenu() down under the selected Window's title bar. */
+    bool showColourMenu();
     /** The floating palette stack, over the canvas's `area`. */
     void layoutPalettes (juce::Rectangle<int> area);
     /** Show or hide the Keyboard palette, and re-lay the floating stack. */

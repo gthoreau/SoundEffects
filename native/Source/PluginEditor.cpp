@@ -238,7 +238,8 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::crop:          active = can (WindowComponent::Action::crop); break;
         case cmd::insertSilence: active = can (WindowComponent::Action::insertSilence); break;
 
-        case cmd::record:        active = can (WindowComponent::Action::record); break;
+        case cmd::soundColour:   active = engineWindow != nullptr; break;
+        case cmd::rename:        active = w != nullptr; break;
         case cmd::selectAudioSource: active = can (WindowComponent::Action::selectAudioSource); break;
         case cmd::stop:          active = w != nullptr; break;
         case cmd::play:          active = w != nullptr && ! w->isPlaying(); break;
@@ -262,9 +263,8 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::playPingPong:
             active = can (WindowComponent::Action::playPingPong); r.setTicked (w != nullptr && w->direction() == se::PlayDirection::pingPong);
             break;
-        case cmd::cycleDirection: active = can (WindowComponent::Action::cycleDirection); break;
+        case cmd::flipDirection: active = can (WindowComponent::Action::cycleDirection); break;
 
-        case cmd::changeName:    active = w != nullptr; break;
         case cmd::toggleSidePanels:
             active = true;
             r.shortName = AppPrefs::get().sidePanelsShown() ? "Hide Side Panels" : "Show Side Panels";
@@ -281,7 +281,8 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::zoomToFit:     active = canvas.hasWindows(); break;
 
         // Undo is always inactive (that's the joke). Everything else here is a
-        // command whose feature lands in a later step: listed, greyed.
+        // command whose feature lands in a later step: listed, greyed — Arm Record
+        // and Direct Recording (step 5), Unset Loop (step 4), Hide Color Theme (step 7).
         default:                 active = false; break;
     }
 
@@ -336,7 +337,8 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         // both are the same toggle the transport button uses.
         case cmd::play: case cmd::pause:
                                  return act (WindowComponent::Action::playPause);
-        case cmd::record:        return act (WindowComponent::Action::record);
+        case cmd::soundColour:   return showColourMenu();
+        case cmd::rename:        return act (WindowComponent::Action::rename);
         case cmd::selectAudioSource: return act (WindowComponent::Action::selectAudioSource);
         case cmd::stop:          return act (WindowComponent::Action::stop);
         case cmd::loop:          return act (WindowComponent::Action::toggleLoop);
@@ -344,8 +346,7 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         case cmd::playForward:   return act (WindowComponent::Action::playForward);
         case cmd::playBackward:  return act (WindowComponent::Action::playBackward);
         case cmd::playPingPong:  return act (WindowComponent::Action::playPingPong);
-        case cmd::cycleDirection: return act (WindowComponent::Action::cycleDirection);
-        case cmd::changeName:    return act (WindowComponent::Action::rename);
+        case cmd::flipDirection: return act (WindowComponent::Action::cycleDirection);
 
         case cmd::mute:
             if (engineWindow == nullptr) return false;
@@ -376,7 +377,7 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
 
 juce::StringArray SoundEffectsAudioProcessorEditor::getMenuBarNames()
 {
-    return { "File", "Edit", "Selection", "Transport", "Window" };
+    return { "File", "Edit", "Selection", "Sound", "Canvas" };
 }
 
 juce::PopupMenu SoundEffectsAudioProcessorEditor::getMenuForIndex (int index, const juce::String&)
@@ -430,28 +431,29 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::getMenuForIndex (int index, co
             m.addSeparator();
             add ({ cmd::insertSilence, cmd::crop });
             m.addSeparator();
-            add ({ cmd::setLoop, cmd::selectLoop });
+            add ({ cmd::setLoop, cmd::unsetLoop, cmd::selectLoop });
             m.addSeparator();
             add ({ cmd::selectExactly, cmd::selectPeak, cmd::selectSilence });
             break;
 
-        case 3:   // Transport
-            addWithIcon (cmd::record, os8::icon::Id::record);
-            add ({ cmd::selectAudioSource });
+        case 3:   // Sound
+            m.addItem (colourRow());
+            add ({ cmd::rename });
+            m.addSeparator();
+            add ({ cmd::armRecord, cmd::directRecording, cmd::selectAudioSource });
             m.addSeparator();
             addWithIcon (cmd::stop, os8::icon::Id::stop);
             addWithIcon (cmd::play, os8::icon::Id::playForward);
             addWithIcon (cmd::pause, os8::icon::Id::pause);
-            addWithIcon (cmd::loop, os8::icon::Id::loop);
+            add ({ cmd::flipDirection });
             addWithIcon (cmd::fastForward, os8::icon::Id::fastForward);
-            m.addSeparator();
-            add ({ cmd::playForward, cmd::playBackward, cmd::playPingPong });
+            addWithIcon (cmd::loop, os8::icon::Id::loop);
             m.addSeparator();
             add ({ cmd::mute, cmd::solo });
             break;
 
         case 4:
-            return windowMenu();
+            return canvasMenu();
 
         default: break;
     }
@@ -470,7 +472,70 @@ void SoundEffectsAudioProcessorEditor::menuBarActivated (bool isActive)
     });
 }
 
-juce::PopupMenu SoundEffectsAudioProcessorEditor::windowMenu()
+juce::PopupMenu SoundEffectsAudioProcessorEditor::colourMenu()
+{
+    // The 24 themes, each with its swatch; the selected Sound's is ticked.
+    juce::PopupMenu colours;
+    const auto selected = canvas.selectedWindowId();
+    auto* w = processorRef.engine().windowById (selected);
+    const int current = w != nullptr ? w->tint : -1;
+    for (int i = 0; i < os8::kNumThemes; ++i)
+    {
+        auto swatch = std::make_unique<juce::DrawablePath>();
+        juce::Path dot;
+        dot.addEllipse (0.0f, 0.0f, 10.0f, 10.0f);
+        swatch->setPath (dot);
+        swatch->setFill (os8::themeColour (i));
+
+        juce::PopupMenu::Item item (os8::themeName (i));
+        item.setTicked (i == current);
+        item.setImage (std::move (swatch));
+        Os8AppMenuLookAndFeel::markIconRow (item);
+        item.setAction ([this, selected, i]
+        {
+            if (auto* win = processorRef.engine().windowById (selected))
+                win->tint = i;
+            canvas.refresh();
+        });
+        colours.addItem (std::move (item));
+    }
+    return colours;
+}
+
+juce::PopupMenu::Item SoundEffectsAudioProcessorEditor::colourRow()
+{
+    // Color: [name] ▸ with the theme's dot. With no Sound selected the row stays,
+    // greyed and nameless, so the menu keeps its shape.
+    auto* w = processorRef.engine().windowById (canvas.selectedWindowId());
+    if (w == nullptr)
+        return juce::PopupMenu::Item ("Color").setEnabled (false);
+
+    auto colourDot = std::make_unique<juce::DrawablePath>();
+    juce::Path dot;
+    dot.addEllipse (0.0f, 0.0f, 10.0f, 10.0f);
+    colourDot->setPath (dot);
+    colourDot->setFill (os8::themeColour (w->tint));
+    juce::PopupMenu::Item row ("Color: " + os8::themeName (w->tint));
+    row.subMenu = std::make_unique<juce::PopupMenu> (colourMenu());
+    row.setImage (std::move (colourDot));
+    Os8AppMenuLookAndFeel::markIconRow (row);
+    return row;
+}
+
+bool SoundEffectsAudioProcessorEditor::showColourMenu()
+{
+    // ⌘T: the Color submenu, dropped down under the selected Window's title bar.
+    auto* w = targetWindow();
+    if (w == nullptr || processorRef.engine().windowById (canvas.selectedWindowId()) == nullptr)
+        return false;
+    auto menu = colourMenu();
+    menu.setLookAndFeel (&Os8AppMenuLookAndFeel::instance());
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (w)
+                                                  .withTargetScreenArea (w->getScreenBounds().withHeight (os8::kTitleBarHeight)));
+    return true;
+}
+
+juce::PopupMenu SoundEffectsAudioProcessorEditor::canvasMenu()
 {
     juce::PopupMenu m;
     auto& engine = processorRef.engine();
@@ -481,53 +546,12 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::windowMenu()
         return w != nullptr && w->uiDoc != nullptr ? juce::String (w->uiDoc->name) : juce::String();
     };
 
-    // The selected sound, ticked and inert: it says what the next two items act on.
-    if (selected != 0)
-    {
-        m.addItem (juce::PopupMenu::Item (nameOf (selected)).setTicked (true).setEnabled (false));
-
-        // Color: [name] ▸ — the 24 themes, each with its swatch.
-        auto* w = engine.windowById (selected);
-        const int current = w != nullptr ? w->tint : -1;
-        juce::PopupMenu colours;
-        for (int i = 0; i < os8::kNumThemes; ++i)
-        {
-            auto swatch = std::make_unique<juce::DrawablePath>();
-            juce::Path dot;
-            dot.addEllipse (0.0f, 0.0f, 10.0f, 10.0f);
-            swatch->setPath (dot);
-            swatch->setFill (os8::themeColour (i));
-
-            juce::PopupMenu::Item item (os8::themeName (i));
-            item.setTicked (i == current);
-            item.setImage (std::move (swatch));
-            Os8AppMenuLookAndFeel::markIconRow (item);
-            item.setAction ([this, selected, i]
-            {
-                if (auto* win = processorRef.engine().windowById (selected))
-                    win->tint = i;
-                canvas.refresh();
-            });
-            colours.addItem (std::move (item));
-        }
-
-        auto colourDot = std::make_unique<juce::DrawablePath>();
-        juce::Path dot;
-        dot.addEllipse (0.0f, 0.0f, 10.0f, 10.0f);
-        colourDot->setPath (dot);
-        colourDot->setFill (os8::themeColour (current));
-        juce::PopupMenu::Item colourRow ("Color: " + os8::themeName (current));
-        colourRow.subMenu = std::make_unique<juce::PopupMenu> (std::move (colours));
-        colourRow.setImage (std::move (colourDot));
-        Os8AppMenuLookAndFeel::markIconRow (colourRow);
-        m.addItem (std::move (colourRow));
-    }
-    m.addCommandItem (&commandManager, cmd::changeName);
+    m.addCommandItem (&commandManager, cmd::toggleColourTheme);
     m.addSeparator();
 
-    // Every sound, in mixer-slot order; picking one brings it into focus. Slots 1-10
-    // are the focusSlot commands, so their rows carry the 1..0 key in the shortcut
-    // column; a sound further down is a plain row.
+    // Every sound, in mixer-slot order; picking one brings it into focus, and the
+    // selected one is ticked. Slots 1-10 are the focusSlot commands, so their rows
+    // carry the 1..0 key in the shortcut column; a sound further down is a plain row.
     for (int slot = 0; slot <= engine.highestSlot(); ++slot)
     {
         const auto id = engine.windowInSlot (slot);
@@ -540,9 +564,9 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::windowMenu()
     }
     if (! engine.windowIds().empty()) m.addSeparator();
 
-    m.addCommandItem (&commandManager, cmd::toggleSidePanels);
-    m.addCommandItem (&commandManager, cmd::toggleKeyboard);
     m.addCommandItem (&commandManager, cmd::toggleGrid);
+    m.addCommandItem (&commandManager, cmd::toggleKeyboard);
+    m.addCommandItem (&commandManager, cmd::toggleSidePanels);
     m.addSeparator();
     m.addCommandItem (&commandManager, cmd::zoom100);
     m.addCommandItem (&commandManager, cmd::zoomToFit);

@@ -81,7 +81,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - [x] 1.2 Curvature menu: labels and values Log 50 / Linear 100 / Expo 200, reverse mapping, defaults in `EffectLayouts.cpp`; check in `Norris.h` that "Log" really curves log
 
 ### 2. Menus 0.5.0
-- [ ] 2.1 Transport → **Sound**, Window → **Canvas**, with the spec's order, separators and keys. Color ⌘T and Rename… ⌘R move to Sound; Flip Direction (D); Arm Record (R) and Direct Recording (⇧R) greyed until step 5; Select Set Loop ⌘⇧A; Unset Loop ⌘⇧L greyed until step 4
+- [x] 2.1 Transport → **Sound**, Window → **Canvas**, with the spec's order, separators and keys. Color ⌘T and Rename… ⌘R move to Sound; Flip Direction (D); Arm Record (R) and Direct Recording (⇧R) greyed until step 5; Select Set Loop ⌘⇧A; Unset Loop ⌘⇧L greyed until step 4
 - [ ] 2.2 Zoom Sound and Zoom Canvas submenus: window zoom commands (`zoomBy`, show all), new **Fit Selection**; canvas `+`/`-` into the table; swap ⌘0/⌘1
 
 ### 3. Playback range
@@ -135,7 +135,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - Audio: listen to each row of the transport table, including disarm mid-playback with no click.
 
 ## Open questions
-- None yet.
+- **Select Silence key.** The 0.5.0 Selection menu (`569:13068`) shows ⌘⌥A; the app keeps 0.4's ⌘⇧⌫ until the author says which.
+- **⌘T.** Sound ▸ Color's row shows no shortcut in Figma (the spec table says ⌘T). 2.1 binds ⌘T to drop the colour list down under the selected Window's title bar; confirm, or say if it should cycle colours instead.
+- **Figma fixes to make:** Direct Recording shows ⌘R in `569:13467` (Rename… has ⌘R; the spec table and the app say ⇧R); the rule above Mute there is a 1 px rectangle, not a `Menu_separator` (the app draws the normal separator).
 
 ## Journal
 One line per finished sub-step: date · sub-step · what was verified · commit.
@@ -143,3 +145,4 @@ One line per finished sub-step: date · sub-step · what was verified · commit.
 - 2026-11-14 · 0.1 · Read both Figma Specs blocks; branch `v0.5.0-dev` from `v0.4.0-dev`; `specs_v0-5-0.md` snapshot; this plan with the decisions agreed with the author (initial Loop on, play from caret on all tracks, ephemeral Magnetophon tape with full source choice, zoom keys, all of MIDI in 0.5.0). No code changed.
 - 2026-11-14 · 1.1 · Slot digit centred on a rounded x and set 3.5 px down as in `526:4845` (was 2 px, baseline now box+11). Captured the running dev build at 1×: slots 2/4/5 crisp, ink rows 4–10 in the 16 px box, 4|5 px side margins for one digit (Figma's "99" leans left the same way, 1|2); Figma's own 1× export smears over half pixels. Tests green, standalone builds. · (this commit)
 - 2026-11-14 · 1.2 · Curvature dropdown: Custom (disabled) / Log - 50% / Linear - 100% / Expo - 200%, mapped to 50/100/200, anything else shows Custom. `Norris.h` `tween` is t^(c/100), so 50 = sqrt(t) (fast rise, log-shaped) and 200 = t² (expo-shaped), which matches the new labels; the old "Expo - 0%" gave t⁰ = an instant jump. Defaults in `EffectLayouts.cpp` stay 100 (Linear), so nothing changed there. `--effects-snapshot` Granular and Sample Hose trays show Linear at 100. Tests green, standalone builds. · (this commit)
+- 2026-11-14 · 2.1 · Menus renamed **Sound** and **Canvas**, contents in the spec's order and separators (`569:13467`, `569:13665`, `569:13068`). Sound: Color ▸ (greyed "Color" with no Sound selected), Rename… ⌘R, Arm Record R and Direct Recording ⇧R greyed until step 5, Select Audio Source…, Stop / Play / Pause, Flip Direction D (the old Cycle Direction), Fast Forward before Loop, Mute / Solo. Play Forward / Backward / Ping-pong (⌥␣) stay bound but leave the menu. ⌘T drops the colour list under the selected Window. Selection: Unset Loop ⌘⇧L greyed until step 4, Select Set Loop ⌘⇧A. Canvas: Hide Color Theme greyed until step 7, the sound list (the inert selected-sound header row is gone; the list ticks it), Free Canvas G / Hide Keyboard K / Hide Side Panels ⌘., zoom rows until 2.2. `--app-snapshot` menus compared with Figma's 1× screenshots: same rows, order and separators; only Direct Recording's key differs (Figma's ⌘R, see Open questions). Tests green, standalone builds. · (this commit)

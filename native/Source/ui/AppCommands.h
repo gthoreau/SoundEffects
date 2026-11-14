@@ -3,10 +3,10 @@
 // the menus draw are all generated from it, so a shortcut is decided in one place
 // and cannot be shown in one form and bound in another.
 //
-// The table follows the 0.4.0 spec (specs_v0-4-0.md, "Application Menus"), with the
-// decisions recorded in docs/0.4.0/PLAN.md: ⌘␣ and ⌃␣ belong to macOS (Spotlight,
-// input source), so Play Forward and Play Backward have no shortcut and D cycles the
-// direction instead.
+// The table follows the 0.5.0 spec (specs_v0-5-0.md, "Application Menus — v.0.5.0"),
+// with the decisions recorded in docs/0.5.0/PLAN.md (and, before them, the 0.4.0 ones:
+// ⌘␣ and ⌃␣ belong to macOS, so D flips the direction and Play Forward / Backward
+// have no shortcut).
 //
 // Commands whose feature has not landed yet are in the table anyway: the menus show
 // them greyed, so the menu structure is the final one from the start.
@@ -28,16 +28,17 @@ enum : juce::CommandID
 
     // Selection
     selectAll = 0x5e80, extendToBeginning, extendToEnd, extendAbove, extendBelow,
-    insertSilence, crop, setLoop, selectLoop, selectExactly, selectPeak, selectSilence,
+    insertSilence, crop, setLoop, unsetLoop, selectLoop, selectExactly, selectPeak, selectSilence,
 
-    // Transport
-    record = 0x5ec0, selectAudioSource, stop, play, pause, loop, fastForward,
-    playForward, playBackward, playPingPong, cycleDirection, mute, solo,
+    // Sound (the 0.4 Transport menu, plus the selected Sound's Color and name)
+    soundColour = 0x5ec0, rename, armRecord, directRecording, selectAudioSource,
+    stop, play, pause, flipDirection, fastForward, loop, mute, solo,
+    playForward, playBackward, playPingPong,   // bound, not in a menu (D flips instead)
 
-    // Window
-    changeName = 0x5f00, toggleSidePanels, toggleKeyboard, toggleGrid, zoom100, zoomToFit,
+    // Canvas (the 0.4 Window menu)
+    toggleColourTheme = 0x5f00, toggleSidePanels, toggleKeyboard, toggleGrid, zoom100, zoomToFit,
 
-    // Window: the sound list. Keys 1..9, 0 focus mixer slots 1..10 (and their Window).
+    // Canvas: the sound list. Keys 1..9, 0 focus mixer slots 1..10 (and their Window).
     focusSlot1 = 0x5f20, focusSlot10 = focusSlot1 + 9,
 };
 
