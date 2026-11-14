@@ -975,6 +975,25 @@ private:
         ours->refreshNow();
         bool ok = writePng (ours->createComponentSnapshot (ours->getLocalBounds(), true, 1.0f), png);
 
+        // The same with a Set Loop region that half-covers the selection, as the
+        // Set-loop=yes variants of 196:4395 draw it: <name>-setloop.png.
+        if (auto* sfx = dynamic_cast<SoundEffectsAudioProcessor*> (processor.get()))
+            if (! sfx->engine().windowIds().empty())
+            {
+                const uint64_t id = sfx->engine().windowIds().back();   // "Window name"
+                if (auto* d = sfx->engine().editDoc (id))
+                {
+                    const size_t fs = (size_t) d->frameSize(), frames = d->maxTrackSize() / fs;
+                    d->loopSt  = (size_t) ((double) frames * 0.43) * fs;
+                    d->loopEnd = (size_t) ((double) frames * 0.62) * fs;
+                    sfx->engine().commitMeta (id);
+                    ours->refreshNow();
+                    ours->repaint();
+                    ok = writePng (ours->createComponentSnapshot (ours->getLocalBounds(), true, 1.0f),
+                                   png.getSiblingFile (png.getFileNameWithoutExtension() + "-setloop.png")) && ok;
+                }
+            }
+
         // Each menu, and each submenu it holds as <name>-menu-<Title>-<Row>.png
         // (Zoom Sound, Zoom Canvas, the Color list).
         std::function<bool (const juce::PopupMenu&, const juce::String&)> drawMenu;

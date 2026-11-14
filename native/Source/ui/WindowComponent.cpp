@@ -745,22 +745,24 @@ void WindowComponent::paintStatus (Graphics& g, const se::SoundDocument& d)
     iconAt (os8::icon::Id::selectionEnd,    endField.getX() - 18,    14);
 }
 
-void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool muted)
+void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool windowMuted)
 {
     const auto area = tracksArea();
-    const auto clip = g.getClipBounds();
     const int n = d.numTracks();
     const size_t maxSize = d.maxTrackSize();
 
 
-    const Colour ink = muted ? kWaveMuted : black;
-    // The selection inverts what is under it: a DIFFERENCE layer, white (or #666
-    // on a muted Window), as the waveform placeholder draws it.
-    const Colour sel = muted ? gray500 : white;
-    // The playhead is a 1 px DIFFERENCE line too (#9d9d9d when muted), so it shows
-    // inside the inverted selection as well as outside it.
-    const Colour headInk = muted ? gray400 : white;
     const Colour red = os8::colour::transportRed;
+
+    // Set Loop (0.5.0, 196:4395 Set-loop=yes): while the Window loops the region,
+    // the audio outside it is drawn as a muted Window draws it, on every track,
+    // selection and playhead included, and with no Recording look: Figma shows the
+    // take inside the region only (today's Recorder ignores the region; step 5).
+    // The inside is drawn as usual. Loop off, Play does not read the region (3.2),
+    // so nothing is greyed. A muted Window is grey all over already.
+    const bool loopRegion = loopEnabled && ! windowMuted && se::hasLoop (d);
+    const int loopX0 = loopRegion ? xAtByte (d.loopSt, maxSize)  : 0;
+    const int loopX1 = loopRegion ? xAtByte (d.loopEnd, maxSize) : 0;
 
     // The Tracks a take is writing into wear the Recording states (196:4395).
     std::vector<int> recTracks;
@@ -832,8 +834,9 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
             g.drawHorizontalLine ((int) mid, (float) lane.getX(), (float) endX);
             // Only the columns the clip reaches: Core Graphics records every call,
             // clipped or not, and a playing Window repaints 1 px columns (refresh()).
-            const int x0 = std::max (lane.getX(), clip.getX());
-            const int x1 = std::min (lane.getRight(), clip.getRight());
+            const auto reach = g.getClipBounds();   // the loop region's halves narrow it
+            const int x0 = std::max (lane.getX(), reach.getX());
+            const int x1 = std::min (lane.getRight(), reach.getRight());
             if (t < (int) peaks.size())
             {
                 const auto& cols = peaks[(size_t) t];
@@ -850,84 +853,116 @@ void WindowComponent::paintTracks (Graphics& g, const se::SoundDocument& d, bool
                 if (x >= x0) g.fillRect (x, (int) mid, 1, 1);
         };
 
-        const bool inSel = t >= d.firstSelTrack - 1 && t <= d.lastSelTrack - 1;
-        const bool hasRange = inSel && d.selEnd > d.selSt;
-        const bool rec = std::find (recTracks.begin(), recTracks.end(), t) != recTracks.end();
-        const int selX0 = hasRange ? std::max (xAtByte (d.selSt, maxSize), lane.getX()) : 0;
-        const int selX1 = hasRange ? std::min (xAtByte (d.selEnd, maxSize), lane.getRight()) : 0;
+        // Everything drawn over the bed, in one look: muted (the Mute=on variants)
+        // or not, with or without the Recording states.
+        const auto paintLane = [&] (bool muted, bool recLook)
+        {
+            const Colour ink = muted ? kWaveMuted : black;
+            // The selection inverts what is under it: a DIFFERENCE layer, white (or
+            // #666 on a muted Window), as the waveform placeholder draws it.
+            const Colour sel = muted ? gray500 : white;
+            // The playhead is a 1 px DIFFERENCE line too (#9d9d9d when muted), so it
+            // shows inside the inverted selection as well as outside it.
+            const Colour headInk = muted ? gray400 : white;
 
-        // Recording with no selection: the waveform itself turns red (30 % over the
-        // black line of silence when muted).
-        const bool recFaint = rec && ! hasRange && muted;
-        const Colour waveInk = rec && ! hasRange && ! muted ? red : ink;
-        if (recFaint)
-        {
-            // 30 % red over whatever is under it: the bed, or the black line of
-            // silence the design leaves showing through.
-            g.setColour (black);
-            g.drawHorizontalLine ((int) mid, (float) lane.getX(), (float) endX);
-            drawWave (red.withAlpha (0.3f));
-        }
-        else
-        {
-            drawWave (waveInk);
-        }
+            const bool inSel = t >= d.firstSelTrack - 1 && t <= d.lastSelTrack - 1;
+            const bool hasRange = inSel && d.selEnd > d.selSt;
+            const bool rec = recLook;
+            const int selX0 = hasRange ? std::max (xAtByte (d.selSt, maxSize), lane.getX()) : 0;
+            const int selX1 = hasRange ? std::min (xAtByte (d.selEnd, maxSize), lane.getRight()) : 0;
 
-        // What the selection layer turns a pixel into.
-        const auto underSelection = [&] (Colour under, bool inked)
-        {
-            if (! rec)  return difference (under, sel);
-            if (! muted) return inked ? white : red;               // a red block, the wave white in it
-            return linearBurn (under, red, 0.3f);                 // red 30 % LINEAR_BURN
+            // Recording with no selection: the waveform itself turns red (30 % over the
+            // black line of silence when muted).
+            const bool recFaint = rec && ! hasRange && muted;
+            const Colour waveInk = rec && ! hasRange && ! muted ? red : ink;
+            if (recFaint)
+            {
+                // 30 % red over whatever is under it: the bed, or the black line of
+                // silence the design leaves showing through.
+                g.setColour (black);
+                g.drawHorizontalLine ((int) mid, (float) lane.getX(), (float) endX);
+                drawWave (red.withAlpha (0.3f));
+            }
+            else
+            {
+                drawWave (waveInk);
+            }
+
+            // What the selection layer turns a pixel into.
+            const auto underSelection = [&] (Colour under, bool inked)
+            {
+                if (! rec)  return difference (under, sel);
+                if (! muted) return inked ? white : red;               // a red block, the wave white in it
+                return linearBurn (under, red, 0.3f);                 // red 30 % LINEAR_BURN
+            };
+
+            if (hasRange && selX1 > selX0)
+            {
+                juce::Graphics::ScopedSaveState save (g);
+                const Rectangle<int> selRect (selX0, lane.getY(), selX1 - selX0, lane.getHeight());
+                g.reduceClipRegion (selRect);
+                g.setColour (underSelection (white, false));
+                g.fillRect (selRect);
+                drawWave (underSelection (ink, true));
+            }
+            else if (inSel && d.selSt == d.selEnd)
+            {
+                // The insertion point: a serifed I-beam, so it cannot pass for a playhead.
+                const int cx = xAtByte (d.selSt, maxSize);
+                const auto r = lane.reduced (0, 2);
+                if (cx >= r.getX() + 2 && cx <= r.getRight() - 3)
+                {
+                    g.setColour (black);
+                    g.drawVerticalLine (cx, (float) r.getY(), (float) r.getBottom());
+                    g.fillRect (cx - 2, r.getY(), 5, 1);
+                    g.fillRect (cx - 2, r.getBottom() - 1, 5, 1);
+                }
+            }
+
+            // Per-track playhead, each track at its OWN loop phase, where refresh() last
+            // sampled it, not where the transport is now. refresh() repaints only the
+            // column it left and the one it landed on; re-reading the position here, a
+            // frame later, put a short Sound's head several px outside its own column:
+            // clipped away (invisible), or drawn where no later repaint erases it.
+            const int px = (size_t) t < lastHeadX.size() ? lastHeadX[(size_t) t] : kNoHead;
+            if (lenT > 0 && px != kNoHead && px >= lane.getX() && px < lane.getRight())
+            {
+                // DIFFERENCE, pixel by pixel, against what the lane shows there.
+                const bool inRange = hasRange && px >= selX0 && px < selX1;
+                for (int y = lane.getY(); y < lane.getBottom(); ++y)
+                {
+                    const bool inked = waveCovers (px, y);
+                    Colour under = white;
+                    if (inked)
+                    {
+                        if (recFaint)
+                            under = (y == (int) mid ? black : white).interpolatedWith (red, 0.3f);
+                        else
+                            under = waveInk;
+                    }
+                    if (inRange) under = underSelection (under, inked);
+                    g.setColour (difference (under, headInk));
+                    g.fillRect (px, y, 1, 1);
+                }
+            }
         };
 
-        if (hasRange && selX1 > selX0)
+        const bool recording = std::find (recTracks.begin(), recTracks.end(), t) != recTracks.end();
+        if (! loopRegion)
+            paintLane (windowMuted, recording);
+        else
         {
-            juce::Graphics::ScopedSaveState save (g);
-            const Rectangle<int> selRect (selX0, lane.getY(), selX1 - selX0, lane.getHeight());
-            g.reduceClipRegion (selRect);
-            g.setColour (underSelection (white, false));
-            g.fillRect (selRect);
-            drawWave (underSelection (ink, true));
-        }
-        else if (inSel && d.selSt == d.selEnd)
-        {
-            // The insertion point: a serifed I-beam, so it cannot pass for a playhead.
-            const int cx = xAtByte (d.selSt, maxSize);
-            const auto r = lane.reduced (0, 2);
-            if (cx >= r.getX() + 2 && cx <= r.getRight() - 3)
+            const auto inside = lane.withLeft (std::max (lane.getX(), loopX0)).withRight (std::min (lane.getRight(), loopX1));
+            juce::RectangleList<int> outside (lane);
+            outside.subtract (inside);
             {
-                g.setColour (black);
-                g.drawVerticalLine (cx, (float) r.getY(), (float) r.getBottom());
-                g.fillRect (cx - 2, r.getY(), 5, 1);
-                g.fillRect (cx - 2, r.getBottom() - 1, 5, 1);
+                juce::Graphics::ScopedSaveState save (g);
+                if (g.reduceClipRegion (outside)) paintLane (true, false);
             }
-        }
-
-        // Per-track playhead, each track at its OWN loop phase, where refresh() last
-        // sampled it, not where the transport is now. refresh() repaints only the
-        // column it left and the one it landed on; re-reading the position here, a
-        // frame later, put a short Sound's head several px outside its own column:
-        // clipped away (invisible), or drawn where no later repaint erases it.
-        const int px = (size_t) t < lastHeadX.size() ? lastHeadX[(size_t) t] : kNoHead;
-        if (lenT > 0 && px != kNoHead && px >= lane.getX() && px < lane.getRight())
-        {
-            // DIFFERENCE, pixel by pixel, against what the lane shows there.
-            const bool inRange = hasRange && px >= selX0 && px < selX1;
-            for (int y = lane.getY(); y < lane.getBottom(); ++y)
+            if (! inside.isEmpty())
             {
-                const bool inked = waveCovers (px, y);
-                Colour under = white;
-                if (inked)
-                {
-                    if (recFaint)
-                        under = (y == (int) mid ? black : white).interpolatedWith (red, 0.3f);
-                    else
-                        under = waveInk;
-                }
-                if (inRange) under = underSelection (under, inked);
-                g.setColour (difference (under, headInk));
-                g.fillRect (px, y, 1, 1);
+                juce::Graphics::ScopedSaveState save (g);
+                if (g.reduceClipRegion (inside)) paintLane (false, recording);
             }
         }
 
