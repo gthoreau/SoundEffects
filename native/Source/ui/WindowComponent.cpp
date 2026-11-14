@@ -75,7 +75,7 @@ WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
     };
     recordButton.onClick = [this] { perform (Action::record); };
     pauseButton.onClick = [this] { applyCues (buttons.pressPause()); };
-    fastForwardButton.onClick = [this] { perform (Action::toggleAdvance); };
+    fastForwardButton.addMouseListener (&fastForwardHold, false);   // momentary: see FastForwardHold
     loopButton.onClick = [this] { perform (Action::toggleLoop); };
     updateTransportButtons();
 }
@@ -130,7 +130,6 @@ void WindowComponent::refresh()
         if (roll != lastRoll)
         {
             buttons.engineChanged (lastRoll, roll);
-            if (roll == se::RollState::stopped && ! buttons.playOn()) advanceEnabled = false;
             lastRoll = roll;
         }
     }
@@ -1282,7 +1281,7 @@ void WindowComponent::updateTransportButtons()
     stopButton.setEnabled (true);
     pauseButton.setToggleState (buttons.pauseOn(), juce::dontSendNotification);
     pauseButton.setEnabled (buttons.playOn() || buttons.pauseOn());
-    fastForwardButton.setToggleState (advanceEnabled, juce::dontSendNotification);
+    fastForwardButton.setToggleState (buttons.ffOn(), juce::dontSendNotification);
     fastForwardButton.setEnabled (buttons.ffEnabled());
     loopButton.setToggleState (buttons.loopOn(), juce::dontSendNotification);
     loopButton.setEnabled (buttons.loopEnabled());
@@ -1296,12 +1295,17 @@ void WindowComponent::updateTransportButtons()
     recordButton.setToggleState (recLit, juce::dontSendNotification);
 }
 
+void WindowComponent::fastForward (bool down)
+{
+    if (down && ! canPerform (Action::toggleAdvance)) return;
+    applyCues (down ? buttons.ffDown() : buttons.ffUp());
+}
+
 void WindowComponent::takeFinished()
 {
     // A take this Window still thinks is open ended by itself (a punch-out): as a Stop.
     if (buttons.takeOpen()) buttons.ended();
     restoreDirectionAfterTake();
-    advanceEnabled = false;
     updateTransportButtons();
     repaint();
 }
@@ -1323,7 +1327,6 @@ void WindowComponent::applyCues (const se::TransportCues& cues)
         {
             case se::TransportCue::play:
                 engine.play (id, playButtonOptions());
-                advanceEnabled = false;   // play() resets advanceScale
                 break;
             case se::TransportCue::resume:
                 if (ts == se::TransportState::paused) engine.pause (id);   // toggles back to playing
@@ -1334,8 +1337,7 @@ void WindowComponent::applyCues (const se::TransportCues& cues)
                 break;
             case se::TransportCue::stop:
                 if (isRecording()) recorder->stop();
-                else               engine.stop (id);
-                advanceEnabled = false;
+                else               engine.stop (id);   // resets the speed too
                 restoreDirectionAfterTake();
                 break;
             case se::TransportCue::takeStart:
@@ -1351,7 +1353,6 @@ void WindowComponent::applyCues (const se::TransportCues& cues)
                     ok = recorder->start (id, s, rolling);
                 }
                 if (! ok) { buttons.takeRefused (ts == se::TransportState::playing); restoreDirectionAfterTake(); }
-                advanceEnabled = false;
                 invalidateWaveform();
                 break;
             }
@@ -1366,10 +1367,10 @@ void WindowComponent::applyCues (const se::TransportCues& cues)
                 restoreDirectionAfterTake();
                 break;
             case se::TransportCue::fastOn:
-                engine.advance (id); advanceEnabled = true;
+                engine.advance (id);
                 break;
             case se::TransportCue::fastOff:
-                engine.normalSpeed (id); advanceEnabled = false;
+                engine.normalSpeed (id);
                 break;
         }
     }
@@ -1861,21 +1862,8 @@ bool WindowComponent::perform (Action a)
             return true;
         case Action::toggleLoop: buttons.toggleLoop(); updateTransportButtons(); repaint(); return true;
         case Action::toggleAdvance:
-            // advance() starts playback if the transport is stopped, so engaging it
-            // also rolls — the same as the button.
-            if (advanceEnabled) engine.normalSpeed (id);
-            else
-            {
-                // Rolling from Stop, it starts where Play would (the transport's
-                // last options may be the Keyboard's or the Recorder's).
-                auto* w = engineWindow();
-                if (w == nullptr || w->transport->uiState() == se::TransportState::stopped)
-                    engine.play (id, playButtonOptions());
-                engine.advance (id);
-            }
-            advanceEnabled = ! advanceEnabled;
-            updateTransportButtons();
-            repaint();
+            // The menu row cannot be held: it engages FF and the next one lets it go.
+            fastForward (! buttons.ffHeld());
             return true;
 
         case Action::selectAll: selectAllAudio(); return true;

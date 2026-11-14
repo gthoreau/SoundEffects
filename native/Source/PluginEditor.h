@@ -121,6 +121,7 @@ private:
     int numInputChannels() const;
     bool isPluginHost() const;
     std::map<uint64_t, audiosource::SourceChoice> sourceChoices;   // per Window, this session
+    uint64_t fastForwardWindow = 0;   // the Window F went down on: F's release lets go of it, wherever selection went
     /** The Window the menus act on: the canvas's selected one. */
     WindowComponent* targetWindow() const { return canvas.selectedWindowComponent(); }
     /** Is the user typing into a text field? Single-key shortcuts stand down then. */

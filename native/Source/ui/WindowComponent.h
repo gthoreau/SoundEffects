@@ -134,7 +134,10 @@ public:
     bool isLoopOn() const noexcept    { return buttons.loopOn(); }
     /** Record is armed or on (the Arm Record menu row's tick). */
     bool isArmed() const noexcept     { return buttons.record() != se::RecordLight::off; }
-    bool isAdvanceOn() const noexcept { return advanceEnabled; }
+    bool isAdvanceOn() const noexcept { return buttons.ffOn(); }
+    /** FF is momentary (0.5.0 step 5.3): down while the button or F is held; up
+        puts back the state it was pressed in. */
+    void fastForward (bool down);
     se::PlayDirection direction() const;
     void setDirection (se::PlayDirection);
 
@@ -299,9 +302,6 @@ private:
     se::RollState lastRoll = se::RollState::stopped;   // the engine's, as last seen by refresh()
     bool haveDirBeforeTake = false;
     se::PlayDirection dirBeforeTake = se::PlayDirection::forward;
-    // 2x speed. Mirrors Transport::advanceScale, which play() resets to 1.0 — so
-    // anything that (re)starts playback must clear this too.
-    bool advanceEnabled = false;
 
     int laneH = kLaneH;
     int desiredW = kDefaultWidth;
@@ -390,6 +390,16 @@ private:
         WindowComponent& owner;
     };
     ChildClicks childClicks { *this };
+
+    /** FF is held, not clicked: down on press, up on release (wherever the mouse is). */
+    struct FastForwardHold : juce::MouseListener
+    {
+        explicit FastForwardHold (WindowComponent& o) : owner (o) {}
+        void mouseDown (const juce::MouseEvent&) override { if (owner.fastForwardButton.isEnabled()) owner.fastForward (true); }
+        void mouseUp (const juce::MouseEvent&) override   { owner.fastForward (false); }
+        WindowComponent& owner;
+    };
+    FastForwardHold fastForwardHold { *this };
 
     // the child controls
     Os8TextField startField { os8::FieldSize::xSmall }, lengthField { os8::FieldSize::xSmall },

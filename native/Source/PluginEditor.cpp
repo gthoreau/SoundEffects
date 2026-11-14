@@ -146,6 +146,11 @@ bool SoundEffectsAudioProcessorEditor::keyPressed (const juce::KeyPress& k)
     // that leaves focus on the Window, not on the panel. It only fires when there IS
     // something runnable; otherwise the key falls through untouched. A Window being
     // renamed keeps its own Return (WindowComponent's name editor consumes it).
+    // F is Fast Forward, held: the command hears its down and up (keyStateChanged,
+    // wantsKeyUpDownCallbacks), so its key press, and every auto-repeat of it, is
+    // taken here rather than left to fall through to the system's beep.
+    if (k.getKeyCode() == 'F' && ! k.getModifiers().isAnyModifierKeyDown() && ! isTyping())
+        return true;
     return k.getKeyCode() == juce::KeyPress::returnKey
         && ! k.getModifiers().isAnyModifierKeyDown()
         && effects.applyFromKeyboard();
@@ -248,7 +253,10 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::play:          active = w != nullptr && ! w->isPlaying(); break;
         case cmd::pause:         active = w != nullptr && w->isPlaying(); break;
         case cmd::loop:          active = can (WindowComponent::Action::toggleLoop); r.setTicked (w != nullptr && w->isLoopOn()); break;
-        case cmd::fastForward:   active = can (WindowComponent::Action::toggleAdvance); r.setTicked (w != nullptr && w->isAdvanceOn()); break;
+        case cmd::fastForward:
+            active = can (WindowComponent::Action::toggleAdvance); r.setTicked (w != nullptr && w->isAdvanceOn());
+            r.flags |= juce::ApplicationCommandInfo::wantsKeyUpDownCallbacks;   // momentary: F down and F up
+            break;
         case cmd::mute:
             active = engineWindow != nullptr;
             r.setTicked (engineWindow != nullptr && engineWindow->muted.load (std::memory_order_relaxed));
@@ -353,7 +361,24 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         case cmd::armRecord:     return act (WindowComponent::Action::record);
         case cmd::directRecording: return act (WindowComponent::Action::directRecord);
         case cmd::loop:          return act (WindowComponent::Action::toggleLoop);
-        case cmd::fastForward:   return act (WindowComponent::Action::toggleAdvance);
+        case cmd::fastForward:
+            if (info.invocationMethod == InvocationInfo::fromKeyPress)
+            {
+                // Held F: down engages, up lets go — of the Window it went down on.
+                if (info.isKeyDown)
+                {
+                    if (w == nullptr) return false;
+                    fastForwardWindow = canvas.selectedWindowId();
+                    w->fastForward (true);
+                }
+                else if (auto* held = canvas.windowComponentFor (fastForwardWindow))
+                {
+                    held->fastForward (false);
+                    fastForwardWindow = 0;
+                }
+                return true;
+            }
+            return act (WindowComponent::Action::toggleAdvance);   // the menu row: engage / let go
         case cmd::playForward:   return act (WindowComponent::Action::playForward);
         case cmd::playBackward:  return act (WindowComponent::Action::playBackward);
         case cmd::playPingPong:  return act (WindowComponent::Action::playPingPong);
