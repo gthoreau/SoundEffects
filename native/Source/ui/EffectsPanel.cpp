@@ -1032,7 +1032,9 @@ void EffectsPanelComponent::buildTray()
                     if (c.kind == Kind::choice)
                         items = juce::StringArray::fromTokens (juce::String (c.text), "|", "");
                     else if (c.kind == Kind::curvePreset)
-                        items = { "Custom", "Expo - 0%", "Linear - 100%", "Log - 200%" };
+                        // Curvature c shapes the tween as t^(c/100) (Norris.h): 50 is sqrt(t),
+                        // log-shaped; 200 is t squared, expo-shaped ("Curvature" 499:4926).
+                        items = { "Custom", "Log - 50%", "Linear - 100%", "Expo - 200%" };
                     else if (c.kind == Kind::ratePreset)
                     {
                         for (const auto& r : kRates) items.add (r.label);
@@ -1079,7 +1081,7 @@ void EffectsPanelComponent::buildTray()
                         if (kind == Kind::choice)
                             working[key] = se::Value ((int64_t) (i + 1));
                         else if (kind == Kind::curvePreset && i >= 1)
-                            working[key] = se::Value ((int64_t) (i == 1 ? 0 : i == 2 ? 100 : 200));
+                            working[key] = se::Value ((int64_t) (i == 1 ? 50 : i == 2 ? 100 : 200));
                         else if (kind == Kind::ratePreset && i < (int) std::size (kRates))
                             working[key] = se::Value ((int64_t) se::doubleToFixed (kRates[i].hz));
                         else if ((kind == Kind::notePick || kind == Kind::octavePick) && i >= 1)
@@ -1103,7 +1105,7 @@ void EffectsPanelComponent::buildTray()
                         else if (kind == Kind::curvePreset)
                         {
                             const auto v = se::getInt (working, key, 100);
-                            sel = v == 0 ? 1 : v == 100 ? 2 : v == 200 ? 3 : 0;
+                            sel = v == 50 ? 1 : v == 100 ? 2 : v == 200 ? 3 : 0;
                         }
                         else if (kind == Kind::ratePreset)
                         {

@@ -78,7 +78,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 
 ### 1. Small UI fixes
 - [x] 1.1 Slot-number square: centre the digit on a rounded x, as `drawSlotNumber` does; compare with `526:4845`
-- [ ] 1.2 Curvature menu: labels and values Log 50 / Linear 100 / Expo 200, reverse mapping, defaults in `EffectLayouts.cpp`; check in `Norris.h` that "Log" really curves log
+- [x] 1.2 Curvature menu: labels and values Log 50 / Linear 100 / Expo 200, reverse mapping, defaults in `EffectLayouts.cpp`; check in `Norris.h` that "Log" really curves log
 
 ### 2. Menus 0.5.0
 - [ ] 2.1 Transport → **Sound**, Window → **Canvas**, with the spec's order, separators and keys. Color ⌘T and Rename… ⌘R move to Sound; Flip Direction (D); Arm Record (R) and Direct Recording (⇧R) greyed until step 5; Select Set Loop ⌘⇧A; Unset Loop ⌘⇧L greyed until step 4
@@ -142,3 +142,4 @@ One line per finished sub-step: date · sub-step · what was verified · commit.
 
 - 2026-11-14 · 0.1 · Read both Figma Specs blocks; branch `v0.5.0-dev` from `v0.4.0-dev`; `specs_v0-5-0.md` snapshot; this plan with the decisions agreed with the author (initial Loop on, play from caret on all tracks, ephemeral Magnetophon tape with full source choice, zoom keys, all of MIDI in 0.5.0). No code changed.
 - 2026-11-14 · 1.1 · Slot digit centred on a rounded x and set 3.5 px down as in `526:4845` (was 2 px, baseline now box+11). Captured the running dev build at 1×: slots 2/4/5 crisp, ink rows 4–10 in the 16 px box, 4|5 px side margins for one digit (Figma's "99" leans left the same way, 1|2); Figma's own 1× export smears over half pixels. Tests green, standalone builds. · (this commit)
+- 2026-11-14 · 1.2 · Curvature dropdown: Custom (disabled) / Log - 50% / Linear - 100% / Expo - 200%, mapped to 50/100/200, anything else shows Custom. `Norris.h` `tween` is t^(c/100), so 50 = sqrt(t) (fast rise, log-shaped) and 200 = t² (expo-shaped), which matches the new labels; the old "Expo - 0%" gave t⁰ = an instant jump. Defaults in `EffectLayouts.cpp` stay 100 (Linear), so nothing changed there. `--effects-snapshot` Granular and Sample Hose trays show Linear at 100. Tests green, standalone builds. · (this commit)
