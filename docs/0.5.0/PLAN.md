@@ -137,7 +137,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 ## Open questions
 - **Select Silence key.** The 0.5.0 Selection menu (`569:13068`) shows ⌘⌥A; the app keeps 0.4's ⌘⇧⌫ until the author says which.
 - **⌘T.** Sound ▸ Color's row shows no shortcut in Figma (the spec table says ⌘T). 2.1 binds ⌘T to drop the colour list down under the selected Window's title bar; confirm, or say if it should cycle colours instead.
-- **Figma fixes to make:** Direct Recording shows ⌘R in `569:13467` (Rename… has ⌘R; the spec table and the app say ⇧R); the rule above Mute there is a 1 px rectangle, not a `Menu_separator` (the app draws the normal separator).
+- **Figma fix to make:** the rule above Mute in `569:13467` is a 1 px rectangle, not a `Menu_separator` (the app draws the normal separator). (Direct Recording's ⌘R was corrected to ⇧R in Figma on 2026-11-14.)
 
 ## Journal
 One line per finished sub-step: date · sub-step · what was verified · commit.
