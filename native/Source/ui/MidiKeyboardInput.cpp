@@ -1,12 +1,12 @@
 #include "MidiKeyboardInput.h"
 
-#include "KeyboardPalette.h"
+#include "engine/KeyboardVoice.h"
 
 namespace {
 constexpr double kPlainBendRange = 2.0;   // semitones either way, plain pitch wheel
 }
 
-MidiKeyboardInput::MidiKeyboardInput (KeyboardPalette& target)
+MidiKeyboardInput::MidiKeyboardInput (se::KeyboardVoice& target)
     : palette (target)
 {
     juce::MPEZoneLayout layout;

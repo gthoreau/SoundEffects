@@ -21,7 +21,6 @@
 #include "ui/CanvasComponent.h"
 #include "ui/EffectsPanel.h"
 #include "ui/KeyboardPalette.h"
-#include "ui/MidiKeyboardInput.h"
 #include "ui/MixerComponent.h"
 #include "ui/MagnetophonComponent.h"
 #include "ui/SidePanel.h"
@@ -172,7 +171,6 @@ private:
     SidePanel             magnetophonPanel { "Magnetophon", magnetophon };   // under the Mixer
     ViewPalette           palette;    // floats OVER the canvas, so it is added last
     KeyboardPalette       keyboard;   // ...and hangs directly below the palette
-    MidiKeyboardInput     midiInput { keyboard };   // MIDI in plays it
 
     juce::AudioFormatManager formatManager;
     std::unique_ptr<juce::FileChooser> chooser;

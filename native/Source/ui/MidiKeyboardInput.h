@@ -8,7 +8,7 @@
 //     15 member channels (per-note pitch bend range 48 st, the MPE default; a
 //     controller that announces another range with an RPN is believed). Each
 //     member-channel note is one finger, and its pitch slide moves the pitch of
-//     the palette continuously (`KeyboardPalette::midiBend`).
+//     the palette continuously (`KeyboardVoice::midiBend`).
 //
 // The MPEInstrument is not wait-free (it allocates), which is why it lives here and
 // not in `processBlock`.
@@ -19,12 +19,12 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
-class KeyboardPalette;
+namespace se { class KeyboardVoice; }
 
 class MidiKeyboardInput : private juce::MPEInstrument::Listener
 {
 public:
-    explicit MidiKeyboardInput (KeyboardPalette& target);
+    explicit MidiKeyboardInput (se::KeyboardVoice& target);
     ~MidiKeyboardInput() override;
 
     void handle (const se::MidiEvent& event);
@@ -38,6 +38,6 @@ private:
     void notePitchbendChanged (juce::MPENote) override;
     void noteReleased (juce::MPENote) override;
 
-    KeyboardPalette& palette;
+    se::KeyboardVoice& palette;
     juce::MPEInstrument mpe;
 };

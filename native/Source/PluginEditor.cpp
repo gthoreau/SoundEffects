@@ -20,7 +20,7 @@ constexpr int kPaletteStackGap = 6;
 SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffectsAudioProcessor& p)
     : juce::AudioProcessorEditor (&p), processorRef (p),
       topBar (*this, p.wrapperType == juce::AudioProcessor::wrapperType_Standalone),
-      canvas (p.engine()), mixer (p.engine()), effects (p.engine()), keyboard (p.engine())
+      canvas (p.engine()), mixer (p.engine()), effects (p.engine()), keyboard (p.engine(), p.keyboardVoice())
 {
     formatManager.registerBasicFormats();   // WAV, AIFF, and more
 
@@ -65,10 +65,6 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     applyTapeSource();
     addAndMakeVisible (palette);   // last, so it floats over the canvas
     addChildComponent (keyboard);  // ...and this one starts hidden
-
-    // MIDI in plays the keyboard palette (standalone devices from the Audio/MIDI
-    // dialog, the host's MIDI in the plug-in).
-    processorRef.setMidiListener ([this] (const se::MidiEvent& e) { midiInput.handle (e); });
 
     // The effects panel acts on the canvas's SELECTED Window — not the focused
     // one. Clicking into the panel takes keyboard focus away from the Window, and
@@ -675,7 +671,6 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::canvasMenu()
 SoundEffectsAudioProcessorEditor::~SoundEffectsAudioProcessorEditor()
 {
     stopTimer();
-    processorRef.setMidiListener (nullptr);
     processorRef.recorder().onChanged = nullptr;     // the take (if any) carries on without a UI
     processorRef.recorder().onFinished = nullptr;
 }

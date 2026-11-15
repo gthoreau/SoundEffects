@@ -7,6 +7,7 @@
 // asserted directly. JUCE-free, like everything else under Source/engine/.
 
 #include "engine/Edit.h"
+#include "engine/KeyboardVoice.h"
 #include "engine/MidiNotes.h"
 #include "engine/Engine.h"
 #include "engine/RecordConvert.h"
@@ -2945,6 +2946,50 @@ static void midiNoteTests()
     check (inOrder && ! q.pop (out), "events come out in order, then empty");
 }
 
+
+// The keyboard voice without a palette (0.5.0 step 12.3): MIDI plays with no editor.
+static void keyboardVoiceTests()
+{
+    std::printf ("keyboard voice\n");
+    se::Engine e;
+    e.prepare (kRate, kBlock);
+    const uint64_t w = e.addWindow (dcDocument (20, "w"));
+    se::KeyboardVoice v (e);
+    const auto playing = [&] { renderLevel (e); return e.windowById (w)->transport->uiState() == se::TransportState::playing; };
+
+    // No editor ever aimed the keys: the first Window stands in.
+    check (v.target() == w && v.hasTarget(), "no editor yet: the first Window is the target");
+    v.midiNoteOn (64, 64, 0.0);
+    check (playing(), "a note starts the Window");
+    v.midiNoteOn (67, 67, 0.0);
+    v.midiNoteOff (67);
+    check (playing() && v.heldNote() == 64, "last-note priority: the earlier key sounds again");
+    v.midiBend (64, 5.0);
+    check (playing() && std::abs (v.slide() - 5.0) < 1e-9, "a bend on the sounding key slides it");
+    v.midiNoteOff (64);
+    check (! playing() && v.heldNote() == -1, "last key up stops what the keys started");
+
+    v.midiNoteOn (10, 10, 0.0);   // below the drawn keyboard
+    check (! playing(), "a note outside the keyboard is ignored");
+
+    v.setTarget (0);
+    v.midiNoteOn (64, 64, 0.0);
+    check (! playing(), "an editor that aimed at nothing: silence");
+    v.setTarget (w);
+    v.midiNoteOn (64, 64, 0.0);
+    check (playing(), "aimed at the Window again: it sounds");
+    v.midiAllOff();
+    check (! playing(), "all notes off");
+
+    // A Window that was already rolling is borrowed, and handed back still rolling.
+    se::PlayOptions o; o.loop = true;
+    e.play (w, o);
+    check (playing(), "(set up) the Window rolls by itself");
+    v.midiNoteOn (72, 72, 0.0);
+    v.midiNoteOff (72);
+    check (playing(), "a rolling Window is only re-pitched, and keeps rolling");
+}
+
 // --- Magnetophon (0.5.0 step 11.1) ------------------------------------------------
 // The pure tape model first: takes as start markers, tape-like record-over,
 // play to the end of the tape, next / previous, unsent audio.
@@ -3652,6 +3697,7 @@ int main()
 
     scrollTargetTests();
     midiNoteTests();
+    keyboardVoiceTests();
     transportButtonsTests();
     masterLevelTests();
     directionTests();

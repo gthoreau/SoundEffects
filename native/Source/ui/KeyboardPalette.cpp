@@ -4,6 +4,9 @@
 
 #include <cmath>
 
+static_assert (kbd::kLowNote == se::KeyboardVoice::kLowNote && kbd::kHighNote == se::KeyboardVoice::kHighNote,
+               "the voice and the keyboard picture agree on the keys");
+
 using juce::Graphics;
 using juce::Point;
 using juce::Rectangle;
@@ -19,8 +22,8 @@ const se::EffectModule* keyboardModule()
 
 } // namespace
 
-KeyboardPalette::KeyboardPalette (se::Engine& e)
-    : engine (e), runner (e)
+KeyboardPalette::KeyboardPalette (se::Engine& e, se::KeyboardVoice& v)
+    : engine (e), voice (v), runner (e)
 {
     setSize (kWidth, kHeight);
 
@@ -47,17 +50,9 @@ const se::SoundDocument* KeyboardPalette::doc() const
     return w != nullptr ? w->uiDoc.get() : nullptr;
 }
 
-int KeyboardPalette::baseNote() const
-{
-    const auto* d = doc();
-    return d != nullptr ? d->baseFreq : 60;
-}
+int KeyboardPalette::baseNote() const { return voice.baseNote(); }
 
-bool KeyboardPalette::hasTarget() const
-{
-    const auto* d = doc();
-    return d != nullptr && d->maxTrackSize() > 0;
-}
+bool KeyboardPalette::hasTarget() const { return voice.hasTarget(); }
 
 juce::Colour KeyboardPalette::targetTint() const
 {
@@ -67,20 +62,13 @@ juce::Colour KeyboardPalette::targetTint() const
     return os8::themeColourFor (w);
 }
 
-bool KeyboardPalette::isRolling() const
-{
-    auto* w = const_cast<se::Engine&> (engine).windowById (targetId);
-    return w != nullptr && w->transport != nullptr
-        && w->transport->uiState() == se::TransportState::playing;
-}
-
 void KeyboardPalette::setTargetWindow (uint64_t windowId)
 {
     if (targetId == windowId) return;
 
     // A note the keyboard is holding does not carry over to a new target — it was
     // played on the old one. Anything else the old Window was doing is left alone.
-    allNotesOff();
+    voice.setTarget (windowId);
     targetId = windowId;
     updateApplyState();
     repaint();
@@ -88,6 +76,15 @@ void KeyboardPalette::setTargetWindow (uint64_t windowId)
 
 void KeyboardPalette::refresh()
 {
+    // MIDI moves the voice without the palette's mouse path: look at the voice.
+    if (seenHeld != voice.heldNote() || seenLast != voice.lastNote() || std::abs (seenSlide - voice.slide()) > 1e-9)
+    {
+        seenHeld = voice.heldNote();
+        seenLast = voice.lastNote();
+        seenSlide = voice.slide();
+        repaint();
+    }
+
     updateApplyState();
 
     // The canvas assigns a Window its tint the first time it lays it out, so a
@@ -127,7 +124,7 @@ void KeyboardPalette::paint (Graphics& g)
     // The instrument. With no Window to play, the dot has no base note to sit under
     // either — the keyboard is drawn plain, which is the honest picture of a
     // keyboard wired to nothing.
-    kbd::draw (g, keysOrigin(), heldNote, hasTarget() ? baseNote() : -1);
+    kbd::draw (g, keysOrigin(), voice.heldNote(), hasTarget() ? baseNote() : -1);
 
     // The readout: the note the last key played, over how far that is from the
     // sound's own base note — which is exactly what Apply will write.
@@ -135,7 +132,7 @@ void KeyboardPalette::paint (Graphics& g)
     // The badge wears the target Window's theme the moment one is selected — before
     // any key is played, so it says WHICH Window the keys are about to move.
     const bool aimed = doc() != nullptr;
-    const bool live  = hasTarget() && lastNote >= 0;
+    const bool live  = hasTarget() && voice.lastNote() >= 0;
     const auto badge = badgeRect;
 
     {
@@ -162,8 +159,8 @@ void KeyboardPalette::paint (Graphics& g)
     }
 
     // A pitch slide (MPE, or the wheel) shows in the offset while the key is down.
-    const int semitones = lastNote - baseNote() + (heldNote >= 0 ? (int) std::lround (sounding) : 0);
-    os8::drawText (g, kbd::noteName (lastNote), os8::TextStyle::largeLabel,
+    const int semitones = voice.lastNote() - baseNote() + (voice.heldNote() >= 0 ? (int) std::lround (voice.slide()) : 0);
+    os8::drawText (g, kbd::noteName (voice.lastNote()), os8::TextStyle::largeLabel,
                    { (float) badge.getX() + 5.0f, (float) badge.getY() + 6.0f, 29.0f, 14.0f },
                    juce::Justification::horizontallyCentred);
 
@@ -179,139 +176,22 @@ void KeyboardPalette::paint (Graphics& g)
 
 // --- playing -----------------------------------------------------------------
 
-void KeyboardPalette::strike (int note, double bendSemitones)
+void KeyboardPalette::strike (int note)
 {
-    if (note < kbd::kLowNote || note > kbd::kHighNote) return;
-    if (! hasTarget()) return;
-
-    heldNote = note;
-    lastNote = note;
-    sounding = bendSemitones;
-
-    // The entire synthesis engine: twelve-tone equal temperament out of one pow(),
-    // and a "sampler" that is a multiply. Auditioning never touches the document —
-    // the scale rides along with the transport. Only Apply commits.
-    const double rateScale = std::pow (2.0, (note - baseNote() + bendSemitones) / 12.0);
-
-    // ORDER MATTERS. Our own note is tested first, because once the keyboard has
-    // started one the transport is rolling too — and asking "is it rolling?" first
-    // would reclassify our own note as borrowed, so letting go would leave it
-    // playing forever. It also sidesteps the lag between posting play() and the
-    // audio thread publishing the new state.
-    if (voiceId != 0 && voiceId == targetId)
-    {
-        // Sliding across the keys is a glissando, not a stutter — and how this
-        // voice ends was decided when it began.
-        engine.setRateScale (targetId, rateScale);
-    }
-    // Already rolling under its own steam? Then BORROW it: re-pitch the transport
-    // where it stands. The Window is playing because the user set it playing, and
-    // what they asked for is that playback PITCHED, not replaced. Re-issuing play()
-    // here would restart the playhead, drop the loop's phase against every other
-    // Window, and re-snapshot the loop region from the CURRENT selection — silently
-    // re-aiming a loop the user had aimed somewhere else.
-    else if (isRolling())
-    {
-        engine.setRateScale (targetId, rateScale);
-        voiceId = targetId;
-        startedVoice = false;
-    }
-    else
-    {
-        se::PlayOptions opts;
-        opts.rateScale = rateScale;
-        // ALWAYS looping, and NO soloTrack. The first is what makes a held key
-        // sustain — the thing the original's checkbox switched on. The second is the
-        // original's one-channel limitation, deliberately dropped: with soloTrack
-        // left at −1 the transport plays the whole selected track range, so the
-        // keyboard plays every selected track rather than apologising for the first.
-        opts.loop = true;
-        engine.play (targetId, opts);
-        voiceId = targetId;
-        startedVoice = true;
-    }
-
+    voice.strike (note);
     updateApplyState();
     repaint();
 }
 
 void KeyboardPalette::release()
 {
-    if (heldNote < 0) return;
-
-    heldNote = -1;
-    // Looping is always on now, so a note sustains until the key comes up. Nothing
-    // would ever stop on its own.
-    allNotesOff();
+    voice.release();
     repaint();
 }
 
 void KeyboardPalette::allNotesOff()
 {
-    // Two endings, and the flag decides which. Only what the keyboard STARTED is
-    // stopped; a Window that was already rolling is handed back at its own pitch,
-    // still rolling. Nothing else on the canvas is touched at all — every Window
-    // sounds at once here, and almost none of them are the keyboard's business.
-    if (voiceId != 0)
-    {
-        if (startedVoice) engine.stop (voiceId);
-        else              engine.setRateScale (voiceId, 1.0);
-
-        voiceId = 0;
-        startedVoice = false;
-    }
-
-    heldNote = -1;
-}
-
-double KeyboardPalette::soundingBend() const
-{
-    const int id = midiHeld.topId();
-    return midiHeld.topBend() + (id >= 0 && id < 1000 ? midiPlainBendSt : 0.0);
-}
-
-void KeyboardPalette::retune()
-{
-    // Only a voice the palette is driving is re-rated, and only once it sounds.
-    if (voiceId == 0 || voiceId != targetId || midiHeld.empty()) return;
-    sounding = soundingBend();
-    engine.setRateScale (targetId, std::pow (2.0, (midiHeld.top() - baseNote() + sounding) / 12.0));
-    repaint();
-}
-
-void KeyboardPalette::midiNoteOn (int id, int note, double bendSemitones)
-{
-    if (note < kbd::kLowNote || note > kbd::kHighNote) return;
-    midiHeld.press (id, note, bendSemitones);
-    strike (note, soundingBend());
-}
-
-void KeyboardPalette::midiNoteOff (int id)
-{
-    const bool wasTop = midiHeld.topId() == id;
-    const int now = midiHeld.lift (id);
-    if (! wasTop) return;               // a key under the sounding one: nothing changes
-    if (now >= 0) strike (now, soundingBend());   // the key before it takes over
-    else          release();
-}
-
-void KeyboardPalette::midiBend (int id, double bendSemitones)
-{
-    midiHeld.setBend (id, bendSemitones);
-    if (midiHeld.topId() == id) retune();
-}
-
-void KeyboardPalette::midiPlainBend (double semitones)
-{
-    midiPlainBendSt = semitones;
-    const int id = midiHeld.topId();
-    if (id >= 0 && id < 1000) retune();
-}
-
-void KeyboardPalette::midiAllOff()
-{
-    midiHeld.clear();
-    release();
+    voice.allNotesOff();
 }
 
 void KeyboardPalette::mouseDown (const juce::MouseEvent& e)
@@ -321,13 +201,13 @@ void KeyboardPalette::mouseDown (const juce::MouseEvent& e)
 
 void KeyboardPalette::mouseDrag (const juce::MouseEvent& e)
 {
-    if (heldNote < 0) return;   // the drag did not start on a key
+    if (voice.heldNote() < 0) return;   // the drag did not start on a key
 
     // Sliding across the keys retriggers, which is the only way this plays a
     // glissando — and the only forgiveness an 8px key gets from a pointer that
     // moves while the button is going down.
     const int note = kbd::noteAt (e.getPosition() - keysOrigin());
-    if (note >= 0 && note != heldNote) strike (note);
+    if (note >= 0 && note != voice.heldNote()) strike (note);
 }
 
 void KeyboardPalette::mouseUp (const juce::MouseEvent&)
@@ -338,14 +218,14 @@ void KeyboardPalette::mouseUp (const juce::MouseEvent&)
 void KeyboardPalette::visibilityChanged()
 {
     // Hiding the palette is how you cancel it, and a cancelled instrument is silent.
-    if (! isVisible()) { midiHeld.clear(); allNotesOff(); }
+    if (! isVisible()) voice.midiAllOff();
 }
 
 // --- applying ----------------------------------------------------------------
 
 void KeyboardPalette::updateApplyState()
 {
-    const bool live = hasTarget() && lastNote >= 0 && lastNote != baseNote();
+    const bool live = hasTarget() && voice.lastNote() >= 0 && voice.lastNote() != baseNote();
     if (applyButton.isEnabled() != live)
     {
         applyButton.setEnabled (live);
@@ -356,14 +236,14 @@ void KeyboardPalette::updateApplyState()
 void KeyboardPalette::applyPitch()
 {
     const se::EffectModule* module = keyboardModule();
-    if (module == nullptr || ! hasTarget() || lastNote < 0) return;
+    if (module == nullptr || ! hasTarget() || voice.lastNote() < 0) return;
 
     // Committing while a key is down would leave a note looping the document the
     // commit is about to re-rate underneath it.
     allNotesOff();
 
     se::Settings settings = module->defaults ? module->defaults() : se::Settings{};
-    settings["semitones"] = se::Value ((int64_t) (lastNote - baseNote()));
+    settings["semitones"] = se::Value ((int64_t) (voice.lastNote() - baseNote()));
 
     // Straight through EffectRunner, exactly as the effects panel's Apply goes —
     // so the edit rides the engine's RCU path and is published to the audio thread

@@ -845,7 +845,8 @@ private:
         ok = writePng (view.createComponentSnapshot ({ 0, 0, ViewPalette::kMaxWidth, ViewPalette::kHeight }, true, 1.0f),
                        dir.getChildFile ("palette-view.png")) && ok;
 
-        KeyboardPalette keys (engine);
+        se::KeyboardVoice voice (engine);
+        KeyboardPalette keys (engine, voice);
         keys.setTargetWindow (id);
         keys.setSize (KeyboardPalette::kWidth, KeyboardPalette::kHeight);
         ok = writePng (keys.createComponentSnapshot ({ 0, 0, KeyboardPalette::kWidth, KeyboardPalette::kHeight }, true, 1.0f),

@@ -8,7 +8,9 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "engine/Engine.h"
+#include "engine/KeyboardVoice.h"
 #include "engine/MidiNotes.h"
+#include "ui/MidiKeyboardInput.h"
 #include "engine/EngineState.h"
 #include "engine/Recorder.h"
 #include "engine/Tape.h"
@@ -67,11 +69,12 @@ public:
     /**
      * MIDI in (0.5.0 step 12): `processBlock` turns the block's MidiBuffer into
      * `se::MidiEvent`s on a lock-free queue, and a 5 ms pump on the message thread
-     * hands them to this listener (the editor's keyboard palette). Message thread
-     * only; set to null before the listener goes away. With no listener the events
-     * are drained and dropped, so the queue never fills behind a closed editor.
+     * feeds them to the keyboard voice (`MidiKeyboardInput`), editor open or not.
      */
-    void setMidiListener (std::function<void (const se::MidiEvent&)> listener);
+    /** The keyboard palette's voice, owned here so MIDI plays with the editor closed. */
+    se::KeyboardVoice& keyboardVoice() noexcept { return keyboardVoiceImpl; }
+
+    bool supportsMPE() const override { return true; }   // hosts then send per-note pitch bend
 
 private:
     void timerCallback() override;   // message thread: reclaim retired Windows
@@ -85,8 +88,6 @@ private:
     };
     void pumpMidi();
     se::MidiQueue midiQueue;
-    std::function<void (const se::MidiEvent&)> midiListener;
-    MidiPump midiPump { *this };
 
     // A host may call setStateInformation from any thread, but the engine's window
     // set may only be rebuilt from the message thread. So the blob is DECODED
@@ -102,6 +103,9 @@ private:
     se::Engine engineImpl;
     se::Recorder recorderImpl { engineImpl };
     se::TapeDeck tapeDeckImpl { engineImpl };
+    se::KeyboardVoice keyboardVoiceImpl { engineImpl };
+    MidiKeyboardInput midiInput { keyboardVoiceImpl };
+    MidiPump midiPump { *this };
     juce::AudioBuffer<float> inputCopy;   // the input channels, aside from the output
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoundEffectsAudioProcessor)

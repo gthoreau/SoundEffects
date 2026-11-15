@@ -19,7 +19,6 @@ SoundEffectsAudioProcessor::SoundEffectsAudioProcessor()
 
 SoundEffectsAudioProcessor::~SoundEffectsAudioProcessor()
 {
-    midiListener = nullptr;
     stopTimer();
     cancelPendingUpdate();   // no restore may land on a half-destroyed engine
 }
@@ -91,16 +90,11 @@ void SoundEffectsAudioProcessor::handleAsyncUpdate()
     se::applyEngineState (engineImpl, state);
 }
 
-void SoundEffectsAudioProcessor::setMidiListener (std::function<void (const se::MidiEvent&)> listener)
-{
-    midiListener = std::move (listener);
-}
-
 void SoundEffectsAudioProcessor::pumpMidi()
 {
     se::MidiEvent e;
     while (midiQueue.pop (e))
-        if (midiListener) midiListener (e);
+        midiInput.handle (e);
 }
 
 void SoundEffectsAudioProcessor::timerCallback()

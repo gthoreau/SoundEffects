@@ -66,14 +66,14 @@
 #include "Os8Widgets.h"
 #include "effects/EffectRunner.h"
 #include "engine/Engine.h"
-#include "engine/MidiNotes.h"
+#include "engine/KeyboardVoice.h"
 
 #include <functional>
 
 class KeyboardPalette : public juce::Component
 {
 public:
-    explicit KeyboardPalette (se::Engine& engine);
+    KeyboardPalette (se::Engine& engine, se::KeyboardVoice& voice);
 
     /** The frame is the design's 575 x 60 Canvas-palette (Figma 636:21379), with its
         soft shadow 2 px below it inside our bounds. */
@@ -126,23 +126,9 @@ public:
      * most of them are playing because someone pressed their own transport. So a
      * Window the keyboard STARTED is stopped, a Window it only BORROWED is handed
      * back at its own pitch and left running, and no other Window is touched at
-     * all. See `voiceId` and `startedVoice`.
+     * all. See `se::KeyboardVoice`.
      */
     void allNotesOff();
-
-    /**
-     * MIDI in (0.5.0 step 12), message thread. The palette is MONO: the keys held
-     * form a stack and the LAST ONE PLAYED sounds; lifting it brings back the one
-     * before. A note outside the drawn keyboard is ignored. The key shows pressed
-     * and the badge reads it, exactly as a click does.
-     */
-    void midiNoteOn (int id, int note, double bendSemitones);
-    void midiNoteOff (int id);
-    /** One finger's pitch slide (MPE per-note bend, in semitones). */
-    void midiBend (int id, double bendSemitones);
-    /** The plain pitch wheel, in semitones: bends every plain key (id < 1000). */
-    void midiPlainBend (double semitones);
-    void midiAllOff();
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -158,9 +144,6 @@ private:
     int baseNote() const;
     /** Is there a Window with audio in it to play? */
     bool hasTarget() const;
-    /** Is the target's own transport already rolling? Then a key pitches it in
-        place rather than restarting it — and letting go must not stop it. */
-    bool isRolling() const;
     /** The target Window's tint, or the chrome grey for one the canvas has not
         painted yet. Meaningless unless a Window is actually selected. */
     juce::Colour targetTint() const;
@@ -169,10 +152,8 @@ private:
     juce::Point<int> keysOrigin() const;
 
     /** Play `note` on every selected track of the current target. */
-    void strike (int note, double bendSemitones = 0.0);
+    void strike (int note);
     void release();
-    /** The sounding key's pitch moved: re-rate the voice in place. */
-    void retune();
     void applyPitch();
     /** Apply is live only when a key has been played on a real target, and the key
         was not the base note — committing unison is a no-op the module itself
@@ -180,50 +161,18 @@ private:
     void updateApplyState();
 
     se::Engine& engine;
+    /** The voice: shared with the processor, so MIDI plays with the window closed
+        (the palette is a mouse source for it and a view of it). */
+    se::KeyboardVoice& voice;
     se::EffectRunner runner;
 
     uint64_t targetId = 0;
 
     Os8Button applyButton { "Apply", os8::ButtonKind::primary };
 
-    /** The last key CLICKED, which is what Apply commits. −1 until one is played. */
-    int lastNote = -1;
-    /** The key currently under the pointer, drawn inverted. −1 when none. */
-    int heldNote = -1;
-
-    /**
-     * The Window this palette is currently driving, or 0 when it is idle.
-     *
-     * Held separately from `targetId` because the two come apart exactly when it
-     * matters: the moment the canvas selection moves, the Window the keyboard is
-     * sounding is the one it is no longer aimed at. Acting on "the target" at that
-     * point disturbed whatever the user had left playing in the Window they had
-     * just clicked away from — every open Window sounds at once here, and almost
-     * none of them are the keyboard's to touch.
-     */
-    uint64_t voiceId = 0;
-
-    /** The MIDI keys held down, newest last. */
-    se::NoteStack midiHeld;
-    double midiPlainBendSt = 0.0;
-    /** The bend of the key now sounding: what `strike` and `retune` add to its note. */
-    double sounding = 0.0;
-    /** The bend of the sounding key, the plain wheel included. */
-    double soundingBend() const;
-
-    /**
-     * Did the keyboard START that Window, or only BORROW a rolling one's pitch?
-     *
-     * The two have opposite endings, and getting it wrong is audible either way:
-     *
-     *   - started (the Window was stopped): the note IS its playback, so letting go
-     *     stops it;
-     *   - borrowed (the Window was already rolling): the note is that playback,
-     *     pitched. Letting go must put the rate back and leave it running — this is
-     *     the Window being interactively pitched, not interrupted, and stopping it
-     *     would end a loop the keyboard never started.
-     */
-    bool startedVoice = false;
+    /** What the last refresh() saw of the voice, so MIDI repaints the keys. */
+    int seenHeld = -2, seenLast = -2;
+    double seenSlide = 0.0;
 
     /** The tint the badge last painted, so the 30 Hz tick can notice a change
         without repainting the strip every frame. −2 = never sampled. */

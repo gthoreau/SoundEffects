@@ -49,6 +49,7 @@ target_sources(SoundEffects PRIVATE
     Source/engine/Resample.cpp
     Source/engine/RecordConvert.cpp
     Source/engine/Recorder.cpp
+    Source/engine/KeyboardVoice.cpp
     Source/engine/Tape.cpp
     Source/engine/TransportButtons.cpp
     # The effects runtime + one file per ported module. Kept in the plugin build
