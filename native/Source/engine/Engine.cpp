@@ -538,6 +538,34 @@ void Engine::render (float* left, float* right, int frames,
         w->meterRight.store (std::max (peakR, heldR), std::memory_order_relaxed);
     }
 
+    // Main Level: the master fader over the summed Windows, ramped across the block
+    // so a drag does not zipper. It scales the mix only; every transport has already
+    // been rendered above, so no gain value, zero included, can stop or re-aim one.
+    // The excluded Window's share is scaled alike, so "the mix without it" stays
+    // exact for the Canvas capture, which therefore hears what the speakers get.
+    {
+        const float target = masterGainValue.load (std::memory_order_relaxed);
+        const float from = masterApplied;
+        if (from != 1.0f || target != 1.0f)
+        {
+            const float step = (target - from) / static_cast<float> (std::max (frames, 1));
+            const bool scaleEx = capturing && cap.kind == AudioSourceKind::canvas;
+            float m = from;
+            for (int i = 0; i < frames; ++i)
+            {
+                m += step;
+                left[i] *= m;
+                right[i] *= m;
+                if (scaleEx && i < cap_)
+                {
+                    exL[static_cast<size_t> (i)] *= m;
+                    exR[static_cast<size_t> (i)] *= m;
+                }
+            }
+        }
+        masterApplied = target;
+    }
+
     if (capturing)
     {
         const float gain = inputGainValue.load (std::memory_order_relaxed);
@@ -579,11 +607,18 @@ void Engine::render (float* left, float* right, int frames,
         ring.push (capL.data(), capR.data(), static_cast<size_t> (n));
     }
 
+    float peakL = 0.0f, peakR = 0.0f;
     for (int i = 0; i < frames; ++i)
     {
         left[i]  = std::clamp (left[i],  -1.0f, 1.0f);
         right[i] = std::clamp (right[i], -1.0f, 1.0f);
+        peakL = std::max (peakL, std::abs (left[i]));
+        peakR = std::max (peakR, std::abs (right[i]));
     }
+    masterMeterL.store (std::max (peakL, masterMeterL.load (std::memory_order_relaxed) * meterDecay),
+                        std::memory_order_relaxed);
+    masterMeterR.store (std::max (peakR, masterMeterR.load (std::memory_order_relaxed) * meterDecay),
+                        std::memory_order_relaxed);
 }
 
 } // namespace se

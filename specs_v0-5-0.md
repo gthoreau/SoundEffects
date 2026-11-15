@@ -4,7 +4,7 @@
     - "Application Menus — v.0.5.0"   node 1078:6637
   Read with use_figma: figma.spec.getContent({ specNodeId: '<node>' }).
   Figma is the source of truth; re-sync this file whenever the Figma spec changes.
-  Last sync: 2026-11-14 (To-do re-read for step 6). Decisions that resolve contradictions in this text live in
+  Last sync: 2026-11-14 (both blocks re-read for step 9). Decisions that resolve contradictions in this text live in
   docs/0.5.0/PLAN.md ("Decisions").
 -->
 
@@ -42,7 +42,7 @@ I understand it does not follow strictly the behaviors described below, but it w
 | **Button** | **Shortcut** | **Action type** | **Operation** | **Effect** |
 |---|---|---|---|---|
 | Record | R or ⇧R | Push-on, Push-off | - Click or 'R' to **Arm Record**<br>- Click again or 'R' to **disarm record**<br>- '⇧R' to start **direct recording**<br>- Initial state: off | **Arm Record**:<br>- Alternate Record button state between on and off (blink)<br>- Direction menu, FF and Loop are disabled<br>- User must click Play or 'Space' to start recording<br>- IF Play was already on then record button's state is set to 'on', and recording starts right away.<br>**Disarm Record**:<br>- Button goes back to off state<br>- Direction menu, FF and Loop revert to previous states<br>- IF Play was 'on': stop recording and continue normal playback without jitter or glitch<br>**Direct Recording:**<br>- Latch Record and Play buttons to 'on' state<br>- Latch Pause button to 'off' state<br>- Set direction menu, FF and Loop states to 'disabled'<br>- Start recording |
-| Stop | Esc | Push-on | - Click or 'Esc'<br>- Initial state: off | - Latch to 'on' state<br>- Stop playback and recording<br>- Reset playhead(s)<br>- Set Record, Play and Pause states to 'off' |
+| Stop | Esc | Push-on | - Click or 'Esc'<br>- Initial state: off | - Latch to 'on' state<br>- Stop playback and recording<br>- Reset playhead(s)<br>- Set the states of Record, Play and **Pause** to 'off' |
 | Direction | D | Menu | Same as v.04.1 | Same as v.04.1 |
 | Play | Space | Push-on | - Click or 'Space'<br>- Initial state: off | - Latch to 'on' state<br>- Set Pause to 'off' state<br>- Set Record to 'on' state IF Record is armed |
 | Pause | Space | Push-on | - Click or 'Space'<br>- Initial state: off | - Latch to 'on' state<br>- Set Play to 'off' state<br>- Set Record to armed state (blink) if Record is armed |

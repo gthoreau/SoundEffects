@@ -245,6 +245,24 @@ public:
     bool captureRunning() const noexcept { return capRunning.load (std::memory_order_acquire); }
     CaptureRing& captureRing() noexcept { return ring; }
 
+    // --- Main Level (0.5.0): the master fader over the whole mix --------------
+    // Linear, applied to the summed Windows BEFORE the final clamp (and before the
+    // Canvas capture, so the Main source hears what the speakers get). Never stops
+    // or re-aims a transport: it only scales what the mix already carries.
+    // Saved with the canvas (state v5); 1 = unity.
+    static constexpr float kMaxMasterGain = 4.0f;   // +12 dB, far past the fader's +6
+    void  setMasterGain (float g) noexcept
+    {
+        masterGainValue.store (std::isfinite (g) ? std::clamp (g, 0.0f, kMaxMasterGain) : 1.0f,
+                               std::memory_order_relaxed);
+    }
+    float masterGain() const noexcept { return masterGainValue.load (std::memory_order_relaxed); }
+    /** Peaks of the final output (after Main Level and the clamp), one per side, for
+        the Main Level's VU. Published by the audio thread and decayed there like the
+        Windows' own. */
+    float masterMeterLeft() const noexcept  { return masterMeterL.load (std::memory_order_relaxed); }
+    float masterMeterRight() const noexcept { return masterMeterR.load (std::memory_order_relaxed); }
+
     /** Gain on the captured signal (and on what is monitored), linear. */
     void  setInputGain (float g) noexcept { inputGainValue.store (g, std::memory_order_relaxed); }
     float inputGain() const noexcept { return inputGainValue.load (std::memory_order_relaxed); }
@@ -337,6 +355,9 @@ private:
     // --- shared, lock-free: input / capture ---------------------------------
     CaptureRing ring;
     std::atomic<float> inputGainValue { 1.0f };
+    std::atomic<float> masterGainValue { 1.0f };
+    std::atomic<float> masterMeterL { 0.0f }, masterMeterR { 0.0f };
+    float masterApplied = 1.0f;   // audio thread only: the gain the last block ended on
     std::atomic<bool>  monitorOn { false };
     std::atomic<bool>  capRunning { false };
     std::atomic<uint32_t> capStartGen { 0 };

@@ -94,6 +94,10 @@ struct EngineState
         0 = not known (an older file): ids are handed out afresh on open. */
     uint32_t nextAssetId = 0;
 
+    /** Since v5: the Main Level, a linear gain over the whole mix (1 = unity, also
+        what an older file gets). */
+    float masterGain = 1.0f;
+
     /** Set by parseEngineState: the version the blob was written as (0 if built in memory). */
     uint32_t sourceVersion = 0;
 };
@@ -103,8 +107,9 @@ struct EngineState
     v3 (0.4.0) adds a header byte (audio embedded / in Assets/ as WAVs) and appends each
     Window's playback direction.
     v4 (0.5.0) appends each Window's asset id and, after the Windows, the canvas's
-    asset-id counter. */
-constexpr uint32_t kEngineStateVersion = 4;
+    asset-id counter.
+    v5 (0.5.0) appends the Main Level (master gain) after that counter. */
+constexpr uint32_t kEngineStateVersion = 5;
 
 /** Asset ids above this are not ids we handed out: a reader treats them as none. */
 constexpr uint32_t kMaxAssetId = 99999999;

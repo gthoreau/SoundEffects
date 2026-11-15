@@ -21,6 +21,12 @@
 // moment the slots change. The canvas is left alone. The slot is saved in the .sefx
 // (state blob v2).
 //
+// The panel's head (New Sound / Open Sound, "new-open" 636:10150) and foot (Main
+// Level, "main-level" 1083:14659) are fixed; only the list of strips between them
+// scrolls. The foot is the master fader over the whole mix, with the stereo VU of
+// the final output on the same trough: the engine's Main Level (Engine::setMasterGain),
+// saved with the canvas. It never stops a transport.
+//
 // Clicking anywhere on a strip focuses its Window on the canvas: the panel is a
 // list OF the Windows, not a parallel set of nameplates that happen to match.
 //
@@ -169,6 +175,8 @@ public:
 
     /** The New Sound / Open Sound bar ("new-open" 636:10150). */
     static constexpr int kBarHeight = 44;
+    /** The Main Level footer ("main-level" 1083:14659). */
+    static constexpr int kFooterHeight = 44;
 
 private:
     /** The scrolled list: strips are its children; the open gap is painted under them. */
@@ -220,6 +228,12 @@ private:
 
     Os8Button newButton  { "New Sound",  os8::ButtonKind::primary };
     Os8Button openButton { "Open Sound", os8::ButtonKind::primary };
+
+    /** The Main Level fader: the same trough as a strip's, carrying the VU of the
+        final output. */
+    Os8Slider mainLevel { os8::SliderKind::volume };
+    juce::Rectangle<int> footerBounds() const;
+    void refreshMainLevel();
 
     juce::Viewport viewport;
     SlotList       list { *this };

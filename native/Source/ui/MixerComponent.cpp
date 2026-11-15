@@ -465,6 +465,19 @@ MixerComponent::MixerComponent (se::Engine& e) : engine (e)
     addAndMakeVisible (newButton);
     addAndMakeVisible (openButton);
 
+    // Main Level: unity is the 0 dB tick, as on a strip; a double click returns to it.
+    mainLevel.setRange (0.0, 1.0);
+    mainLevel.setDoubleClickReturnValue (true, (double) MixerStrip::dbToPos (0.0f));
+    mainLevel.setMarkerValue ((double) MixerStrip::dbToPos (0.0f));
+    mainLevel.setValue (ampToPos (engine.masterGain()), juce::dontSendNotification);
+    mainLevel.onValueChange = [this]
+    {
+        engine.setMasterGain (se::Engine::dbToGain (MixerStrip::posToDb ((float) mainLevel.getValue())));
+        repaint (footerBounds());   // the label shows the dB readout while the fader moves
+    };
+    mainLevel.onDragEnd = [this] { repaint (footerBounds()); };
+    addAndMakeVisible (mainLevel);
+
     // No scroll bar: it would sit on the M/S boxes. The wheel still scrolls.
     viewport.setViewedComponent (&list, false);
     viewport.setScrollBarsShown (false, false, true, false);
@@ -546,9 +559,40 @@ void MixerComponent::refresh()
 
     if (changed) layoutRows();
 
+    refreshMainLevel();
+
     // One question for the whole panel, not one per strip: is the solo filter on?
     const bool soloFilterOn = engine.anyWindowSoloed();
     for (auto& s : strips) s->refreshState (soloFilterOn);
+}
+
+juce::Rectangle<int> MixerComponent::footerBounds() const
+{
+    return { 0, getHeight() - kFooterHeight, getWidth(), kFooterHeight };
+}
+
+void MixerComponent::refreshMainLevel()
+{
+    // Follow the engine (a loaded canvas, another instance) unless the fader is held.
+    if (! mainLevel.isMouseButtonDown())
+    {
+        const double pos = ampToPos (engine.masterGain());
+        if (std::abs (pos - mainLevel.getValue()) > 1.0e-4)
+        {
+            mainLevel.setValue (pos, juce::dontSendNotification);
+            repaint (footerBounds());
+        }
+    }
+
+    // The VU ends where the thumb's centre would sit at that level, as on a strip.
+    const auto level = [this] (float amp)
+    {
+        if (amp <= 0.0f) return 0.0f;
+        const float wdt = (float) mainLevel.getWidth();
+        const float half = (float) os8::kThumbWidth * 0.5f;
+        return (half + ampToPos (amp) * (wdt - 2.0f * half)) / wdt;
+    };
+    mainLevel.setLevels (level (engine.masterMeterLeft()), level (engine.masterMeterRight()));
 }
 
 void MixerComponent::setSelectedWindow (uint64_t id)
@@ -772,6 +816,29 @@ void MixerComponent::paint (Graphics& g)
     os8::innerShadow (g, shape, -1.0f, -1.0f, 0, Colour (0xff808080));
     g.setColour (black);
     g.fillRect (0, kBarHeight, getWidth(), 1);
+
+    // "main-level" 1083:14659: the same #dddddd and bevel as the bar, under a black
+    // rule (its stroke's top edge), with its label at x 26 and the fader at x 119.
+    const auto foot = footerBounds();
+    g.setColour (gray100);
+    g.fillRect (foot);
+    juce::Path footShape;
+    footShape.addRectangle (foot.toFloat());
+    os8::innerShadow (g, footShape,  1.0f,  1.0f, 0, white);
+    os8::innerShadow (g, footShape, -1.0f, -1.0f, 0, Colour (0xff808080));
+    g.setColour (black);
+    g.fillRect (foot.getX(), foot.getY(), foot.getWidth(), 1);
+
+    juce::String label = "Main Level";
+    if (mainLevel.isMouseButtonDown())
+    {
+        const float db = MixerStrip::posToDb ((float) mainLevel.getValue());
+        label = db <= MixerStrip::kMinDb ? juce::String::fromUTF8 ("-\xE2\x88\x9E dB")
+                                         : (db >= 0.0f ? "+" : "") + juce::String (db, 1) + " dB";
+    }
+    g.setColour (black);
+    os8::drawText (g, label, os8::TextStyle::menuItem,
+                   Rectangle<float> (26.0f, (float) foot.getY() + 17.0f, 90.0f, 11.0f));
 }
 
 void MixerComponent::resized()
@@ -781,6 +848,8 @@ void MixerComponent::resized()
     newButton.setBounds (8, 10, 122, 25);
     openButton.setBounds (140, 10, 122, 25);
 
-    viewport.setBounds (getLocalBounds().withTrimmedTop (kBarHeight));
+    // Head and foot stay put; only the strips between them scroll.
+    viewport.setBounds (getLocalBounds().withTrimmedTop (kBarHeight).withTrimmedBottom (kFooterHeight));
+    mainLevel.setBounds (119, footerBounds().getY() + 13, 141, os8::kSliderHeight);
     layoutRows();
 }

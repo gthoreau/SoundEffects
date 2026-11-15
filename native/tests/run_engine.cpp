@@ -2770,6 +2770,91 @@ void transportButtonsTests()
     }
 }
 
+// --- Main Level (0.5.0): the master gain over the whole mix ------------------
+void masterLevelTests()
+{
+    const float tol = 1.0e-4f;
+    se::Engine e;
+    e.prepare (kRate, kBlock);
+    const uint64_t a = e.addWindow (dcDocument (10, "a"));
+    const uint64_t b = e.addWindow (dcDocument (40, "b"));
+    se::PlayOptions loopAll; loopAll.loop = true;
+    e.play (a, loopAll); e.play (b, loopAll);
+    auto* wa = e.windowById (a); auto* wb = e.windowById (b);
+
+    wa->soloed = true; const float la = renderLevel (e);
+    wa->soloed = false; wb->soloed = true; const float lb = renderLevel (e);
+    wb->soloed = false;
+    check (la > 0.0f && lb > la, "master: each channel sounds on its own");
+
+    check (e.masterGain() == 1.0f, "master: unity by default");
+    checkClose (renderLevel (e), la + lb, tol, "master: unity leaves the mix alone");
+
+    // A change lands as a ramp over the block, then holds: settle it first.
+    e.setMasterGain (0.5f);
+    renderBlocks (e, 1);
+    checkClose (renderLevel (e), 0.5f * (la + lb), tol, "master: 0.5 halves the mix");
+
+    // The fader's +6 dB is past unity and below the clamp here.
+    e.setMasterGain (1.5f);
+    renderBlocks (e, 1);
+    checkClose (renderLevel (e), std::min (1.0f, 1.5f * (la + lb)), tol, "master: above unity boosts");
+
+    // Applied BEFORE the final clamp: a boost that overshoots clips at 1, and the
+    // per-Window VU is still the Window's own pre-master level.
+    e.setMasterGain (se::Engine::kMaxMasterGain);
+    wa->gain = 1.0f; wb->gain = 1.0f;
+    renderBlocks (e, 1);
+    {
+        std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
+        e.render (l.data(), r.data(), kBlock);
+        float mx = 0.0f;
+        for (float v : l) mx = std::max (mx, std::abs (v));
+        check (mx <= 1.0f, "master: the clamp comes after Main Level");
+        check ((la + lb) * se::Engine::kMaxMasterGain > 1.0f ? mx == 1.0f : true, "master: an overshoot clips at full scale");
+        checkClose (wa->meterLeft.load(), la, tol, "master: a channel's VU is its own, before Main Level");
+        checkClose (e.masterMeterLeft(), mx, tol, "master: the Main VU reads the output");
+    }
+
+    // Silence the mix; the VU falls on its own and the channels keep their own meters.
+    e.setMasterGain (0.0f);
+    renderBlocks (e, 1);
+    check (renderLevel (e) == 0.0f, "master: 0 silences the mix");
+
+    // ...and never stops a transport: both channels rolled through the silence.
+    const size_t pa = wa->transport->uiPlayhead();
+    renderBlocks (e, 10);
+    check (wa->transport->uiPlayhead() != pa || wb->transport->uiPlayhead() != 0,
+           "master: a shut Main Level does not stop a transport");
+    check (wa->transport->uiState() == se::TransportState::playing && wb->transport->uiState() == se::TransportState::playing, "master: both transports still play");
+
+    // Bad values: clamped, NaN reads as unity.
+    e.setMasterGain (-3.0f);
+    check (e.masterGain() == 0.0f, "master: negative clamps to 0");
+    e.setMasterGain (1000.0f);
+    check (e.masterGain() == se::Engine::kMaxMasterGain, "master: huge clamps to the maximum");
+    e.setMasterGain (std::nanf (""));
+    check (e.masterGain() == 1.0f, "master: NaN reads as unity");
+
+    // The Main source hears what the speakers get; "the mix without Window b" stays exact.
+    e.setMasterGain (0.5f);
+    renderBlocks (e, 1);
+    se::CaptureSetup mix; mix.kind = se::AudioSourceKind::canvas;
+    e.startCapture (mix);
+    renderBlocks (e, 1);
+    Drained d = drain (e);
+    checkClose (d.l, 0.5f * (la + lb), tol, "master: the Main source is after Main Level");
+    e.stopCapture();
+    renderBlocks (e, 1);
+    mix.excludeWindow = b;
+    e.startCapture (mix);
+    renderBlocks (e, 1);
+    d = drain (e);
+    checkClose (d.l, 0.5f * la, tol, "master: the Main source without a Window is scaled alike");
+    e.stopCapture();
+    renderBlocks (e, 1);
+}
+
 int main()
 {
     se::Engine engine;
@@ -3008,6 +3093,7 @@ int main()
     }
 
     transportButtonsTests();
+    masterLevelTests();
     directionTests();
     loopOnPinTests();
     playOnceSelectionTests();

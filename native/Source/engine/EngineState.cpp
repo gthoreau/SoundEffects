@@ -251,6 +251,7 @@ std::vector<uint8_t> serializeState (const EngineState& state)
     }
 
     putU32 (out, state.nextAssetId);
+    putF32 (out, state.masterGain);
     return out;
 }
 
@@ -371,6 +372,13 @@ bool parseEngineState (const void* data, size_t sizeBytes, EngineState& out)
         if (parsed.nextAssetId > kMaxAssetId) parsed.nextAssetId = 0;
     }
 
+    if (version >= 5)
+    {
+        const float g = r.f32();
+        // Anything that is not a level we could have written reads as unity.
+        parsed.masterGain = (std::isfinite (g) && g >= 0.0f && g <= Engine::kMaxMasterGain) ? g : 1.0f;
+    }
+
     if (! r.ok) return false;
 
     out = std::move (parsed);
@@ -423,6 +431,7 @@ EngineState captureEngineState (Engine& engine)
     EngineState state;
     state.windows.reserve (engine.numWindows());
     state.nextAssetId = engine.nextAssetId();
+    state.masterGain = engine.masterGain();
 
     for (uint64_t id : engine.windowIds())
     {
@@ -513,6 +522,7 @@ bool applyEngineState (Engine& engine, const EngineState& state)
     // which is the numbering its WAVs were written with, so nothing renames. A
     // repeated id (a hand-edited file) gets a fresh one rather than share files.
     engine.setNextAssetId (state.nextAssetId);
+    engine.setMasterGain (state.masterGain);
     std::set<uint32_t> seen;
     for (const auto& w : state.windows)
     {

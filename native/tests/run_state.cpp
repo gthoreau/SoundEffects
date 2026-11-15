@@ -496,6 +496,62 @@ int main()
                "asset ids: an out-of-range id or counter is read as none");
     }
 
+    // --- Main Level (v5): the master gain is saved with the canvas ----------------
+    {
+        se::Engine e;
+        e.addWindow (rampDocument ("alpha", 1, 64));
+        check (se::captureEngineState (e).masterGain == 1.0f, "master: a new canvas is at unity");
+
+        e.setMasterGain (0.4f);
+        const auto blob5 = se::serializeEngine (e);
+        se::EngineState back5;
+        check (se::parseEngineState (blob5.data(), blob5.size(), back5) && back5.masterGain == 0.4f
+                 && back5.sourceVersion == se::kEngineStateVersion,
+               "master: the gain round-trips through the blob");
+
+        se::Engine again;
+        again.setMasterGain (1.0f);
+        check (se::applyEngineState (again, back5) && again.masterGain() == 0.4f,
+               "master: opening a canvas restores the gain");
+
+        // Opening a canvas saved at unity puts a lowered one back to unity.
+        se::Engine lowered;
+        lowered.setMasterGain (0.2f);
+        se::EngineState unity = back5;
+        unity.masterGain = 1.0f;
+        check (se::applyEngineState (lowered, unity) && lowered.masterGain() == 1.0f,
+               "master: a canvas saved at unity opens at unity");
+
+        // A v4 blob (written by 8.1) has no gain: it opens at unity, ids intact.
+        se::EngineState v4s = back5;
+        v4s.windows[0].assetId = 7;
+        v4s.nextAssetId = 8;
+        auto b4 = se::serializeState (v4s);
+        b4.resize (b4.size() - 4);   // the gain
+        b4[4] = 4;
+        se::EngineState p4;
+        check (se::parseEngineState (b4.data(), b4.size(), p4) && p4.masterGain == 1.0f
+                 && p4.nextAssetId == 8 && p4.windows[0].assetId == 7,
+               "master: a v4 file opens at unity with its asset ids");
+
+        // Importing a Sound never touches the Main Level.
+        se::Engine importer;
+        importer.setMasterGain (0.3f);
+        se::importEngineState (importer, back5);
+        check (importer.masterGain() == 0.3f, "master: Import Sound leaves Main Level alone");
+
+        // Nonsense in the file reads as unity.
+        for (float bad : { -1.0f, 9.0f, std::numeric_limits<float>::quiet_NaN() })
+        {
+            se::EngineState junk = back5;
+            junk.masterGain = bad;
+            const auto jb = se::serializeState (junk);
+            se::EngineState jp;
+            check (se::parseEngineState (jb.data(), jb.size(), jp) && jp.masterGain == 1.0f,
+                   "master: an out-of-range gain in the file reads as unity");
+        }
+    }
+
     // --- New Sound defaults (10.4) --------------------------------------------------
     {
         se::SoundDocument fresh (se::newSoundInit());
