@@ -66,6 +66,7 @@
 #include "Os8Widgets.h"
 #include "effects/EffectRunner.h"
 #include "engine/Engine.h"
+#include "engine/MidiNotes.h"
 
 #include <functional>
 
@@ -129,6 +130,16 @@ public:
      */
     void allNotesOff();
 
+    /**
+     * MIDI in (0.5.0 step 12), message thread. The palette is MONO: the keys held
+     * form a stack and the LAST ONE PLAYED sounds; lifting it brings back the one
+     * before. A note outside the drawn keyboard is ignored. The key shows pressed
+     * and the badge reads it, exactly as a click does.
+     */
+    void midiNoteOn (int note);
+    void midiNoteOff (int note);
+    void midiAllOff();
+
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -185,6 +196,9 @@ private:
      * none of them are the keyboard's to touch.
      */
     uint64_t voiceId = 0;
+
+    /** The MIDI keys held down, newest last. */
+    se::NoteStack midiHeld;
 
     /**
      * Did the keyboard START that Window, or only BORROW a rolling one's pitch?

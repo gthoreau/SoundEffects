@@ -19,6 +19,7 @@ SoundEffectsAudioProcessor::SoundEffectsAudioProcessor()
 
 SoundEffectsAudioProcessor::~SoundEffectsAudioProcessor()
 {
+    midiListener = nullptr;
     stopTimer();
     cancelPendingUpdate();   // no restore may land on a half-destroyed engine
 }
@@ -90,6 +91,18 @@ void SoundEffectsAudioProcessor::handleAsyncUpdate()
     se::applyEngineState (engineImpl, state);
 }
 
+void SoundEffectsAudioProcessor::setMidiListener (std::function<void (const se::MidiEvent&)> listener)
+{
+    midiListener = std::move (listener);
+}
+
+void SoundEffectsAudioProcessor::pumpMidi()
+{
+    se::MidiEvent e;
+    while (midiQueue.pop (e))
+        if (midiListener) midiListener (e);
+}
+
 void SoundEffectsAudioProcessor::timerCallback()
 {
     engineImpl.collectRetired();
@@ -116,9 +129,24 @@ bool SoundEffectsAudioProcessor::isBusesLayoutSupported (const BusesLayout& layo
 }
 
 void SoundEffectsAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
-                                              juce::MidiBuffer& /*midi*/)
+                                              juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    // MIDI in: notes (and the "everything off" messages) become events for the
+    // keyboard palette. Wait-free: a push to the SPSC queue, nothing else.
+    for (const auto meta : midi)
+    {
+        const auto m = meta.getMessage();
+        se::MidiEvent e;
+        e.channel = (uint8_t) juce::jlimit (0, 15, m.getChannel() - 1);
+        if (m.isNoteOn())            { e.type = se::MidiEvent::noteOn;  e.note = (uint8_t) m.getNoteNumber(); }
+        else if (m.isNoteOff())      { e.type = se::MidiEvent::noteOff; e.note = (uint8_t) m.getNoteNumber(); }
+        else if (m.isAllNotesOff() || m.isAllSoundOff())
+                                     { e.type = se::MidiEvent::allOff; }
+        else continue;
+        midiQueue.push (e);
+    }
 
     const int numFrames = buffer.getNumSamples();
     auto* left  = buffer.getWritePointer (0);

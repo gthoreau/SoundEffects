@@ -7,6 +7,7 @@
 // asserted directly. JUCE-free, like everything else under Source/engine/.
 
 #include "engine/Edit.h"
+#include "engine/MidiNotes.h"
 #include "engine/Engine.h"
 #include "engine/RecordConvert.h"
 #include "engine/Recorder.h"
@@ -2880,6 +2881,56 @@ static void scrollTargetTests()
     check (go (900, 400, 1000, 100, 200, 350) == 75,  "a stale position past the end is brought back");
 }
 
+// --- MIDI (0.5.0 step 12.1) -------------------------------------------------------
+static void midiNoteTests()
+{
+    std::printf ("midi notes\n");
+    se::NoteStack s;
+    check (s.empty() && s.top() == -1, "empty stack: nothing sounds");
+    check (s.press (60) == 60, "first key sounds");
+    check (s.press (64) == 64, "last note priority: the newer key wins");
+    check (s.press (67) == 67, "third key wins");
+    check (s.lift (64) == 67, "lifting a held-under key changes nothing");
+    check (s.lift (67) == 60, "lifting the top brings back the one before it");
+    check (s.lift (60) == -1 && s.empty(), "last key up: silence");
+    check (s.lift (60) == -1, "a stray note-off is harmless");
+
+    s.press (60); s.press (62); s.press (60);
+    check (s.size() == 2 && s.top() == 60, "a key struck twice counts once, as the newest");
+    check (s.lift (60) == 62, "...and one note-off lets it go");
+    s.clear();
+    check (s.empty(), "clear");
+
+    check (s.press (-1) == -1 && s.press (128) == -1 && s.empty(), "out-of-range numbers are ignored");
+
+    for (int n = 40; n < 40 + 20; ++n) s.press (n);   // more than sixteen fingers
+    check (s.size() == se::NoteStack::kMax && s.top() == 59, "sixteen keys max, newest on top");
+    for (int n = 59; n >= 44; --n) s.lift (n);
+    check (s.empty(), "the oldest four gave way, the rest come off in turn");
+
+    // The bend wheel: centre, ends, clamping.
+    check (se::midibend::normalised (8192) == 0.0, "bend centre");
+    check (se::midibend::normalised (0) == -1.0, "bend bottom");
+    check (se::midibend::normalised (16383) == 1.0, "bend top reaches +1");
+    check (se::midibend::normalised (-5) == -1.0 && se::midibend::normalised (99999) == 1.0, "bend clamps");
+    checkClose ((float) se::midibend::semitones (16383, 2.0), 2.0f, 1e-6f, "plain bend: +2 st at the top");
+    checkClose ((float) se::midibend::semitones (0, 48.0), -48.0f, 1e-6f, "MPE range 48: -48 st at the bottom");
+
+    // The queue carries events in order and drops the newest when full.
+    se::MidiQueue q;
+    for (int i = 0; i < 255; ++i)
+    {
+        se::MidiEvent e; e.note = (uint8_t) (i & 127); e.channel = (uint8_t) (i % 16);
+        if (! q.push (e)) { check (false, "queue took 255"); break; }
+    }
+    se::MidiEvent extra;
+    check (! q.push (extra), "a full queue refuses the newest");
+    se::MidiEvent out; bool inOrder = true;
+    for (int i = 0; i < 255; ++i)
+        if (! q.pop (out) || out.note != (uint8_t) (i & 127)) inOrder = false;
+    check (inOrder && ! q.pop (out), "events come out in order, then empty");
+}
+
 // --- Magnetophon (0.5.0 step 11.1) ------------------------------------------------
 // The pure tape model first: takes as start markers, tape-like record-over,
 // play to the end of the tape, next / previous, unsent audio.
@@ -3586,6 +3637,7 @@ int main()
     }
 
     scrollTargetTests();
+    midiNoteTests();
     transportButtonsTests();
     masterLevelTests();
     directionTests();

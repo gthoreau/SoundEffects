@@ -8,10 +8,12 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "engine/Engine.h"
+#include "engine/MidiNotes.h"
 #include "engine/EngineState.h"
 #include "engine/Recorder.h"
 #include "engine/Tape.h"
 
+#include <functional>
 #include <mutex>
 
 class SoundEffectsAudioProcessor : public juce::AudioProcessor,
@@ -62,8 +64,29 @@ public:
     /** The Magnetophon's deck: owned here too, so the tape outlives the editor. */
     se::TapeDeck& tapeDeck() noexcept { return tapeDeckImpl; }
 
+    /**
+     * MIDI in (0.5.0 step 12): `processBlock` turns the block's MidiBuffer into
+     * `se::MidiEvent`s on a lock-free queue, and a 5 ms pump on the message thread
+     * hands them to this listener (the editor's keyboard palette). Message thread
+     * only; set to null before the listener goes away. With no listener the events
+     * are drained and dropped, so the queue never fills behind a closed editor.
+     */
+    void setMidiListener (std::function<void (const se::MidiEvent&)> listener);
+
 private:
     void timerCallback() override;   // message thread: reclaim retired Windows
+
+    struct MidiPump : private juce::Timer
+    {
+        explicit MidiPump (SoundEffectsAudioProcessor& o) : owner (o) { startTimer (5); }
+        ~MidiPump() override { stopTimer(); }
+        void timerCallback() override { owner.pumpMidi(); }
+        SoundEffectsAudioProcessor& owner;
+    };
+    void pumpMidi();
+    se::MidiQueue midiQueue;
+    std::function<void (const se::MidiEvent&)> midiListener;
+    MidiPump midiPump { *this };
 
     // A host may call setStateInformation from any thread, but the engine's window
     // set may only be rebuilt from the message thread. So the blob is DECODED

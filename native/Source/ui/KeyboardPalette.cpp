@@ -262,6 +262,28 @@ void KeyboardPalette::allNotesOff()
     heldNote = -1;
 }
 
+void KeyboardPalette::midiNoteOn (int note)
+{
+    if (note < kbd::kLowNote || note > kbd::kHighNote) return;
+    strike (midiHeld.press (note));
+}
+
+void KeyboardPalette::midiNoteOff (int note)
+{
+    if (note < kbd::kLowNote || note > kbd::kHighNote) return;
+    const bool wasTop = midiHeld.top() == note;
+    const int now = midiHeld.lift (note);
+    if (! wasTop) return;               // a key under the sounding one: nothing changes
+    if (now >= 0) strike (now);         // the key before it takes over
+    else          release();
+}
+
+void KeyboardPalette::midiAllOff()
+{
+    midiHeld.clear();
+    release();
+}
+
 void KeyboardPalette::mouseDown (const juce::MouseEvent& e)
 {
     strike (kbd::noteAt (e.getPosition() - keysOrigin()));
@@ -286,7 +308,7 @@ void KeyboardPalette::mouseUp (const juce::MouseEvent&)
 void KeyboardPalette::visibilityChanged()
 {
     // Hiding the palette is how you cancel it, and a cancelled instrument is silent.
-    if (! isVisible()) allNotesOff();
+    if (! isVisible()) { midiHeld.clear(); allNotesOff(); }
 }
 
 // --- applying ----------------------------------------------------------------

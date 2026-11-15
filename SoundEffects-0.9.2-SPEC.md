@@ -270,6 +270,13 @@ space = play/pause toggle · F1–Fn = solo-play channel n · option-Fn = mute c
 > Sound each, 16 bit at the device rate, Raw or Clean) is how to keep it, and
 > closing the canvas (New, Open, Revert, Quit) warns while takes are unsent. The
 > popup, the scrub, the seamless split and the warnings are not in the design.
+
+> `[NATIVE]` (0.5.0) **MIDI in** plays the Keyboard palette from a MIDI keyboard
+> (standalone: the inputs ticked in Audio/MIDI Setup; plug-in: the host's MIDI in).
+> The palette is mono with last-note priority: the keys held form a stack, the
+> newest sounds, and lifting it brings back the one before. The palette shows the
+> incoming key pressed and reads it in the badge. Notes outside the drawn keyboard
+> are ignored. The 1995 app had no MIDI.
 - Record cap preference: "Record no more than [1000] K (☐ only if virtual memory is active)".
 - "Beep when clipping occurs" while recording.
 
