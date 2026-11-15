@@ -2903,7 +2903,7 @@ static void tapeModelTests()
     {
         se::Tape t;
         check (t.record (R) && t.mode() == se::Tape::Mode::recording && t.recordingTake() == 0, "Record on a blank tape starts take 1 at 0");
-        check (! t.record (R), "Record while recording: refused");
+        check (! t.record (R), "Record while recording, nothing recorded yet: refused");
         check (! t.play() && ! t.nextTake() && ! t.previousTake (0) && ! t.seek (0), "while recording: Play, Next, Previous and seek refused");
         t.recorded (100);
         check (t.stop() && t.length() == 100 && t.position() == 100 && starts (t) == std::vector<size_t> { 0 },
@@ -2972,6 +2972,13 @@ static void tapeModelTests()
         check (t.hasUnsent(), "and it is unsent");
         t.markAllSent();
         check (! t.hasUnsent(), "all sent: nothing unsent");
+    }
+    {
+        se::Tape t;
+        t.record (R); t.recorded (50);
+        check (t.record (R) && t.recordingTake() == 1 && starts (t) == std::vector<size_t> { 0, 50 }, "Record while recording: the next take starts at the head");
+        t.recorded (30); t.stop();
+        check (t.length() == 80 && t.numTakes() == 2 && t.takeEnd (1) == 80, "...seamlessly: 50 + 30");
     }
     {
         se::Tape t;

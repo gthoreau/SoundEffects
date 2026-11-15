@@ -1,0 +1,104 @@
+// MagnetophonComponent — the Magnetophon panel's content ("Magnetophon" 1199:16274),
+// under the Mixer in the left column, inside a SidePanel that gives it its title bar
+// and collapse box (layout 700:14314).
+//
+// From the top, in a 268 px column:
+//   - the deck (137 px): two reels whose tape packs grow and shrink with the tape's
+//     position, turning while the tape moves; the tape runs from the left pack under
+//     two guide rollers and the head to the right pack;
+//   - the strip (53 px): the tape's waveform scrolling under a fixed centre playhead,
+//     a "Take N" label at each take (it sticks to the left edge while its take runs
+//     off it); the take being recorded is red. Drag it to wind the tape by hand;
+//   - the status line (16 px, dark): "From: <source>", then rate, bits, position;
+//   - the transport (44 px): Source, Record, Stop, Previous, Play, Next, Send.
+//
+// The panel draws and drives the processor's TapeDeck (which outlives it); the
+// editor opens the source popup and the Send popup through the callbacks.
+
+#pragma once
+
+#include "Os8Widgets.h"
+#include "engine/Tape.h"
+
+#include <functional>
+#include <vector>
+
+class MagnetophonComponent : public juce::Component
+{
+public:
+    MagnetophonComponent (se::Engine&, se::TapeDeck&);
+
+    /** The content's height (the SidePanel adds its title bar and frame). */
+    static constexpr int kContentHeight = 251;
+
+    /** The editor's 30 Hz tick: follow the deck, turn the reels, redraw what moved. */
+    void refresh();
+
+    /** The text after "From: ". */
+    void setSourceName (const juce::String&);
+
+    /** Source clicked. */
+    std::function<void()> onSourceRequested;
+    /** Record clicked: the editor checks the source can be heard, then records (true)
+        or explains why not (false). */
+    std::function<bool()> onRecordRequested;
+    /** Send clicked (the button is greyed while this is not set). */
+    std::function<void()> onSendRequested;
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+
+    // Layout, in content coordinates (Figma's component less its frame and bar).
+    static constexpr int kDeckHeight = 137;
+    static constexpr int kStripTop = kDeckHeight, kStripHeight = 53;
+    static constexpr int kStatusTop = kStripTop + kStripHeight, kStatusHeight = 16;
+    static constexpr int kTransportTop = kStatusTop + kStatusHeight + 1, kTransportHeight = 44;
+    /** The strip's playhead column (2 px wide from here) and its time scale. */
+    static constexpr int kPlayheadX = 134;
+    static constexpr double kPixelsPerSecond = 24.0;
+
+private:
+    void updateButtons();
+    void updatePeaks();
+    size_t binFrames() const noexcept;
+    float peakAt (int64_t bin) const noexcept;
+    void paintDeck (juce::Graphics&) const;
+    void paintStrip (juce::Graphics&) const;
+    void paintStatus (juce::Graphics&) const;
+    void paintTransport (juce::Graphics&) const;
+    /** The tape packs' radii for the current position. */
+    std::pair<float, float> packRadii() const noexcept;
+
+    se::Engine& engine;
+    se::TapeDeck& deck;
+
+    Os8Button sourceButton { "Source" };
+    Os8TransportButton recordButton { os8::icon::Id::record };
+    Os8TransportButton stopButton { os8::icon::Id::stop };
+    Os8TransportButton previousButton { os8::icon::Id::previous };
+    Os8TransportButton playButton { os8::icon::Id::playForward };
+    Os8TransportButton nextButton { os8::icon::Id::next };
+    Os8TransportButton sendButton { os8::icon::Id::sendToCanvas };
+
+    juce::String sourceName { "Main" };
+
+    // The strip's peak cache: one value per bin of binFrames(), max |L|,|R|.
+    std::vector<float> peaks;
+    size_t cachedBin = 0;
+    double cachedRate = 0.0;
+
+    // What was last drawn, to repaint only what moved.
+    size_t lastPos = 0, lastLen = 0;
+    se::Tape::Mode lastMode = se::Tape::Mode::stopped;
+    int lastTakes = 0;
+    float angleL = 0.0f, angleR = 0.0f;   // reel rotations, radians (screen clockwise)
+
+    // Winding the tape by hand in the strip.
+    bool scrubbing = false;
+    size_t scrubFrom = 0;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MagnetophonComponent)
+};

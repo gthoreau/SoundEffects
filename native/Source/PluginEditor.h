@@ -22,6 +22,7 @@
 #include "ui/EffectsPanel.h"
 #include "ui/KeyboardPalette.h"
 #include "ui/MixerComponent.h"
+#include "ui/MagnetophonComponent.h"
 #include "ui/SidePanel.h"
 #include "ui/ViewPalette.h"
 
@@ -121,6 +122,19 @@ private:
     int numInputChannels() const;
     bool isPluginHost() const;
     std::map<uint64_t, audiosource::SourceChoice> sourceChoices;   // per Window, this session
+    /** Can a source of this kind be heard right now (an input open, a host)? */
+    bool sourceReady (se::AudioSourceKind) const;
+    // --- the Magnetophon -------------------------------------------------------
+    audiosource::SourceChoice tapeChoice = []
+    {
+        audiosource::SourceChoice c;
+        c.kind = se::AudioSourceKind::canvas;   // Main
+        return c;
+    }();
+    void openTapeSourcePopup();
+    /** Hand tapeChoice to the deck and the engine (gain, monitor). */
+    bool applyTapeSource();
+    juce::String tapeSourceName() const;
     uint64_t fastForwardWindow = 0;   // the Window F went down on: F's release lets go of it, wherever selection went
     /** The Window the menus act on: the canvas's selected one. */
     WindowComponent* targetWindow() const { return canvas.selectedWindowComponent(); }
@@ -150,6 +164,8 @@ private:
     EffectsPanelComponent effects;
     SidePanel             mixerPanel   { "Mixer", mixer };      // the frames around them
     SidePanel             effectsPanel { "Effects", effects };
+    MagnetophonComponent  magnetophon { processorRef.engine(), processorRef.tapeDeck() };
+    SidePanel             magnetophonPanel { "Magnetophon", magnetophon };   // under the Mixer
     ViewPalette           palette;    // floats OVER the canvas, so it is added last
     KeyboardPalette       keyboard;   // ...and hangs directly below the palette
 

@@ -94,6 +94,7 @@ void SoundEffectsAudioProcessor::timerCallback()
 {
     engineImpl.collectRetired();
     recorderImpl.service();
+    tapeDeckImpl.service();
 }
 
 void SoundEffectsAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)

@@ -10,6 +10,7 @@
 #include "engine/Engine.h"
 #include "engine/EngineState.h"
 #include "engine/Recorder.h"
+#include "engine/Tape.h"
 
 #include <mutex>
 
@@ -58,6 +59,8 @@ public:
     se::Engine& engine() noexcept { return engineImpl; }
     /** The recorder: owned here so a take outlives the editor window being closed. */
     se::Recorder& recorder() noexcept { return recorderImpl; }
+    /** The Magnetophon's deck: owned here too, so the tape outlives the editor. */
+    se::TapeDeck& tapeDeck() noexcept { return tapeDeckImpl; }
 
 private:
     void timerCallback() override;   // message thread: reclaim retired Windows
@@ -75,6 +78,7 @@ private:
 
     se::Engine engineImpl;
     se::Recorder recorderImpl { engineImpl };
+    se::TapeDeck tapeDeckImpl { engineImpl };
     juce::AudioBuffer<float> inputCopy;   // the input channels, aside from the output
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SoundEffectsAudioProcessor)

@@ -15,6 +15,7 @@
 //     A take that ends inside older audio leaves that older tail as a take of its
 //     own (a marker at the point recording stopped), so a take is exactly what was
 //     recorded in it.
+//   - Record while recording starts the next take there and then, with no gap.
 //   - Stop ends the take (or the playback) where the tape is.
 //   - Play plays from the position across takes to the end of the tape, then stops
 //     there. At the end of the tape, Play replays the last take from its start.
@@ -62,7 +63,8 @@ public:
 
     // --- operations (each returns false when it does nothing) -----------------
     /** Start a take at the position, recording at `deviceRate` (a blank tape takes
-        the rate; a tape at another rate refuses: its audio would change pitch). */
+        the rate; a tape at another rate refuses: its audio would change pitch).
+        While recording: the next take starts where the head is. */
     bool record (double deviceRate);
     /** The recording head wrote `n` frames at the position: it moves on, the tape
         grows past its end, and markers it ran over go. */

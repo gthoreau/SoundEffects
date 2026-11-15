@@ -5,6 +5,7 @@ constexpr const char* kAutoApply       = AppPrefs::autoApplyKey;
 constexpr const char* kTimeUnit        = AppPrefs::timeUnitKey;
 constexpr const char* kSidePanels      = "sidePanelsShown";
 constexpr const char* kMixerCollapsed  = "mixerCollapsed";
+constexpr const char* kMagnetophonCollapsed = "magnetophonCollapsed";
 constexpr const char* kEffectsCollapsed = "effectsCollapsed";
 
 juce::PropertiesFile::Options options()
@@ -75,6 +76,8 @@ bool AppPrefs::sidePanelsShown() const    { return getBool (kSidePanels, true); 
 void AppPrefs::setSidePanelsShown (bool v){ setBool (kSidePanels, v); }
 bool AppPrefs::mixerCollapsed() const     { return getBool (kMixerCollapsed, false); }
 void AppPrefs::setMixerCollapsed (bool v) { setBool (kMixerCollapsed, v); }
+bool AppPrefs::magnetophonCollapsed() const     { return getBool (kMagnetophonCollapsed, false); }
+void AppPrefs::setMagnetophonCollapsed (bool v) { setBool (kMagnetophonCollapsed, v); }
 bool AppPrefs::effectsCollapsed() const   { return getBool (kEffectsCollapsed, false); }
 void AppPrefs::setEffectsCollapsed (bool v) { setBool (kEffectsCollapsed, v); }
 

@@ -41,6 +41,9 @@ public:
     void setMixerCollapsed (bool);
     bool effectsCollapsed() const;
     void setEffectsCollapsed (bool);
+    /** The Magnetophon, under the Mixer: collapsed to its title bar. */
+    bool magnetophonCollapsed() const;
+    void setMagnetophonCollapsed (bool);
 
     /** A whole XML tree under `key` — for structured preferences such as a module's
         named setups. Returns nullptr when nothing is stored. */

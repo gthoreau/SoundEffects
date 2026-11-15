@@ -37,7 +37,9 @@ bool Tape::hasUnsent() const noexcept
 
 bool Tape::record (double deviceRate)
 {
-    if (md == Mode::recording) return false;
+    // Record while recording starts a new take where the head is, seamlessly (none
+    // when nothing has been recorded in this one yet).
+    if (md == Mode::recording && pos == recStart) return false;
     if (len > 0 && ! (deviceRate <= tapeRate && deviceRate >= tapeRate)) return false;
     if (len == 0) tapeRate = deviceRate;
 
@@ -184,7 +186,7 @@ void TapeDeck::followPlayback()
 bool TapeDeck::record()
 {
     if (stopping || clearPending) return false;
-    if (model.mode() == Tape::Mode::recording) return false;
+    if (model.mode() == Tape::Mode::recording) return model.record (engine.sampleRate());   // a new take, no gap
     if (model.mode() == Tape::Mode::playing)
     {
         followPlayback();

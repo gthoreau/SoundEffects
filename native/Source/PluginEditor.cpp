@@ -33,12 +33,34 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     addAndMakeVisible (mixerPanel);
     mixerPanel.setTitleRule (true);
     addAndMakeVisible (effectsPanel);
+    addAndMakeVisible (magnetophonPanel);
 
     // Each panel shades to its title bar from the box in that bar, and stays so.
     mixerPanel.setCollapsed (AppPrefs::get().mixerCollapsed(), juce::dontSendNotification);
     effectsPanel.setCollapsed (AppPrefs::get().effectsCollapsed(), juce::dontSendNotification);
     mixerPanel.onCollapsedChanged = [this] (bool c) { AppPrefs::get().setMixerCollapsed (c); resized(); };
     effectsPanel.onCollapsedChanged = [this] (bool c) { AppPrefs::get().setEffectsCollapsed (c); resized(); };
+    magnetophonPanel.setCollapsed (AppPrefs::get().magnetophonCollapsed(), juce::dontSendNotification);
+    magnetophonPanel.onCollapsedChanged = [this] (bool c) { AppPrefs::get().setMagnetophonCollapsed (c); resized(); };
+
+    // The Magnetophon records from its own source (Main by default), chosen in the
+    // same popup a Sound uses; Record first checks that source can be heard.
+    magnetophon.onSourceRequested = [this] { openTapeSourcePopup(); };
+    magnetophon.onRecordRequested = [this]
+    {
+        auto& deck = processorRef.tapeDeck();
+        if (deck.tape().mode() != se::Tape::Mode::recording)
+        {
+            if (! sourceReady (tapeChoice.kind))
+            {
+                if (onShowAudioSettings) onShowAudioSettings();
+                return false;
+            }
+            applyTapeSource();
+        }
+        return deck.record();
+    };
+    applyTapeSource();
     addAndMakeVisible (palette);   // last, so it floats over the canvas
     addChildComponent (keyboard);  // ...and this one starts hidden
 
@@ -664,7 +686,11 @@ bool SoundEffectsAudioProcessorEditor::isPluginHost() const
 bool SoundEffectsAudioProcessorEditor::recordReadyFor (uint64_t window) const
 {
     const auto it = sourceChoices.find (window);
-    const auto kind = it != sourceChoices.end() ? it->second.kind : se::AudioSourceKind::external;
+    return sourceReady (it != sourceChoices.end() ? it->second.kind : se::AudioSourceKind::external);
+}
+
+bool SoundEffectsAudioProcessorEditor::sourceReady (se::AudioSourceKind kind) const
+{
     switch (kind)
     {
         case se::AudioSourceKind::canvas:   return true;   // the engine's own output: always there
@@ -742,11 +768,92 @@ void SoundEffectsAudioProcessorEditor::openSourcePopup (uint64_t window)
     popup->showOver (*wc, { (wc->getWidth() - popup->getWidth()) / 2, (wc->getHeight() - popup->getHeight()) / 2 });
 }
 
+void SoundEffectsAudioProcessorEditor::openTapeSourcePopup()
+{
+    audiosource::Context ctx;
+    ctx.engine = &processorRef.engine();
+    ctx.window = 0;   // every Sound is a source for the tape
+    ctx.numInputChannels = numInputChannels();
+    ctx.dawAvailable = isPluginHost();
+    if (onShowAudioSettings) ctx.openAudioSettings = [this] { onShowAudioSettings(); };
+
+    auto built = audiosource::build (ctx, tapeChoice,
+        [this] (const audiosource::SourceChoice& c) { tapeChoice = c; applyTapeSource(); },
+        [this] (const audiosource::SourceChoice& c)
+        {
+            tapeChoice = c;
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this)]
+            {
+                if (safe != nullptr) safe->openTapeSourcePopup();
+            });
+        });
+    auto* popup = built.popup.release();
+    popup->showOver (canvas, { (canvas.getWidth() - popup->getWidth()) / 2, (canvas.getHeight() - popup->getHeight()) / 2 });
+}
+
+bool SoundEffectsAudioProcessorEditor::applyTapeSource()
+{
+    se::TapeSource s;
+    s.kind = tapeChoice.kind;
+    switch (tapeChoice.kind)
+    {
+        case se::AudioSourceKind::external:
+        {
+            const auto list = audiosource::externalSources (numInputChannels());
+            if (! list.empty())
+            {
+                const auto& src = list[(size_t) std::clamp (tapeChoice.externalIndex, 0, (int) list.size() - 1)];
+                s.firstChannel = src.firstChannel;
+                s.stereo = src.stereo;
+            }
+            break;
+        }
+        case se::AudioSourceKind::canvas: s.tapWindow = tapeChoice.canvasWindow; break;
+        case se::AudioSourceKind::daw:    s.stereo = true; break;
+    }
+    if (! processorRef.tapeDeck().setSource (s)) return false;   // not while recording
+    auto& engine = processorRef.engine();
+    engine.setTapeInputGain ((float) (tapeChoice.gainPercent / 100.0));
+    engine.setTapeMonitor (tapeChoice.monitor && tapeChoice.kind != se::AudioSourceKind::canvas);
+    return true;
+}
+
+juce::String SoundEffectsAudioProcessorEditor::tapeSourceName() const
+{
+    switch (tapeChoice.kind)
+    {
+        case se::AudioSourceKind::external:
+        {
+            const auto list = audiosource::externalSources (numInputChannels());
+            return list.empty() ? juce::String ("No input")
+                                : list[(size_t) std::clamp (tapeChoice.externalIndex, 0, (int) list.size() - 1)].name;
+        }
+        case se::AudioSourceKind::daw: return "DAW";
+        case se::AudioSourceKind::canvas:
+            if (tapeChoice.canvasWindow != 0)
+                if (auto* w = processorRef.engine().windowById (tapeChoice.canvasWindow); w != nullptr && w->uiDoc)
+                    return (w->slot >= 0 ? juce::String (w->slot + 1) + " - " : juce::String()) + juce::String (w->uiDoc->name);
+            return "Main";
+    }
+    return {};
+}
+
 void SoundEffectsAudioProcessorEditor::timerCallback()
 {
     canvas.refresh();
     mixer.refresh();
     effects.refresh();
+
+    // The Sound the tape records from was closed: back to Main, once it may change.
+    if (tapeChoice.kind == se::AudioSourceKind::canvas && tapeChoice.canvasWindow != 0
+        && processorRef.engine().windowById (tapeChoice.canvasWindow) == nullptr)
+    {
+        const auto kept = tapeChoice;
+        tapeChoice.canvasWindow = 0;
+        if (! applyTapeSource()) tapeChoice = kept;
+    }
+    magnetophon.setSourceName (tapeSourceName());
+    if (magnetophonPanel.isVisible() && ! magnetophonPanel.isCollapsed()) magnetophon.refresh();
     if (keyboard.isVisible()) keyboard.refresh();
 }
 
@@ -903,6 +1010,7 @@ void SoundEffectsAudioProcessorEditor::resized()
     const bool panels = AppPrefs::get().sidePanelsShown();
     mixerPanel.setVisible (panels);
     effectsPanel.setVisible (panels);
+    magnetophonPanel.setVisible (panels);
 
     // Never more than a third of the editor each, so a small host window still
     // leaves a canvas between them.
@@ -920,12 +1028,28 @@ void SoundEffectsAudioProcessorEditor::resized()
 
     if (panels)
     {
-        column (mixerPanel, true);
+        // The left column: the Mixer, the Magnetophon under it (274 px, or its title
+        // bar when shaded). A shaded Mixer gives the canvas the column: both then
+        // float over its top-left corner, the Magnetophon hanging under the Mixer's bar.
+        const int magH = magnetophonPanel.isCollapsed() ? SidePanel::kCollapsedHeight
+                                                       : MagnetophonComponent::kContentHeight + SidePanel::kCollapsedHeight;
+        if (mixerPanel.isCollapsed())
+        {
+            column (mixerPanel, true);
+            magnetophonPanel.setBounds (area.getX(), area.getY() + SidePanel::kCollapsedHeight, w, magH);
+        }
+        else
+        {
+            auto left = area.removeFromLeft (w);
+            magnetophonPanel.setBounds (left.removeFromBottom (std::min (magH, left.getHeight() - SidePanel::kCollapsedHeight)));
+            mixerPanel.setBounds (left);
+        }
         column (effectsPanel, false);
     }
 
     canvas.setBounds (area);
     mixerPanel.toFront (false);     // over the canvas when shaded
+    magnetophonPanel.toFront (false);
     effectsPanel.toFront (false);
     palette.toFront (false);
     keyboard.toFront (false);
