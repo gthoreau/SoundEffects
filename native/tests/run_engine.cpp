@@ -13,6 +13,7 @@
 #include "engine/Resample.h"
 #include "engine/SampleFormat.h"
 #include "engine/TransportButtons.h"
+#include "ui/ScrollTarget.h"
 
 #include <atomic>
 #include <chrono>
@@ -2855,6 +2856,32 @@ void masterLevelTests()
     renderBlocks (e, 1);
 }
 
+
+// 10.2: where the Effects column scrolls to when a tray opens.
+static void scrollTargetTests()
+{
+    std::printf ("scroll target\n");
+    const auto go = [] (int viewTop, int viewH, int contentH, int groupTop, int trayTop, int trayBottom)
+    {
+        return se::scrollTargetForTray ({ viewTop, viewH, contentH, groupTop, trayTop, trayBottom });
+    };
+    // 400 px view over a 1000 px column. Group 100 tall, tray 150.
+    check (go (0, 400, 1000, 100, 200, 350) == 0,     "everything shows: no scroll");
+    check (go (100, 400, 1000, 100, 200, 350) == 100, "group at the top edge: no scroll");
+    check (go (0, 400, 1000, 300, 400, 550) == 150,   "tray below the view: just its bottom edge into view");
+    check (go (0, 400, 1000, 399, 499, 650) == 250,   "group barely visible: group and tray both shown");
+    check (go (500, 400, 1000, 300, 400, 550) == 300, "group above the view: scrolls up to the group");
+    check (go (0, 400, 1000, 100, 200, 550) == 150,   "group + tray too tall, tray fits: whole tray in view");
+    check (go (300, 400, 1000, 100, 200, 550) == 200, "same, scrolling up to the tray's top");
+    check (go (0, 400, 1000, 100, 200, 700) == 200,   "tray taller than view: tray top under the header");
+    check (go (0, 400, 1000, 100, 200, 600) == 200,   "tray exactly the view: aligned to its top");
+    check (go (0, 400, 700, 300, 400, 700) == 300,    "clamped to the end of the column");
+    check (go (0, 400, 300, 100, 200, 250) == 0,      "column shorter than the view: never scrolls");
+    check (go (50, 400, 1000, 100, 200, 200) == 50,   "empty tray: unchanged");
+    check (go (900, 400, 1000, 100, 200, 350) == 100 && go (900, 400, 1000, 100, 200, 350) <= 600,
+           "a stale position past the end is brought back");
+}
+
 int main()
 {
     se::Engine engine;
@@ -3092,6 +3119,7 @@ int main()
                "select loop: the loop region, every track");
     }
 
+    scrollTargetTests();
     transportButtonsTests();
     masterLevelTests();
     directionTests();

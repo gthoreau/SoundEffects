@@ -1,4 +1,5 @@
 #include "EffectsPanel.h"
+#include "ScrollTarget.h"
 
 #include "EffectLayouts.h"
 #include "Os8Popup.h"
@@ -228,6 +229,17 @@ struct EffectsPanelComponent::Group
     std::unique_ptr<Os8Toggle> autoApply;      // the 1-click group only
 };
 
+// The Sound-info header: fixed above the scrolling groups (0.5.0, step 10.1).
+class EffectsPanelComponent::Header : public juce::Component
+{
+public:
+    explicit Header (EffectsPanelComponent& o) : owner (o) { setInterceptsMouseClicks (false, false); }
+    void paint (Graphics& g) override;
+
+private:
+    EffectsPanelComponent& owner;
+};
+
 class EffectsPanelComponent::Content : public juce::Component
 {
 public:
@@ -240,7 +252,6 @@ public:
     fxlayout::Layout trayLayout;
 
 private:
-    void paintHeader (Graphics&);
     void paintGroup (Graphics&, const Group&);
     void paintTray (Graphics&);
 
@@ -255,6 +266,8 @@ EffectsPanelComponent::EffectsPanelComponent (se::Engine& e)
     : engine (e), runner (e)
 {
     content = std::make_unique<Content> (*this);
+    header = std::make_unique<Header> (*this);
+    addAndMakeVisible (*header);
 
     // The column is 268 px wide and the frames are 270: the scroll bar would shift
     // every frame, so the column scrolls by wheel and trackpad alone.
@@ -319,8 +332,8 @@ void EffectsPanelComponent::refresh()
     // The header's colour can change on its own (Sound ▸ Color, Hide Color Theme).
     {
         auto* w = targetId != 0 ? engine.windowById (targetId) : nullptr;
-        const auto header = os8::themeColourFor (w).getARGB();
-        if (header != lastHeaderArgb) { lastHeaderArgb = header; content->repaint(); }
+        const auto headerArgb = os8::themeColourFor (w).getARGB();
+        if (headerArgb != lastHeaderArgb) { lastHeaderArgb = headerArgb; header->repaint(); }
     }
 
     if (targetId == lastScopeWindow && selSt == lastSelSt && selEnd == lastSelEnd
@@ -385,6 +398,7 @@ void EffectsPanelComponent::showResult (const juce::String& message)
     // The scope readout is derived from the document the run just changed, so it has
     // to be recomputed rather than left saying what was true before.
     lastScopeWindow = 0;
+    header->repaint();
     content->repaint();
 }
 
@@ -457,8 +471,9 @@ void EffectsPanelComponent::rebuildButtons()
 
 void EffectsPanelComponent::layoutAll()
 {
-    int y = kHeaderH;
+    int y = 0;
     content->trayRect = {};
+    int openGroupTop = 0;
 
     for (auto& g : groups)
     {
@@ -479,6 +494,7 @@ void EffectsPanelComponent::layoutAll()
         {
             content->trayLayout = openLayout;
             const int h = content->trayLayout.contentHeight() + 2 * kTrayInset;
+            openGroupTop = g->frame.getY();
             content->trayRect = { 0, y, kFrameW, h };
             y += h;
 
@@ -494,6 +510,21 @@ void EffectsPanelComponent::layoutAll()
 
     placeTray();
     content->setSize (viewport.getMaximumVisibleWidth(), std::max (y, viewport.getHeight()));
+    openGroupY = openGroupTop;
+}
+
+void EffectsPanelComponent::scrollToOpenTray()
+{
+    if (openModule == nullptr || content->trayRect.isEmpty()) return;
+    const auto& t = content->trayRect;
+    const int target = se::scrollTargetForTray ({ viewport.getViewPositionY(), viewport.getMaximumVisibleHeight(),
+                                                  content->getHeight(), openGroupY, t.getY(), t.getBottom() });
+    viewport.setViewPosition (0, target);
+}
+
+juce::Rectangle<int> EffectsPanelComponent::toPanel (juce::Rectangle<int> r) const
+{
+    return r.translated (0, kHeaderH - viewport.getViewPositionY());
 }
 
 void EffectsPanelComponent::effectClicked (Entry& e)
@@ -641,6 +672,7 @@ void EffectsPanelComponent::openEffect (const se::EffectModule* module)
     refreshTray();
     layoutAll();
     updateLatchedButtons();
+    scrollToOpenTray();
     content->repaint();
 }
 
@@ -650,12 +682,12 @@ juce::Rectangle<int> EffectsPanelComponent::openEffectNamed (const juce::String&
     if (module == nullptr) return {};
     if (openModule != nullptr) closeTray();
     openEffect (module);
-    return content->trayRect;
+    return toPanel (content->trayRect);
 }
 
 juce::Rectangle<int> EffectsPanelComponent::groupFrame (int index) const
 {
-    return juce::isPositiveAndBelow (index, (int) groups.size()) ? groups[(size_t) index]->frame
+    return juce::isPositiveAndBelow (index, (int) groups.size()) ? toPanel (groups[(size_t) index]->frame)
                                                                  : juce::Rectangle<int>();
 }
 
@@ -759,7 +791,8 @@ void EffectsPanelComponent::paint (Graphics& g)
 
 void EffectsPanelComponent::resized()
 {
-    viewport.setBounds (getLocalBounds());
+    header->setBounds (0, 0, getWidth(), kHeaderH);
+    viewport.setBounds (getLocalBounds().withTrimmedTop (kHeaderH));
     layoutAll();
 }
 
@@ -1492,7 +1525,7 @@ juce::Rectangle<int> EffectsPanelComponent::snapshotSetupPopup (bool deleting, c
     popup->setTopLeftPosition (setupPopupOrigin());
     const auto r = popup->getBounds();
     content->addAndMakeVisible (popup.release());
-    return r;
+    return toPanel (r);
 }
 
 void EffectsPanelComponent::clearSnapshotPopups()
@@ -1511,8 +1544,9 @@ juce::Point<int> EffectsPanelComponent::setupPopupOrigin() const
 // Content
 // ============================================================================
 
-void EffectsPanelComponent::Content::paintHeader (Graphics& g)
+void EffectsPanelComponent::Header::paint (Graphics& g)
 {
+    g.fillAll (colour::gray000);
     const se::SoundDocument* doc = owner.targetDoc();
     auto* w = owner.targetId != 0 ? owner.engine.windowById (owner.targetId) : nullptr;
 
@@ -1640,7 +1674,6 @@ void EffectsPanelComponent::Content::paint (Graphics& g)
 {
     g.fillAll (colour::gray000);
 
-    paintHeader (g);
     for (auto& grp : owner.groups) paintGroup (g, *grp);
     if (! trayRect.isEmpty()) paintTray (g);
 }

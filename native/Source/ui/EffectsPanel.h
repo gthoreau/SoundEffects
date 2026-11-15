@@ -97,7 +97,9 @@ public:
 
 private:
     class Content;
+    class Header;
     friend class Content;
+    friend class Header;
 
     struct Entry;
     struct Group;
@@ -106,6 +108,10 @@ private:
 
     void rebuildButtons();
     void layoutAll();
+    /** After a tray opens: scroll just enough to show its group and it (ScrollTarget.h). */
+    void scrollToOpenTray();
+    /** Content coordinates → this component's (below the header, minus the scroll). */
+    juce::Rectangle<int> toPanel (juce::Rectangle<int>) const;
     void openEffect (const se::EffectModule* module);
     void closeTray();
     void updateLatchedButtons();
@@ -161,6 +167,8 @@ private:
 
     uint64_t targetId = 0;
 
+    std::unique_ptr<Header> header;     // fixed above the viewport
+    int openGroupY = 0;                 // the open tray's group, in content coordinates
     juce::Viewport viewport;
     std::unique_ptr<Content> content;
 
