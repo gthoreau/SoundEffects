@@ -81,7 +81,7 @@ private:
     Os8TransportButton previousButton { os8::icon::Id::previous };
     Os8TransportButton playButton { os8::icon::Id::playForward };
     Os8TransportButton nextButton { os8::icon::Id::next };
-    Os8TransportButton sendButton { os8::icon::Id::sendToCanvas };
+    Os8TransportButton sendButton { os8::icon::Id::sendToCanvasArrow };
 
     juce::String sourceName { "Main" };
 

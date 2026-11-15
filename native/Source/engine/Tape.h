@@ -122,6 +122,13 @@ public:
     /** Move the tape (not while recording); a playing tape plays on from there. */
     bool seek (size_t frame);
 
+    /** Wind the tape by hand, heard (the panel's strip): begin, move, let go. A
+        playing tape stops while it is held and plays on from where it is let go. */
+    bool scrubBegin();
+    void scrubTo (size_t frame);
+    void scrubEnd();
+    bool scrubbing() const noexcept { return scrubOn; }
+
     /** A stop that is still collecting the last of a take from the audio thread. */
     bool finishing() const noexcept { return stopping; }
     /** Blank the tape (stops it first; the memory goes once the audio thread let go). */
@@ -167,6 +174,7 @@ private:
     bool stopping = false;      // a take ends: wait for the audio thread, then take the rest
     bool clearPending = false;  // blank the tape once playback has let go
     bool discardOnSettle = false;  // cleared mid-take: throw the last of it away
+    bool scrubOn = false, playAfterScrub = false;
     std::vector<float> bufL, bufR;
     size_t dirtyFrom = static_cast<size_t> (-1), dirtyTo = 0;
 };

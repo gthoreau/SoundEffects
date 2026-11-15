@@ -263,7 +263,8 @@ space = play/pause toggle · F1–Fn = solo-play channel n · option-Fn = mute c
 > records over it tape-like (only as far as the new take runs; the older tail
 > becomes a take of its own); Record while recording starts the next take with no
 > gap; Play runs to the end of the tape; Previous/Next jump between takes; the
-> waveform strip can be dragged to wind the tape by hand. The tape's own playback
+> waveform strip can be dragged to wind the tape by hand, heard (a varispeed
+> scrub that falls silent when the tape is held still). The tape's own playback
 > is heard through Main Level but never re-recorded. The tape lives for the
 > session: **Send to Canvas** (the whole tape as one Sound, or chosen takes as one
 > Sound each, 16 bit at the device rate, Raw or Clean) is how to keep it, and

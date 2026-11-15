@@ -12,7 +12,6 @@ const juce::Point<float> kRightReel { 202.0f, 68.0f };
 const juce::Point<float> kLeftRoller  { 93.0f, 123.5f };
 const juce::Point<float> kRightRoller { 186.0f, 123.5f };
 constexpr float kRollerRadius = 6.0f;
-constexpr float kReelRadius = 48.0f;        // the reel's face
 constexpr float kHubRadius = 14.0f;         // an empty pack: the hub
 constexpr float kFullPackRadius = 42.0f;    // a full one (Figma's left reel)
 const juce::Rectangle<float> kHead { 109.0f, 108.0f, 50.0f, 22.0f };   // "Frames"
@@ -59,29 +58,52 @@ std::pair<juce::Point<float>, juce::Point<float>> tapeRun (juce::Point<float> a,
     return { a - n * ra, b - n * rb };
 }
 
+/** A reel ("left-reel" / "right-reel" 1199:16202): the tape pack, the face with its
+    three windows (see-through: what lies under the reel shows in them, the tape
+    included) and the hub, painted as one picture so that it casts the group's hard
+    shadow, 25 % black 2 px down, as one silhouette. */
 void drawReel (juce::Graphics& g, juce::Point<float> c, float pack, float angle)
 {
-    g.setColour (white);
-    g.fillEllipse (juce::Rectangle<float> (2 * kReelRadius, 2 * kReelRadius).withCentre (c));
+    constexpr int kBox = 104;   // the face, its outside stroke and some air, centred
+    const float scale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+    const int px = (int) std::ceil ((float) kBox * scale);
+    juce::Image img (juce::Image::ARGB, px, px, true);
+    {
+        juce::Graphics ig (img);
+        ig.addTransform (juce::AffineTransform::scale (scale));
+        const juce::Point<float> o ((float) kBox / 2.0f, (float) kBox / 2.0f);
+        ig.setColour (black);
+        ig.fillEllipse (juce::Rectangle<float> (2 * pack, 2 * pack).withCentre (o));
+        const auto t = juce::AffineTransform::translation (-50.0f, -50.0f).rotated (angle).translated (o);
+        ig.setColour (gray100);
+        ig.fillPath (reelFace(), t);
+        ig.setColour (black);
+        ig.strokePath (reelFace(), juce::PathStrokeType (2.0f), t);
+        ig.drawEllipse (juce::Rectangle<float> (24.35f, 24.35f).withCentre (o), 3.0f);   // "Ellipse 10"
+    }
+    const auto dest = juce::Rectangle<float> ((float) kBox, (float) kBox).withCentre (c);
+    g.setColour (black.withAlpha (0.25f));
+    g.drawImage (img, dest.translated (0.0f, 2.0f), juce::RectanglePlacement::stretchToFit, true);
     g.setColour (black);
-    g.fillEllipse (juce::Rectangle<float> (2 * pack, 2 * pack).withCentre (c));
-
-    const auto t = juce::AffineTransform::translation (-50.0f, -50.0f).rotated (angle).translated (c);
-    g.setColour (gray100);
-    g.fillPath (reelFace(), t);
-    g.setColour (black);
-    g.strokePath (reelFace(), juce::PathStrokeType (2.0f), t);
-
-    // The hub ("Ellipse 10"): a 3 px ring.
-    g.drawEllipse (juce::Rectangle<float> (24.35f, 24.35f).withCentre (c), 3.0f);
+    g.drawImage (img, dest, juce::RectanglePlacement::stretchToFit, false);
 }
 
+/** A guide roller ("Ellipse 13"): Figma's conic grey, #d9d9d9 sweeping clockwise from
+    6 o'clock round to #737373, and a 1 px black edge. */
 void drawRoller (juce::Graphics& g, juce::Point<float> c)
 {
     const auto r = juce::Rectangle<float> (2 * kRollerRadius, 2 * kRollerRadius).withCentre (c);
-    // Figma's conic grey (#d9d9d9 → #737373) as a light-to-dark sweep.
-    g.setGradientFill (juce::ColourGradient (gray200, r.getTopLeft(), juce::Colour (0xff737373), r.getBottomRight(), false));
-    g.fillEllipse (r);
+    constexpr int kSlices = 48;
+    constexpr float twoPi = juce::MathConstants<float>::twoPi;
+    const auto light = gray200, dark = juce::Colour (0xff737373);
+    for (int k = 0; k < kSlices; ++k)
+    {
+        const float a0 = juce::MathConstants<float>::pi + twoPi * (float) k / kSlices;
+        juce::Path slice;
+        slice.addPieSegment (r, a0, a0 + twoPi / kSlices + 0.02f, 0.0f);
+        g.setColour (light.interpolatedWith (dark, ((float) k + 0.5f) / kSlices));
+        g.fillPath (slice);
+    }
     g.setColour (black);
     g.drawEllipse (r.reduced (0.5f), 1.0f);
 }
@@ -124,6 +146,39 @@ juce::String timeText (size_t frames, double rate)
     const int cs = (int) std::floor (s * 100.0);
     return juce::String (cs / 6000).paddedLeft ('0', 2) + ":" + juce::String ((cs / 100) % 60).paddedLeft ('0', 2)
          + ":" + juce::String (cs % 100).paddedLeft ('0', 2) + "s";
+}
+
+/** Chicago's digits are not all as wide (the 1 is narrow), so a running counter
+    would shimmy: every digit is drawn centred in a cell as wide as the widest. */
+int digitCell()
+{
+    static const int w = []
+    {
+        int m = 0;
+        for (char d = '0'; d <= '9'; ++d) m = std::max (m, os8::widthOf (juce::String::charToString (d), os8::TextStyle::smallLabel));
+        return m;
+    }();
+    return w;
+}
+
+int monoWidthOf (const juce::String& s)
+{
+    int w = 0;
+    for (auto ch : s)
+        w += juce::CharacterFunctions::isDigit (ch) ? digitCell() : os8::widthOf (juce::String::charToString (ch), os8::TextStyle::smallLabel);
+    return w;
+}
+
+void drawMono (juce::Graphics& g, const juce::String& s, int x, float y)
+{
+    for (auto ch : s)
+    {
+        const auto one = juce::String::charToString (ch);
+        const int cw = os8::widthOf (one, os8::TextStyle::smallLabel);
+        const int cell = juce::CharacterFunctions::isDigit (ch) ? digitCell() : cw;
+        os8::drawText (g, one, os8::TextStyle::smallLabel, { (float) (x + (cell - cw) / 2), y, (float) cw + 2.0f, 10.0f });
+        x += cell;
+    }
 }
 
 juce::String rateText (double rate)
@@ -297,9 +352,30 @@ void MagnetophonComponent::paintDeck (juce::Graphics& g) const
     const auto left  = tapeRun (kLeftReel, rl + 1.0f, kLeftRoller, kRollerRadius + 1.0f);
     const auto mid   = tapeRun (kLeftRoller, kRollerRadius + 1.0f, kRightRoller, kRollerRadius + 1.0f);
     const auto right = tapeRun (kRightRoller, kRollerRadius + 1.0f, kRightReel, rr + 1.0f);
+    // One path, wrapping under each roller with an arc, as Figma's tape does.
+    const auto angleOf = [] (juce::Point<float> c, juce::Point<float> p) { return std::atan2 (p.x - c.x, c.y - p.y); };
+    // The short way round, from one angle to the other.
+    const auto toward = [] (float from, float to)
+    {
+        constexpr float pi = juce::MathConstants<float>::pi;
+        while (to - from > pi) to -= 2.0f * pi;
+        while (to - from < -pi) to += 2.0f * pi;
+        return to;
+    };
+    const float rr0 = kRollerRadius + 1.0f;
+    juce::Path tapePath;
+    tapePath.startNewSubPath (left.first);
+    tapePath.lineTo (left.second);
+    tapePath.addCentredArc (kLeftRoller.x, kLeftRoller.y, rr0, rr0, 0.0f,
+                            angleOf (kLeftRoller, left.second),
+                            toward (angleOf (kLeftRoller, left.second), angleOf (kLeftRoller, mid.first)));
+    tapePath.lineTo (mid.second);
+    tapePath.addCentredArc (kRightRoller.x, kRightRoller.y, rr0, rr0, 0.0f,
+                            angleOf (kRightRoller, mid.second),
+                            toward (angleOf (kRightRoller, mid.second), angleOf (kRightRoller, right.first)));
+    tapePath.lineTo (right.second);
     g.setColour (black);
-    for (const auto& run : { left, mid, right })
-        g.drawLine ({ run.first, run.second }, 2.0f);
+    g.strokePath (tapePath, juce::PathStrokeType (2.0f));
 
     drawReel (g, kLeftReel, rl, angleL);
     drawReel (g, kRightReel, rr, angleR);
@@ -379,9 +455,11 @@ void MagnetophonComponent::paintStatus (juce::Graphics& g) const
     int x = w - 4;
     for (int i = 2; i >= 0; --i)
     {
-        const int pw = os8::widthOf (parts[i], os8::TextStyle::smallLabel);
+        const bool counter = i == 2;   // it runs: fixed-width digits
+        const int pw = counter ? monoWidthOf (parts[i]) : os8::widthOf (parts[i], os8::TextStyle::smallLabel);
         x -= pw;
-        os8::drawText (g, parts[i], os8::TextStyle::smallLabel, { (float) x, y, (float) pw + 2.0f, 10.0f });
+        if (counter) drawMono (g, parts[i], x, y);
+        else os8::drawText (g, parts[i], os8::TextStyle::smallLabel, { (float) x, y, (float) pw + 2.0f, 10.0f });
         x -= 4;
     }
 
@@ -409,11 +487,10 @@ void MagnetophonComponent::paintTransport (juce::Graphics& g) const
 
 void MagnetophonComponent::mouseDown (const juce::MouseEvent& e)
 {
-    // Wind the tape by hand: grab the strip and drag it.
-    const auto& t = deck.tape();
-    scrubbing = e.y >= kStripTop && e.y < kStripTop + kStripHeight
-             && t.mode() != se::Tape::Mode::recording && ! deck.finishing() && ! t.empty();
-    scrubFrom = t.position();
+    // Wind the tape by hand, heard: grab the strip and drag it (a scrub). A playing
+    // tape stops while held and plays on from where it is let go.
+    scrubbing = e.y >= kStripTop && e.y < kStripTop + kStripHeight && deck.scrubBegin();
+    scrubFrom = deck.tape().position();
     if (scrubbing) setMouseCursor (juce::MouseCursor::DraggingHandCursor);
 }
 
@@ -421,12 +498,14 @@ void MagnetophonComponent::mouseDrag (const juce::MouseEvent& e)
 {
     if (! scrubbing) return;
     const int64_t to = (int64_t) scrubFrom - (int64_t) e.getDistanceFromDragStartX() * (int64_t) std::max<size_t> (1, cachedBin);
-    deck.seek ((size_t) std::max<int64_t> (0, to));
+    deck.scrubTo ((size_t) std::max<int64_t> (0, to));
     refresh();
 }
 
 void MagnetophonComponent::mouseUp (const juce::MouseEvent&)
 {
+    if (scrubbing) deck.scrubEnd();
     scrubbing = false;
     setMouseCursor (juce::MouseCursor::NormalCursor);
+    refresh();
 }

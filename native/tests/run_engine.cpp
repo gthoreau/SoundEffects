@@ -3232,6 +3232,74 @@ static void tapeSendTests()
     check (std::abs (v - 16384) <= 2, "send: Clean only dithers at the same rate");
 }
 
+// Scrub: dragging the strip is heard, varispeed, and silent at rest, with no click.
+static void tapeScrubTests()
+{
+    std::printf ("tape scrub\n");
+    se::Engine e; e.prepare (kRate, kBlock);
+    se::TapeDeck d (e);
+    se::TapeSource ext; ext.kind = se::AudioSourceKind::external; ext.stereo = false;
+    d.setSource (ext);
+    std::vector<float> l, r;
+    d.record();
+    for (int i = 0; i < 200; ++i) tapeBlock (e, d, { 0.5f }, l, r);
+    d.stop(); tapeSettle (e, d, {});
+    const size_t len = d.tape().length();
+    d.tape().seek (0);   // not playing: a plain move
+
+    check (d.scrubBegin() && d.scrubbing(), "scrub begins on a stopped tape");
+    renderWithInput (e, {}, l, r);
+    check (e.tapePlaying(), "the audio thread reads the tape while scrubbing");
+    float peak = 0.0f, maxStep = 0.0f, prev = 0.0f;
+    // Drag forward 2000 frames over ~20 blocks, as a mouse would.
+    for (int i = 1; i <= 20; ++i)
+    {
+        d.scrubTo ((size_t) (i * 100));
+        tapeBlock (e, d, {}, l, r);
+        for (float v : l) { peak = std::max (peak, std::abs (v)); maxStep = std::max (maxStep, std::abs (v - prev)); prev = v; }
+    }
+    check (peak > 0.25f, "dragging is heard");
+    check (d.tape().position() == 2000, "the tape's position is where the drag is");
+    // Held still: the tape comes to rest and goes silent, smoothly.
+    float tail = 1.0f;
+    for (int i = 0; i < 100; ++i)
+    {
+        tapeBlock (e, d, {}, l, r);
+        tail = 0.0f;
+        for (float v : l) { tail = std::max (tail, std::abs (v)); maxStep = std::max (maxStep, std::abs (v - prev)); prev = v; }
+    }
+    check (tail < 1.0e-3f, "held still: silent");
+    check (maxStep < 0.02f, "no click: every sample step is small");
+    check (e.tapePlaying(), "still held: the tape is still under the hand");
+
+    d.scrubEnd();
+    for (int i = 0; i < 20; ++i) tapeBlock (e, d, {}, l, r);
+    check (! d.scrubbing() && ! e.tapePlaying() && d.tape().mode() == se::Tape::Mode::stopped, "let go: the tape stops reading, stopped");
+
+    // A playing tape stops while held and plays on from where it is let go.
+    d.tape().seek (0);
+    d.play();
+    tapeBlock (e, d, {}, l, r);
+    check (d.scrubBegin() && d.tape().mode() == se::Tape::Mode::stopped, "scrub while playing: playback stops");
+    d.scrubTo (len / 2);
+    for (int i = 0; i < 40; ++i) tapeBlock (e, d, {}, l, r);
+    d.scrubEnd();
+    check (d.tape().mode() == se::Tape::Mode::playing && d.tape().position() == len / 2, "let go: plays on from there");
+    tapeBlock (e, d, {}, l, r);
+    checkClose (l[(size_t) kBlock - 1], 0.5f, 1.0e-3f, "playback heard again");
+
+    // Clear while scrubbing: the memory goes once the scrub has faded out.
+    d.stop();
+    tapeBlock (e, d, {}, l, r);
+    d.scrubBegin();
+    d.scrubTo (100);
+    tapeBlock (e, d, {}, l, r);
+    d.clear();
+    for (int i = 0; i < 20; ++i) tapeBlock (e, d, {}, l, r);
+    check (e.tapeStore().reservedFrames() == 0 && ! e.tapePlaying(), "clear mid-scrub: released after the fade");
+    check (! d.scrubBegin(), "a blank tape cannot be scrubbed");
+}
+
 // The tape under a real audio thread: the deck records, plays, jumps and clears
 // while render() runs. For TSan.
 static void tapeConcurrencyTests()
@@ -3263,7 +3331,7 @@ static void tapeConcurrencyTests()
             case 4: d.previousTake(); break;
             case 5: d.nextTake(); break;
             case 6: d.seek ((size_t) (i * 7)); break;
-            case 7: if (i % 90 == 7) d.clear(); break;
+            case 7: if (i % 90 == 7) d.clear(); else if (i % 3 == 0) { d.scrubBegin(); d.scrubTo ((size_t) i); } else d.scrubEnd(); break;
             case 8: { se::TapeSource s; s.tapWindow = (i % 2) ? a : 0; if (i % 3 == 0) s.kind = se::AudioSourceKind::external; d.setSource (s); } break;
             default: break;
         }
@@ -3542,6 +3610,7 @@ int main()
     tapeEngineTests();
     tapeConcurrencyTests();
     tapeSendTests();
+    tapeScrubTests();
 
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());

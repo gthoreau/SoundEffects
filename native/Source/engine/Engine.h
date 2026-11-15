@@ -281,6 +281,15 @@ public:
         tags the command: tapeAckGen() says the audio thread has applied it. */
     bool tapePlay (size_t frame, uint32_t gen);
     bool tapeStop (uint32_t gen);
+    /** Scrub (the panel's strip dragged by hand): the audio thread chases the target
+        frame like a tape pulled past the head, varispeed, with an inertia of ~50 ms;
+        its level follows its speed, so a tape at rest is silent. Start (or restart)
+        at `frame`, move the target as the mouse moves, then let go: it fades out as
+        the tape comes to rest. Playback stops while scrubbing. */
+    bool tapeScrub (size_t frame, uint32_t gen);
+    void tapeScrubTo (size_t frame) noexcept { tapeScrubTarget.store (frame, std::memory_order_relaxed); }
+    bool tapeScrubEnd (uint32_t gen);
+    /** The audio thread is reading the tape (playing or scrubbing). */
     bool tapePlaying() const noexcept { return tapePlayingFlag.load (std::memory_order_acquire); }
     /** The frame the tape's playback will read next (published once a block). */
     size_t tapePlayFrame() const noexcept { return tapePlayPos.load (std::memory_order_relaxed); }
@@ -351,7 +360,8 @@ private:
     {
         enum class Kind : uint8_t { AddWindow, RemoveWindow, Transport, SwapDoc, SetMeta,
                                     CaptureStart, CaptureStop,
-                                    TapeCaptureStart, TapeCaptureStop, TapePlay, TapeStop } kind {};
+                                    TapeCaptureStart, TapeCaptureStop, TapePlay, TapeStop,
+                                    TapeScrub, TapeScrubEnd } kind {};
         enum class Tx   : uint8_t { Play, Stop, Pause, Advance, NormalSpeed, Seek,
                                     RateScale, Direction, RecordStart, RecordPause,
                                     RecordResume, RecordStop, RecordJoin, RecordEnd, RecordRelease } tx {};
@@ -417,6 +427,11 @@ private:
     bool tapeCapActive = false;     // audio thread
     bool tapePlayActive = false;    // audio thread
     size_t tapePos = 0;             // audio thread: next frame to play
+    bool   scrubActive = false, scrubReleasing = false;   // audio thread
+    double scrubPos = 0.0, scrubVel = 0.0;                 // frames, frames per output frame
+    float  scrubGain = 0.0f;
+    double scrubVelCoeff = 0.0, scrubGainCoeff = 0.0;      // per-sample one-pole coefficients
+    std::atomic<size_t> tapeScrubTarget { 0 };
     std::atomic<bool> tapeCapRunning { false };
     std::atomic<bool> tapePlayingFlag { false };
     std::atomic<size_t> tapePlayPos { 0 };

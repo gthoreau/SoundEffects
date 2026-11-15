@@ -49,6 +49,7 @@ enum class Id
     loopBig,          // the Loop transport button (Transport-button 761:17286)
     activeTrackDrag,  // the ghost of a Track being moved, duplicated or trashed
     newTrackDrag,     // the ghost of a Track being added
+    sendToCanvasArrow, // the Magnetophon's Send transport button (Transport-button 761:17277)
 };
 
 /** The icon's natural size, in pixels. */

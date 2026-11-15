@@ -33,6 +33,8 @@ void Engine::prepare (double rate, int maxBlockSize)
     for (auto* v : { &capL, &capR, &tapL, &tapR, &exL, &exR, &tcapL, &tcapR, &ttapL, &ttapR, &tplayL, &tplayR })
         v->assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
     live.reserve (kMaxWindows);
+    scrubVelCoeff  = 1.0 - std::exp (-1.0 / (rate * 0.010));   // the tape's speed settles in ~10 ms
+    scrubGainCoeff = 1.0 - std::exp (-1.0 / (rate * 0.005));   // its level in ~5 ms
 
     // Pre-audio (prepareToPlay): safe to touch every known transport.
     for (auto& kv : registry)
@@ -297,6 +299,17 @@ bool Engine::tapePlay (size_t frame, uint32_t gen)
     Command c; c.kind = Command::Kind::TapePlay; c.seekBytes = frame; c.gen = gen;
     return post (c);
 }
+bool Engine::tapeScrub (size_t frame, uint32_t gen)
+{
+    tapeScrubTo (frame);
+    Command c; c.kind = Command::Kind::TapeScrub; c.seekBytes = frame; c.gen = gen;
+    return post (c);
+}
+bool Engine::tapeScrubEnd (uint32_t gen)
+{
+    Command c; c.kind = Command::Kind::TapeScrubEnd; c.gen = gen;
+    return post (c);
+}
 bool Engine::tapeStop (uint32_t gen)
 {
     Command c; c.kind = Command::Kind::TapeStop; c.gen = gen;
@@ -479,6 +492,7 @@ void Engine::drainCommands() noexcept
             case Command::Kind::TapePlay:
                 tapePos = c.seekBytes;
                 tapePlayActive = true;
+                scrubActive = false;
                 tapePlayPos.store (tapePos, std::memory_order_relaxed);
                 tapePlayingFlag.store (true, std::memory_order_release);
                 tapeAck.store (c.gen, std::memory_order_release);
@@ -486,7 +500,21 @@ void Engine::drainCommands() noexcept
 
             case Command::Kind::TapeStop:
                 tapePlayActive = false;
-                tapePlayingFlag.store (false, std::memory_order_release);
+                tapePlayingFlag.store (scrubActive, std::memory_order_release);
+                tapeAck.store (c.gen, std::memory_order_release);
+                break;
+
+            case Command::Kind::TapeScrub:
+                if (! scrubActive) { scrubPos = (double) c.seekBytes; scrubVel = 0.0; scrubGain = 0.0f; }
+                scrubActive = true;
+                scrubReleasing = false;
+                tapePlayActive = false;
+                tapePlayingFlag.store (true, std::memory_order_release);
+                tapeAck.store (c.gen, std::memory_order_release);
+                break;
+
+            case Command::Kind::TapeScrubEnd:
+                scrubReleasing = scrubActive;
                 tapeAck.store (c.gen, std::memory_order_release);
                 break;
         }
@@ -734,7 +762,44 @@ void Engine::render (float* left, float* right, int frames,
         {
             // The end of the tape: playback stops there by itself.
             tapePlayActive = false;
-            tapePlayingFlag.store (false, std::memory_order_release);
+            tapePlayingFlag.store (scrubActive, std::memory_order_release);
+        }
+    }
+
+    // Scrub: the read point chases the dragged target, varispeed and interpolated;
+    // the level follows the speed, so the tape at rest is silent and nothing clicks.
+    if (scrubActive)
+    {
+        const size_t len = tape.length();
+        const double target = (double) tapeScrubTarget.load (std::memory_order_relaxed);
+        const double lag = deviceRate * 0.05;
+        constexpr double kMaxSpeed = 8.0;
+        const float m = masterApplied;
+        for (int i = 0; i < cap_; ++i)
+        {
+            const double want = std::clamp ((target - scrubPos) / lag, -kMaxSpeed, kMaxSpeed);
+            scrubVel += (want - scrubVel) * scrubVelCoeff;
+            const double hi = len > 1 ? (double) (len - 1) : 0.0;
+            scrubPos = std::clamp (scrubPos + scrubVel, 0.0, hi);
+            // Below 2 % of normal speed the tape is as good as still: silent. Full
+            // level from a quarter of normal speed.
+            const double speed = std::abs (scrubVel);
+            const float gWant = scrubReleasing ? 0.0f : (float) std::clamp ((speed - 0.02) * 4.4, 0.0, 1.0);
+            scrubGain += (gWant - scrubGain) * (float) scrubGainCoeff;
+            if (len < 2 || scrubGain < 1.0e-5f) continue;
+            const size_t f0 = (size_t) scrubPos;
+            const size_t f1 = std::min (f0 + 1, len - 1);
+            const float t = (float) (scrubPos - (double) f0);
+            float l0, r0, l1, r1;
+            tape.frameAt (f0, l0, r0);
+            tape.frameAt (f1, l1, r1);
+            left[i]  += (l0 + (l1 - l0) * t) * scrubGain * m;
+            right[i] += (r0 + (r1 - r0) * t) * scrubGain * m;
+        }
+        if (scrubReleasing && scrubGain < 1.0e-5f)
+        {
+            scrubActive = scrubReleasing = false;
+            tapePlayingFlag.store (tapePlayActive, std::memory_order_release);
         }
     }
 

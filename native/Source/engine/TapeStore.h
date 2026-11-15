@@ -117,6 +117,15 @@ public:
         return n;
     }
 
+    /** One frame, below the length (the scrub reads frame by frame). */
+    void frameAt (size_t f, float& l, float& r) const noexcept
+    {
+        const float* c = chunks[f / kChunkFrames].load (std::memory_order_acquire);
+        const size_t off = f % kChunkFrames;
+        l = c[off];
+        r = c[kChunkFrames + off];
+    }
+
 private:
     std::unique_ptr<std::atomic<float*>[]> chunks;   // each: kChunkFrames left, then right
     size_t allocated = 0;                            // message thread

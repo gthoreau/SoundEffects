@@ -47,6 +47,7 @@ const Source kSources[] = {
     /* loopBig */ { 14, 13, R"svg(<path d="M4 9H2V8H1V7H0V6H2V3H3V2H4V1H5V0H11V1H12V2H13V3H14V10H13V11H12V12H11V13H5V12H4V11H10V10H11V9H12V4H11V3H10V2H6V3H5V4H4V6H6V7H5V8H4V9Z" fill="#FD0000"/>)svg" },
     /* activeTrackDrag */ { 16, 11, R"svg(<path fill-rule="evenodd" d="M16 11H0V0H16V11ZM5 2V5H4V4H3V5H1V6H3V7H4V6H5V9H6V7H7V6H8V8H9V6H10V7H12V8H13V6H15V5H14V4H13V5H12V4H11V3H10V5H9V3H8V5H7V4H6V2H5Z" fill="black"/>)svg" },
     /* newTrackDrag */ { 16, 11, R"svg(<path fill-rule="evenodd" d="M16 11H0V0H16V11ZM1 6H15V5H1V6Z" fill="black"/>)svg" },
+    /* sendToCanvasArrow */ { 11, 11, R"svg(<path d="M11 6H9V4H8V5H7V6H6V7H5V8H4V9H3V10H2V11H0V9H1V8H2V7H3V6H4V5H5V4H6V3H7V2H4V0H11V6Z" fill="#FD0000"/>)svg" },
 };
 
 constexpr size_t kCount = sizeof (kSources) / sizeof (kSources[0]);

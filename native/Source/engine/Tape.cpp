@@ -188,6 +188,7 @@ void TapeDeck::followPlayback()
 bool TapeDeck::record()
 {
     if (stopping || clearPending) return false;
+    if (scrubOn) { scrubOn = playAfterScrub = false; engine.tapeScrubEnd (++gen); }
     if (model.mode() == Tape::Mode::recording) return model.record (engine.sampleRate());   // a new take, no gap
     if (model.mode() == Tape::Mode::playing)
     {
@@ -264,8 +265,34 @@ bool TapeDeck::seek (size_t frame)
     return jumped (wasPlaying);
 }
 
+bool TapeDeck::scrubBegin()
+{
+    if (scrubOn || stopping || clearPending || model.empty() || model.mode() == Tape::Mode::recording) return false;
+    playAfterScrub = model.mode() == Tape::Mode::playing;
+    if (playAfterScrub) { followPlayback(); model.stop(); }
+    scrubOn = engine.tapeScrub (model.position(), ++gen);
+    return scrubOn;
+}
+
+void TapeDeck::scrubTo (size_t frame)
+{
+    if (! scrubOn) return;
+    model.seek (frame);
+    engine.tapeScrubTo (model.position());
+}
+
+void TapeDeck::scrubEnd()
+{
+    if (! scrubOn) return;
+    scrubOn = false;
+    engine.tapeScrubEnd (++gen);
+    if (playAfterScrub && model.position() < model.length()) play();
+    playAfterScrub = false;
+}
+
 void TapeDeck::clear()
 {
+    if (scrubOn) { scrubOn = playAfterScrub = false; engine.tapeScrubEnd (++gen); }
     if (model.mode() == Tape::Mode::recording || stopping)
     {
         engine.tapeCaptureStop();
@@ -274,6 +301,7 @@ void TapeDeck::clear()
     }
     if (model.mode() == Tape::Mode::playing) engine.tapeStop (++gen);
     model.clear();
+    engine.tapeStore().setLength (0);   // nothing more is read; the memory goes once the audio thread lets go
     dirtyFrom = static_cast<size_t> (-1); dirtyTo = 0;
     clearPending = true;
     service();
