@@ -225,6 +225,13 @@ private:
     juce::Rectangle<int> body() const;
     juce::Rectangle<int> titleBar() const;
     juce::Rectangle<int> statusArea() const;
+    /** The selection-info icons' hit zones (0.5.0 step 6.2): 0 start, 1 length,
+        2 end; each its icon frame plus the air up to its field, the field's height. */
+    juce::Rectangle<int> selectionIconZone (int which) const;
+    int selectionIconAt (juce::Point<int>) const;
+    /** A click on a selection-info icon: start to 0, whole tracks, end to the audio's
+        end (se::selectionToStart / ToWholeTracks / ToEnd). */
+    void clickSelectionIcon (int which);
     juce::Rectangle<int> tracksArea() const;
     juce::Rectangle<int> trackRow (int t) const;
     juce::Rectangle<int> speakerBox (int t, bool right) const;

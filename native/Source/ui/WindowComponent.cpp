@@ -249,6 +249,36 @@ Rectangle<int> WindowComponent::statusArea() const
     return { b.getX() + kSideInset, b.getY() + kTitleH, b.getWidth() - 2 * kSideInset, kStatusH };
 }
 
+Rectangle<int> WindowComponent::selectionIconZone (int which) const
+{
+    // The frames paintStatus centres the icons in: 14, 19 and 14 px wide, 18, 23
+    // and 18 px left of their fields.
+    const auto s = statusArea();
+    const auto& field = which == 0 ? startField : which == 1 ? lengthField : endField;
+    const int frameX = field.getX() - (which == 1 ? 23 : 18);
+    return { frameX - 1, s.getY() + 6, field.getX() - (frameX - 1), 19 };
+}
+
+int WindowComponent::selectionIconAt (juce::Point<int> p) const
+{
+    if (! statusArea().contains (p)) return -1;
+    for (int i = 0; i < 3; ++i)
+        if (selectionIconZone (i).contains (p)) return i;
+    return -1;
+}
+
+void WindowComponent::clickSelectionIcon (int which)
+{
+    auto* d = doc();
+    if (d == nullptr) return;
+    const bool changed = which == 0 ? se::selectionToStart (*d)
+                       : which == 1 ? se::selectionToWholeTracks (*d)
+                                    : se::selectionToEnd (*d);
+    if (! changed) return;
+    commitSelection();   // selection only: publish so Play follows, as Extend to End does
+    updateSelectionFields (true);
+}
+
 Rectangle<int> WindowComponent::tracksArea() const
 {
     const auto s = statusArea();
@@ -1419,6 +1449,7 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
     }
 
     if (closeBox().expanded (1).contains (p)) { if (onClose) onClose (id); return; }
+    if (const int icon = selectionIconAt (p); icon >= 0) { clickSelectionIcon (icon); return; }
     if (muteBox().expanded (1).contains (p) || soloBox().expanded (1).contains (p))
     {
         if (auto* w = engineWindow())
@@ -1674,6 +1705,7 @@ void WindowComponent::mouseMove (const juce::MouseEvent& e)
 
     setMouseCursor (gripRect().expanded (2).contains (p) ? juce::MouseCursor::BottomRightCornerResizeCursor
                     : overHandle                          ? juce::MouseCursor::DraggingHandCursor
+                    : selectionIconAt (p) >= 0            ? juce::MouseCursor::PointingHandCursor
                                                           : juce::MouseCursor::NormalCursor);
 }
 
