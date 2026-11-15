@@ -68,7 +68,8 @@ public:
     void pause();
     void resume();
     void stop();
-    /** Disarm: the take ends, the transport carries on as it is (0.5.0). */
+    /** Disarm: the take ends, the transport carries on as it is, and the take is
+        heard as soon as it is published (0.5.0). */
     void end();
 
     /** Message thread, regularly (30 Hz): drain, convert, write, and finish what is finishing. */
@@ -128,6 +129,7 @@ private:
     size_t written = 0;
     size_t dirtyFrom = static_cast<size_t> (-1), dirtyTo = 0;   // see takeWrittenFrames()
     bool punchedOut = false;
+    bool releaseOnSettle = false;   // ended by a disarm: let the take sound once published
     int waitTicks = 0;
     std::vector<float> bufL, bufR, tmpL, tmpR;
     std::vector<int32_t> outL, outR;

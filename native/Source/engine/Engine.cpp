@@ -258,6 +258,8 @@ bool Engine::recordJoin (uint64_t id, const CaptureSetup& setup, const PlayOptio
 }
 bool Engine::recordEnd (uint64_t id)
 { Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::RecordEnd; c.id=id; return post (c); }
+bool Engine::recordRelease (uint64_t id)
+{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::RecordRelease; c.id=id; return post (c); }
 
 PlayDirection Engine::direction (uint64_t id) noexcept
 {
@@ -337,10 +339,14 @@ void Engine::applyTransport (Window& w, const Command& c) noexcept
             break;
         case Command::Tx::RecordEnd:
             // Disarm: the capture ends, the transport carries on untouched; the tracks
-            // written stay excluded (a Play or Stop clears that).
+            // written stay excluded until the take is published (RecordRelease).
             capActive = false;
             capRunning.store (false, std::memory_order_release);
             w.transport->takeOpen = false;   // a loop follows the selection again
+            break;
+        case Command::Tx::RecordRelease:
+            // Queued after the take's SwapDoc, so the tracks it lets sound hold the take.
+            if (! w.transport->takeOpen) w.transport->releaseExcluded();
             break;
         case Command::Tx::RecordPause:
             capActive = false;

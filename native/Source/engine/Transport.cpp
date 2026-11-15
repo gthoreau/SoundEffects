@@ -299,6 +299,15 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
     publishTrackPositions (doc);
 }
 
+void Transport::releaseExcluded() noexcept
+{
+    if (excludeMask == 0) return;
+    fadeInFrom = excludeMask;
+    excludeMask = 0;
+    fadeInTotal = std::max (1, static_cast<int> (std::lround (deviceRate * 0.005)));   // ~5 ms
+    fadeInLeft = fadeInTotal;
+}
+
 size_t Transport::readingFrame (const SoundDocument& doc, int preferTrack) const noexcept
 {
     if (currentState == TransportState::stopped) return 0;
@@ -319,6 +328,7 @@ size_t Transport::readingFrame (const SoundDocument& doc, int preferTrack) const
 void Transport::stop() noexcept
 {
     setState (TransportState::stopped);
+    fadeInLeft = 0;
     pos = 0.0;
     advanceScale = 1.0;
     xfadeLeft = 0;
@@ -408,6 +418,17 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
             f.left  = o.left  + (f.left  - o.left)  * w;
             f.right = o.right + (f.right - o.right) * w;
             --xfadeLeft;
+        }
+        if (fadeInLeft > 0)
+        {
+            // Released tracks come in from silence (the mix that left them out).
+            MixOptions without;
+            without.excludeMask = fadeInFrom;
+            const StereoFrame o = mixFrameAt (doc, pos, ctx, without);
+            const float w = 1.0f - static_cast<float> (fadeInLeft) / static_cast<float> (fadeInTotal);
+            f.left  = o.left  + (f.left  - o.left)  * w;
+            f.right = o.right + (f.right - o.right) * w;
+            --fadeInLeft;
         }
         left[i]  = f.left;
         right[i] = f.right;

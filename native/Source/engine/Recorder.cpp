@@ -31,6 +31,7 @@ bool Recorder::start (uint64_t window, const RecordSetup& s, bool join)
     written = cursor = offset = 0;
     dirtyFrom = static_cast<size_t> (-1); dirtyTo = 0;
     punchedOut = false;
+    releaseOnSettle = false;
     sumToMono = false;
     const size_t fs = static_cast<size_t> (doc->frameSize());
     const bool region = setup.loop && doc->loopEnd > doc->loopSt;   // the take follows Set Loop
@@ -158,13 +159,17 @@ void Recorder::end()
         case State::recording:
             engine.recordEnd (win);
             st = State::finishing; after = State::idle; waitTicks = 0;
+            releaseOnSettle = true;
             return;
         case State::finishing:
             after = State::idle;   // a pause was settling: the capture is stopping anyway
+            engine.recordEnd (win);
+            releaseOnSettle = true;
             return;
         case State::paused:
-            // Published at the pause; the transport stays paused.
+            // Published at the pause; the transport stays paused (the take sounds on resume).
             engine.recordEnd (win);
+            engine.recordRelease (win);
             st = State::idle;
             if (onFinished) onFinished (win);
             return;
@@ -240,6 +245,8 @@ void Recorder::settle()
     conv->flush (outL, outR);
     write (outL, outR);
     engine.commitEdit (win);
+    if (releaseOnSettle && after == State::idle) engine.recordRelease (win);   // after the SwapDoc
+    releaseOnSettle = false;
     if (onChanged) onChanged (win);
 }
 

@@ -66,6 +66,7 @@ WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
     sourceButton.setTextStyle (os8::TextStyle::smallLabel);
     sourceButton.onClick = [this] { perform (Action::selectAudioSource); };
     stopButton.onClick = [this] { perform (Action::stop); };
+    stopButton.addMouseListener (&stopDoubleClick, false);
     playButton.onPlay = [this] { applyCues (buttons.pressPlay()); };
     playButton.onDirectionChange = [this] (Os8ComboPlay::Direction d)
     {
@@ -1272,7 +1273,7 @@ void WindowComponent::updateTransportButtons()
     stopButton.setToggleState (buttons.stopOn(), juce::dontSendNotification);
     stopButton.setEnabled (true);
     pauseButton.setToggleState (buttons.pauseOn(), juce::dontSendNotification);
-    pauseButton.setEnabled (buttons.playOn() || buttons.pauseOn());
+    pauseButton.setEnabled (true);   // off, never greyed, even stopped (the author's call; a press there does nothing)
     fastForwardButton.setToggleState (buttons.ffOn(), juce::dontSendNotification);
     fastForwardButton.setEnabled (buttons.ffEnabled());
     loopButton.setToggleState (buttons.loopOn(), juce::dontSendNotification);
@@ -1285,6 +1286,16 @@ void WindowComponent::updateTransportButtons()
     recordButton.setEnabled (canPerform (Action::record));
     sourceButton.setEnabled (canPerform (Action::selectAudioSource));
     recordButton.setToggleState (recLit, juce::dontSendNotification);
+}
+
+void WindowComponent::caretToStart()
+{
+    auto* d = doc();
+    if (d == nullptr) return;
+    d->selSt = d->selEnd = 0;   // a caret at 0, in the tracks it was in
+    commitSelection();
+    updateSelectionFields (true);
+    repaint();
 }
 
 void WindowComponent::fastForward (bool down)

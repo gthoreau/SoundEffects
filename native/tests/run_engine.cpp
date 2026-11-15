@@ -1778,12 +1778,45 @@ void takeJoinTests()
         const size_t now = win->transport->uiPlayhead();
         renderWithInput (e, { 0.5f }, ol, orr);
         check (now > before && win->transport->uiPlayhead() == now + (size_t) kBlock, "end: the playhead carries on, no reset");
-        checkClose (ol[0], level, 1.0e-4f, "end: no step in the output (only the old track, as during the take)");
+        checkClose (ol[0], level, 0.01f, "end: no step in the output (the take fades in from silence)");
         check (e.editDoc (w)->numTracks() == 2 && at (*e.editDoc (w), 1, 3 * kBlock) == 64, "end: the take is kept");
-        check (win->transport->excludeMask != 0, "end: the new track stays silent while this pass plays on");
+        check (win->transport->excludeMask == 0, "end: once published, the take is released (no Stop needed)");
         check (! win->transport->takeOpen, "end: a loop may re-aim again (the take no longer freezes it)");
-        e.stop (w); renderBlocks (e, 1);
-        check (win->transport->excludeMask == 0, "end: a Stop lets the new track sound again");
+        {
+            float peak = 0.0f;
+            for (int b = 0; b < 10; ++b)
+            {
+                renderWithInput (e, { 0.5f }, ol, orr);
+                for (int i = 0; i < kBlock; ++i) peak = std::max (peak, ol[(size_t) i]);
+            }
+            checkClose (peak, level + 0.5f, 1.0e-3f, "end: the take is heard on top of the old track");
+        }
+        {
+            // The release itself: a released track that is not silent where it is
+            // read ramps in over ~5 ms instead of stepping in.
+            auto doc = dcDocument (20, "r");
+            doc->addTrack();
+            doc->tracks[1].data.assign (512, 0);
+            for (size_t i = 0; i < 512; ++i) se::setSample (doc->tracks[1].data.data(), i, 64, 8);
+            se::Transport tr (kRate);
+            se::PlayOptions lp; lp.loop = true;
+            tr.play (*doc, lp);
+            tr.excludeMask = 2;
+            std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
+            tr.render (*doc, l.data(), r.data(), kBlock);
+            tr.releaseExcluded();
+            std::vector<float> ramp;
+            for (int b = 0; b < 3; ++b)
+            {
+                tr.render (*doc, l.data(), r.data(), kBlock);
+                ramp.insert (ramp.end(), l.begin(), l.end());
+            }
+            float maxStep = 0.0f;
+            for (size_t i = 1; i < ramp.size(); ++i) maxStep = std::max (maxStep, std::fabs (ramp[i] - ramp[i - 1]));
+            check (tr.excludeMask == 0 && ramp.front() < level + 0.01f && maxStep < 0.01f,
+                   "release: the track fades in, no step");
+            checkClose (ramp.back(), level + 0.5f, 1.0e-4f, "release: after ~5 ms it is at full level");
+        }
 
         // Ending a paused take: the transport stays paused.
         rec.start (w, s, true);

@@ -401,6 +401,16 @@ private:
     };
     FastForwardHold fastForwardHold { *this };
 
+    /** A double-click on Stop also puts the caret at 0 (the first click stops). */
+    struct StopDoubleClick : juce::MouseListener
+    {
+        explicit StopDoubleClick (WindowComponent& o) : owner (o) {}
+        void mouseDoubleClick (const juce::MouseEvent&) override { owner.caretToStart(); }
+        WindowComponent& owner;
+    };
+    StopDoubleClick stopDoubleClick { *this };
+    void caretToStart();
+
     // the child controls
     Os8TextField startField { os8::FieldSize::xSmall }, lengthField { os8::FieldSize::xSmall },
                  endField { os8::FieldSize::xSmall };

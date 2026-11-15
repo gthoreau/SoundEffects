@@ -209,6 +209,9 @@ public:
     /** End the capture only: the transport carries on as it is (disarm mid-take).
         The tracks it wrote stay silent until the transport next plays or stops. */
     bool recordEnd    (uint64_t id);
+    /** After recordEnd, once the take is published (commitEdit): its tracks sound
+        again, faded in, without waiting for the next Play or Stop. */
+    bool recordRelease (uint64_t id);
     /** Bumped by the audio thread each time a take begins (recordStart / recordJoin),
         after captureStartFrame() is set for it. */
     uint32_t captureStartGen() const noexcept { return capStartGen.load (std::memory_order_acquire); }
@@ -276,7 +279,7 @@ private:
                                     CaptureStart, CaptureStop } kind {};
         enum class Tx   : uint8_t { Play, Stop, Pause, Advance, NormalSpeed, Seek,
                                     RateScale, Direction, RecordStart, RecordPause,
-                                    RecordResume, RecordStop, RecordJoin, RecordEnd } tx {};
+                                    RecordResume, RecordStop, RecordJoin, RecordEnd, RecordRelease } tx {};
         uint64_t        id = 0;
         Window*         window = nullptr;   // AddWindow: ownership transfers to audio
         SoundDocument*  doc = nullptr;      // SwapDoc: ownership transfers to audio

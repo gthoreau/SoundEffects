@@ -256,7 +256,8 @@ inline constexpr int kCanvasToggleWidth = 44, kCanvasToggleHeight = 20;
 
 // --- transport ("Transport-button" 761:17286, "Combo-play-button" 795:16809) --
 
-enum class TransportState { normal, active, disabled };
+/** recordOn: the Record button's own On (761:17281), a red face with a white dot. */
+enum class TransportState { normal, active, disabled, recordOn };
 inline constexpr int kTransportFace = 25;   // plus a 1 px outside stroke all round
 
 /** One 25 x 25 transport face with `face` as its top-left; the outside stroke lands

@@ -738,6 +738,13 @@ void transportIcon (juce::Graphics& g, icon::Id id, juce::Point<float> at, Trans
         return;
     }
 
+    if (state == TransportState::recordOn)
+    {
+        g.setColour (colour::white);
+        g.fillPath (shape, juce::AffineTransform::translation (at));
+        return;
+    }
+
     if (state == TransportState::normal)
     {
         // The icons' DROP_SHADOW (1, 1) black 25 % (761:17286); Active turns it off.
@@ -798,6 +805,14 @@ void paintTransportButton (juce::Graphics& g, juce::Point<int> o, icon::Id id, T
         case TransportState::disabled:
             g.setColour (gray100);
             g.fillPath (shape);
+            break;
+        case TransportState::recordOn:
+            // Active's bevel on a red face (#fd0000; 761:17281 shows #be0000 where the
+            // 25 % black band falls, which is this shadow over that red).
+            g.setColour (juce::Colour (0xfffd0000));
+            g.fillPath (shape);
+            innerShadow (g, outerShape,  2.0f,  2.0f, 0, black.withAlpha (0.25f));
+            innerShadow (g, outerShape, -1.0f, -1.0f, 0, white.withAlpha (0.5f));
             break;
     }
 

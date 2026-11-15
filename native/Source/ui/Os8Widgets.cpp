@@ -604,6 +604,7 @@ Os8TransportButton::Os8TransportButton (os8::icon::Id id) : juce::Button ({}), i
 void Os8TransportButton::paintButton (juce::Graphics& g, bool, bool down)
 {
     const auto state = ! isEnabled()              ? os8::TransportState::disabled
+                     : (getToggleState() && icon == os8::icon::Id::record) ? os8::TransportState::recordOn
                      : (down || getToggleState()) ? os8::TransportState::active
                                                   : os8::TransportState::normal;
     os8::paintTransportButton (g, { 1, 1 }, icon, state);

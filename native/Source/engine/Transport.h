@@ -141,6 +141,11 @@ public:
         Separate from excludeMask, which outlives a disarmed take (0.5.0). */
     bool takeOpen = false;
 
+    /** Let the excluded tracks sound again (a disarmed take, once it is published),
+        fading them in over ~5 ms so a track that is not silent where it is read does
+        not click in. Audio thread. */
+    void releaseExcluded() noexcept;
+
     /** Fill left/right (planar, deviceRate) with up to `frames` frames from `doc`. */
     int render (const SoundDocument& doc, float* left, float* right, int frames) noexcept;
 
@@ -187,6 +192,9 @@ private:
     // re-anchor. Plain copy: the audio thread never allocates.
     PlayContext prev;
     int xfadeLeft = 0, xfadeTotal = 1;
+    // Tracks fading in after releaseExcluded(): the mix they were left out of.
+    uint64_t fadeInFrom = 0;
+    int fadeInLeft = 0, fadeInTotal = 1;
 
     std::atomic<size_t>  uiPos { 0 };
     std::atomic<uint8_t> uiStateCode { static_cast<uint8_t> (TransportState::stopped) };
