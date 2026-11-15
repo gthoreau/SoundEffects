@@ -2,11 +2,10 @@
 //
 // Pure and JUCE-free so the rule can be tested (native/tests/run_engine.cpp).
 //
-// The rule (0.5.0, "smart auto-scroll"): scroll just enough to show the group and its
-// tray. If the two together do not fit the view but the tray alone does, show the
-// whole tray (as much of the group as is left comes with it). If the tray alone is
-// taller than the view, put the tray's top at the top of the view, right under the
-// static header, so its title and first controls are what is seen.
+// The rule (0.5.0, "smart auto-scroll"): a tray that fits the view is centred
+// vertically in it (the author's choice; the column's ends clamp it). If the tray alone
+// is as tall as the view or taller, its top goes at the top of the view, right under
+// the static header, so its title and first controls are what is seen.
 
 #pragma once
 
@@ -37,13 +36,9 @@ inline int scrollTargetForTray (const ScrollSpan& s)
     if (s.trayBottom - s.trayTop >= s.viewH)
         return clampTop (s.trayTop);
 
-    const bool groupFits = s.trayBottom - s.groupTop <= s.viewH;
-    const int top = groupFits ? s.groupTop : s.trayTop;
-
-    int t = s.viewTop;
-    if (top < t)                    t = top;
-    else if (s.trayBottom > t + s.viewH) t = s.trayBottom - s.viewH;
-    return clampTop (t);
+    // The tray fits: centre it in the view.
+    const int trayH = s.trayBottom - s.trayTop;
+    return clampTop (s.trayTop - (s.viewH - trayH) / 2);
 }
 
 } // namespace se
