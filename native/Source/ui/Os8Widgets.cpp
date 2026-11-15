@@ -544,6 +544,9 @@ Os8Slider::Os8Slider (os8::SliderKind k)
     : juce::Slider (juce::Slider::LinearHorizontal, juce::Slider::NoTextBox), kind (k)
 {
     setLookAndFeel (&Os8LookAndFeel::instance());
+    // The wheel scrolls whatever the slider sits in (the Mixer's list, the Effects
+    // panel); it never turns a slider the pointer happens to pass over.
+    setScrollWheelEnabled (false);
 }
 
 void Os8Slider::setLevels (float l, float r)

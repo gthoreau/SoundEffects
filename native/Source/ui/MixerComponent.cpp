@@ -104,9 +104,6 @@ void drawSlotNumber (Graphics& g, int slot, juce::Point<int> inset)
 
 MixerStrip::MixerStrip (se::Engine& e, uint64_t wid) : engine (e), id (wid)
 {
-    // The wheel scrolls the list; it must not turn a fader the pointer happens to be over.
-    pan.setScrollWheelEnabled (false);
-    volume.setScrollWheelEnabled (false);
     pan.setRange (-1.0, 1.0);
     pan.setDoubleClickReturnValue (true, 0.0);
     volume.setRange (0.0, 1.0);
@@ -469,7 +466,6 @@ MixerComponent::MixerComponent (se::Engine& e) : engine (e)
     addAndMakeVisible (openButton);
 
     // Main Level: unity is the 0 dB tick, as on a strip; a double click returns to it.
-    mainLevel.setScrollWheelEnabled (false);
     mainLevel.setRange (0.0, 1.0);
     mainLevel.setDoubleClickReturnValue (true, (double) MixerStrip::dbToPos (0.0f));
     mainLevel.setMarkerValue ((double) MixerStrip::dbToPos (0.0f));
