@@ -159,9 +159,9 @@ bool MixerStrip::inDragArea (juce::Point<int> p) const
 
 juce::Colour MixerStrip::themeFill() const
 {
-    // themeColour(-1) is Placeholder-gray-100 — the design's own untinted strip.
-    auto* w = window();
-    return os8::themeColour (w != nullptr ? w->tint : -1);
+    // Through the one access point: macos8-gray with the Color Theme hidden, and
+    // Placeholder-gray-100 (the design's own untinted strip) for no theme.
+    return os8::themeColourFor (window());
 }
 
 bool MixerStrip::muted() const
@@ -211,7 +211,9 @@ void MixerStrip::refreshState (bool soloFilterOn)
     const juce::String name = w->uiDoc != nullptr ? juce::String (w->uiDoc->name) : juce::String();
     if (name != lastName) { lastName = name; dirty = true; }
 
-    if (w->tint != lastTint) { lastTint = w->tint; dirty = true; }
+    // The colour, not the theme index: Hide Color Theme changes it too.
+    const auto fill = themeFill().getARGB();
+    if (fill != lastTint) { lastTint = fill; dirty = true; }
 
     // M and S can be pressed on the Window's title bar or in the menus, and the
     // solo filter is somebody ELSE's solo: all three change how this strip looks.

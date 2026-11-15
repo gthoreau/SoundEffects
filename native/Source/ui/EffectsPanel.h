@@ -204,6 +204,7 @@ private:
     uint64_t lastScopeWindow = 0;
     size_t   lastSelSt = 0, lastSelEnd = 0, lastMaxSize = 0;
     int      lastFirstTrack = 0, lastLastTrack = 0, lastNumTracks = 0;
+    juce::uint32 lastHeaderArgb = 0;   // the header colour last painted
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (EffectsPanelComponent)
 };

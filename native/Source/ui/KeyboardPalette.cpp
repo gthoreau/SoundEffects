@@ -62,9 +62,9 @@ bool KeyboardPalette::hasTarget() const
 juce::Colour KeyboardPalette::targetTint() const
 {
     auto* w = const_cast<se::Engine&> (engine).windowById (targetId);
-    // A Window the canvas has not painted yet has no tint, and the chrome grey is
-    // what everything untinted in this UI is made of. Same fallback the mixer uses.
-    return w != nullptr && w->tint >= 0 ? os8::themeColour (w->tint) : os8::colour::gray100;
+    // Through the one access point, as the mixer: macos8-gray with the Color
+    // Theme hidden, the chrome grey for a Window the canvas has not painted yet.
+    return os8::themeColourFor (w);
 }
 
 bool KeyboardPalette::isRolling() const
@@ -93,8 +93,8 @@ void KeyboardPalette::refresh()
     // The canvas assigns a Window its tint the first time it lays it out, so a
     // brand-new target can be tintless for a frame or two after it is selected.
     // The mixer's strips re-read it on the tick for the same reason.
-    auto* w = engine.windowById (targetId);
-    const int tint = w != nullptr ? w->tint : -1;
+    // The colour, not the theme index: Hide Color Theme changes it too.
+    const auto tint = targetTint().getARGB();
     if (tint != lastTint)
     {
         lastTint = tint;

@@ -107,7 +107,7 @@ void CanvasComponent::placeNew (WindowComponent& wc, int indexAmongNew)
     if (w != nullptr)
     {
         if (w->tint < 0) w->tint = pickTint();
-        wc.setTint (tintFromPalette (w->tint));
+        wc.setTint (os8::themeColourFor (w));
     }
 
     // If the engine's Window has no placement yet, cascade it from the origin.
@@ -182,16 +182,19 @@ void CanvasComponent::refresh()
         selectWindow (0);
 
     // Refresh each (transport state / playhead / repaint), and keep each one's
-    // colour and mixer slot in step: both can change from elsewhere (Window ▸ Color,
-    // a strip dragged to another slot in the mixer).
+    // colour and mixer slot in step: both can change from elsewhere (Sound ▸ Color,
+    // Canvas ▸ Hide Color Theme, a strip dragged to another slot in the mixer).
     for (auto& w : windows)
     {
         auto* ew = engine.windowById (w->windowId());
         w->setSlotNumber (ew != nullptr && ew->slot >= 0 ? ew->slot + 1 : 0);
         if (ew != nullptr && ew->tint >= 0)
-            w->setTint (tintFromPalette (ew->tint));
+            w->setTint (os8::themeColourFor (ew));
         w->refresh();
     }
+
+    // The background follows the selected Sound's colour and the theme switch.
+    updateBackground();
 }
 
 void CanvasComponent::invalidateWaveform (uint64_t id)
@@ -218,6 +221,7 @@ void CanvasComponent::selectWindow (uint64_t id)
     for (auto& w : windows)
         w->setSelected (w->windowId() == id);
 
+    updateBackground();
     if (onSelectionChanged) onSelectionChanged();
 }
 
@@ -793,7 +797,15 @@ void CanvasComponent::resized()
 
 void CanvasComponent::paint (juce::Graphics& g)
 {
-    // The workspace: soft white, so the Windows' own grey chrome and their pastel
-    // tints read as objects laid ON a surface rather than as darker patches of it.
-    g.fillAll (juce::Colour (0xfffafafa));
+    // The workspace wears the selected Sound's colour (white with none), or
+    // macos8-lavender with the Color Theme hidden: os8::canvasColourFor.
+    g.fillAll (background);
+}
+
+void CanvasComponent::updateBackground()
+{
+    const auto c = os8::canvasColourFor (selectedId != 0 ? engine.windowById (selectedId) : nullptr);
+    if (c == background) return;
+    background = c;
+    repaint();
 }

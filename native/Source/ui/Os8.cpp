@@ -1,5 +1,8 @@
 #include "Os8.h"
 
+#include "AppPrefs.h"
+#include "../engine/Engine.h"
+
 #include "BinaryData.h"
 #include "Os8Icons.h"
 
@@ -108,6 +111,36 @@ juce::String themeName (int index)
 {
     if (index < 0 || index >= kNumThemes) return {};
     return kThemes[index].name;
+}
+
+bool colorThemeShown()
+{
+    return AppPrefs::get().colorThemeShown();
+}
+
+juce::Colour themeColourFor (const se::Window* window, bool themeShown)
+{
+    if (! themeShown) return colour::macos8Gray;
+    return themeColour (window != nullptr ? window->tint : -1);
+}
+
+juce::Colour themeColourFor (const se::Window* window)
+{
+    return themeColourFor (window, colorThemeShown());
+}
+
+juce::Colour canvasColourFor (const se::Window* selected, bool themeShown)
+{
+    if (! themeShown) return colour::macos8Lavender;
+    // A Window the canvas has not painted yet has no theme: white, as with none.
+    if (selected == nullptr || selected->tint < 0 || selected->tint >= kNumThemes)
+        return colour::white;
+    return themeColour (selected->tint);
+}
+
+juce::Colour canvasColourFor (const se::Window* selected)
+{
+    return canvasColourFor (selected, colorThemeShown());
 }
 
 // --- paint primitives ---------------------------------------------------------

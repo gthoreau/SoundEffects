@@ -68,6 +68,9 @@ void AppPrefs::setTimeUnit (int unit)
     changed (kTimeUnit);
 }
 
+bool AppPrefs::colorThemeShown() const    { return getBool (colorThemeShownKey, true); }
+void AppPrefs::setColorThemeShown (bool v){ setBool (colorThemeShownKey, v); }
+
 bool AppPrefs::sidePanelsShown() const    { return getBool (kSidePanels, true); }
 void AppPrefs::setSidePanelsShown (bool v){ setBool (kSidePanels, v); }
 bool AppPrefs::mixerCollapsed() const     { return getBool (kMixerCollapsed, false); }

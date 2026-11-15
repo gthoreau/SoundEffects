@@ -136,7 +136,7 @@ private:
     } hoverWatch { *this };
 
     juce::String lastName;
-    int   lastTint = -2;          // -2 = never sampled
+    juce::uint32 lastTint = 0;    // the fill last painted; 0 = never sampled
     bool  lastMuted = false, lastSoloed = false, lastSilenced = false;
     bool  soloFilter = false;     // is ANY channel soloed? (then silence may not be ours)
     bool  selected = false;

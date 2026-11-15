@@ -248,6 +248,11 @@ private:
 
     uint64_t selectedId = 0;
 
+    /** What paint() fills with, and the call that brings it up to date (on a
+        selection change and on every refresh tick). */
+    juce::Colour background { 0xffffffff };
+    void updateBackground();
+
     bool mosaicEnabled = true;
     int  lastTint = -1;          // so two windows running never get the same coat
     bool panMode = false;

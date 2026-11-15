@@ -316,6 +316,13 @@ void EffectsPanelComponent::refresh()
     const int lastTrack = doc ? doc->lastSelTrack : 0;
     const int numTracks = doc ? doc->numTracks() : 0;
 
+    // The header's colour can change on its own (Sound ▸ Color, Hide Color Theme).
+    {
+        auto* w = targetId != 0 ? engine.windowById (targetId) : nullptr;
+        const auto header = os8::themeColourFor (w).getARGB();
+        if (header != lastHeaderArgb) { lastHeaderArgb = header; content->repaint(); }
+    }
+
     if (targetId == lastScopeWindow && selSt == lastSelSt && selEnd == lastSelEnd
         && maxSize == lastMaxSize && firstTrack == lastFirstTrack
         && lastTrack == lastLastTrack && numTracks == lastNumTracks)
@@ -1510,7 +1517,7 @@ void EffectsPanelComponent::Content::paintHeader (Graphics& g)
     auto* w = owner.targetId != 0 ? owner.engine.windowById (owner.targetId) : nullptr;
 
     // The header wears the selected Window's theme, as its mixer strip does.
-    paintBevelFrame (g, { 0, 0, kFrameW, kHeaderH }, false, w != nullptr ? os8::themeColour (w->tint) : colour::gray100);
+    paintBevelFrame (g, { 0, 0, kFrameW, kHeaderH }, false, os8::themeColourFor (w));
 
     // The mixer slot, boxed, as in the Sound window's own status row.
     // Window::slot is 0-based; the panel, the strips and the Window show it 1-based.

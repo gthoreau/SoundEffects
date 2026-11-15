@@ -244,7 +244,7 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::crop:          active = can (WindowComponent::Action::crop); break;
         case cmd::insertSilence: active = can (WindowComponent::Action::insertSilence); break;
 
-        case cmd::soundColour:   active = engineWindow != nullptr; break;
+        case cmd::soundColour:   active = engineWindow != nullptr && os8::colorThemeShown(); break;
         case cmd::rename:        active = w != nullptr; break;
         case cmd::selectAudioSource: active = can (WindowComponent::Action::selectAudioSource); break;
         case cmd::armRecord:     active = can (WindowComponent::Action::record); r.setTicked (w != nullptr && w->isArmed()); break;
@@ -276,6 +276,10 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
             break;
         case cmd::flipDirection: active = can (WindowComponent::Action::cycleDirection); break;
 
+        case cmd::toggleColourTheme:
+            active = true;
+            r.shortName = os8::colorThemeShown() ? "Hide Color Theme" : "Show Color Theme";
+            break;
         case cmd::toggleSidePanels:
             active = true;
             r.shortName = AppPrefs::get().sidePanelsShown() ? "Hide Side Panels" : "Show Side Panels";
@@ -297,8 +301,7 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::zoomToFit:     active = canvas.hasWindows(); break;
 
         // Undo is always inactive (that's the joke). Everything else here is a
-        // command whose feature lands in a later step: listed, greyed — Hide Color
-        // Theme (step 7).
+        // command whose feature lands in a later step: listed, greyed.
         default:                 active = false; break;
     }
 
@@ -393,6 +396,15 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
             engineWindow->soloed.store (! engineWindow->soloed.load (std::memory_order_relaxed), std::memory_order_relaxed);
             return true;
 
+        case cmd::toggleColourTheme:
+            // Every themed element and the canvas read it through os8::themeColourFor
+            // and canvasColourFor; refresh now rather than on the next tick.
+            AppPrefs::get().setColorThemeShown (! os8::colorThemeShown());
+            canvas.refresh();
+            mixer.refresh();
+            effects.refresh();
+            keyboard.refresh();
+            return true;
         case cmd::toggleSidePanels:
             AppPrefs::get().setSidePanelsShown (! AppPrefs::get().sidePanelsShown());
             resized();
@@ -567,7 +579,12 @@ juce::PopupMenu::Item SoundEffectsAudioProcessorEditor::colourRow()
     colourDot->setPath (dot);
     colourDot->setFill (os8::themeColour (w->tint));
     juce::PopupMenu::Item row ("Color: " + os8::themeName (w->tint));
-    row.subMenu = std::make_unique<juce::PopupMenu> (colourMenu());
+    // With the Color Theme hidden the row stays, named and with the colour that
+    // will come back, but greyed and with no submenu (the spec's note).
+    if (os8::colorThemeShown())
+        row.subMenu = std::make_unique<juce::PopupMenu> (colourMenu());
+    else
+        row.setEnabled (false);
     row.setImage (std::move (colourDot));
     Os8AppMenuLookAndFeel::markIconRow (row);
     return row;
@@ -577,7 +594,8 @@ bool SoundEffectsAudioProcessorEditor::showColourMenu()
 {
     // ⌘T: the Color submenu, dropped down under the selected Window's title bar.
     auto* w = targetWindow();
-    if (w == nullptr || processorRef.engine().windowById (canvas.selectedWindowId()) == nullptr)
+    if (w == nullptr || processorRef.engine().windowById (canvas.selectedWindowId()) == nullptr
+        || ! os8::colorThemeShown())
         return false;
     auto menu = colourMenu();
     menu.setLookAndFeel (&Os8AppMenuLookAndFeel::instance());

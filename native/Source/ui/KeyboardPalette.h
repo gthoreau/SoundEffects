@@ -202,7 +202,7 @@ private:
 
     /** The tint the badge last painted, so the 30 Hz tick can notice a change
         without repainting the strip every frame. −2 = never sampled. */
-    int lastTint = -2;
+    juce::uint32 lastTint = 0;
 
     juce::Rectangle<int> badgeRect;
 

@@ -12,6 +12,8 @@
 
 #include "Os8Icons.h"
 
+namespace se { struct Window; }
+
 namespace os8 {
 
 // --- type --------------------------------------------------------------------
@@ -81,6 +83,9 @@ inline const juce::Colour gray400           { 0xff9d9d9d };
 inline const juce::Colour gray500           { 0xff666666 };
 inline const juce::Colour gray600           { 0xff333333 };
 inline const juce::Colour black             { 0xff000000 };
+// The sober theme Canvas ▸ Hide Color Theme puts on (Window-themes/macos8-*).
+inline const juce::Colour macos8Gray        { 0xffdddddd };
+inline const juce::Colour macos8Lavender    { 0xffccccff };
 } // namespace colour
 
 // --- window themes: the Window-themes/* styles ------------------------------
@@ -135,6 +140,23 @@ juce::Colour themeColour (int index) noexcept;
 
 /** The user-facing name of theme `index`, or an empty string out of range. */
 juce::String themeName (int index);
+
+/** Canvas ▸ Show/Hide Color Theme: an app-wide preference (AppPrefs). */
+bool colorThemeShown();
+
+/** THE access point for the colour a Sound's themed elements wear (its Window's
+    background and speaker buttons, its mixer strip, the keyboard palette's badge
+    and the Effects panel's Sound-info header, per the macos8-gray fills in the app
+    layout 700:14314): its own theme while Color Theme is shown, macos8-gray while
+    it is hidden. The Window's saved theme is never touched, so showing the theme
+    again brings every colour back. Null or unpainted: Placeholder-gray-100. */
+juce::Colour themeColourFor (const se::Window* window);
+juce::Colour themeColourFor (const se::Window* window, bool themeShown);
+
+/** The canvas background: the selected Sound's theme colour (white with no Sound
+    selected) while Color Theme is shown, macos8-lavender while it is hidden. */
+juce::Colour canvasColourFor (const se::Window* selected);
+juce::Colour canvasColourFor (const se::Window* selected, bool themeShown);
 
 // --- paint primitives ---------------------------------------------------------
 //

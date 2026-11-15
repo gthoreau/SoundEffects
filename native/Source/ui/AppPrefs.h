@@ -19,6 +19,7 @@ public:
     // Keys, for listeners.
     static constexpr const char* autoApplyKey = "autoApply";
     static constexpr const char* timeUnitKey = "timeUnit";
+    static constexpr const char* colorThemeShownKey = "colorThemeShown";
 
     /** 1-click effects apply straight away (the spec's default) or open a tray. */
     bool autoApply() const;
@@ -27,6 +28,11 @@ public:
     /** The selection readout's unit: 0 = s, 1 = ms (the default), 2 = samples. */
     int timeUnit() const;
     void setTimeUnit (int);
+
+    /** Canvas ▸ Show/Hide Color Theme: the Sounds' colours (the default) or the
+        sober macos8 grey and lavender. Read it through os8::themeColourFor. */
+    bool colorThemeShown() const;
+    void setColorThemeShown (bool);
 
     /** The two side panels: shown at all (⇥), and each one collapsed to its title. */
     bool sidePanelsShown() const;
