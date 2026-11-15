@@ -343,8 +343,9 @@ void MagnetophonComponent::paintStrip (juce::Graphics& g) const
     for (int i = 0; i < t.numTakes(); ++i)
     {
         const int x = xOf (t.takeStart (i));
-        const int nextX = i + 1 < t.numTakes() ? xOf (t.takeStart (i + 1)) : xOf (t.length());
-        if (nextX < 0 || x >= w) continue;
+        // The last take's label may run on past the end of the tape (blank there).
+        const int nextX = i + 1 < t.numTakes() ? xOf (t.takeStart (i + 1)) : w + 1000;
+        if ((i + 1 < t.numTakes() ? nextX : xOf (t.length())) < 0 || x >= w) continue;
         if (x >= 0)
         {
             g.setColour (gray500);

@@ -5,6 +5,7 @@
 #include "engine/Project.h"
 #include "ui/AppPrefs.h"
 #include "ui/FilePopups.h"
+#include "ui/TapePopups.h"
 #include "ui/Os8Icons.h"
 
 namespace {
@@ -46,6 +47,7 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     // The Magnetophon records from its own source (Main by default), chosen in the
     // same popup a Sound uses; Record first checks that source can be heard.
     magnetophon.onSourceRequested = [this] { openTapeSourcePopup(); };
+    magnetophon.onSendRequested = [this] { openSendPopup(); };
     magnetophon.onRecordRequested = [this]
     {
         auto& deck = processorRef.tapeDeck();
@@ -1085,4 +1087,53 @@ void SoundEffectsAudioProcessorEditor::layoutPalettes (juce::Rectangle<int> area
     palette.setBounds (area.getCentreX() - paletteW / 2,
                        floor - ViewPalette::kHeight,
                        paletteW, ViewPalette::kHeight);
+}
+
+void SoundEffectsAudioProcessorEditor::openSendPopup()
+{
+    const auto& tape = processorRef.tapeDeck().tape();
+    if (tape.empty() || tape.mode() == se::Tape::Mode::recording || processorRef.tapeDeck().finishing()) return;
+
+    auto popup = tapepopups::sendToCanvas (tape, tapeChoice.clean,
+        [safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this)] (const tapepopups::SendChoice& c)
+        {
+            if (safe != nullptr) safe->sendTape (c.whole, c.takes, c.clean);
+        });
+    auto* raw = popup.release();
+    raw->showOver (canvas, { (canvas.getWidth() - raw->getWidth()) / 2, (canvas.getHeight() - raw->getHeight()) / 2 });
+}
+
+void SoundEffectsAudioProcessorEditor::sendTape (bool whole, const std::vector<int>& takes, bool clean)
+{
+    auto& deck = processorRef.tapeDeck();
+    auto& engine = processorRef.engine();
+    auto& tape = deck.tape();
+    tapeChoice.clean = clean;   // remembered for the next send
+    const auto mode = clean ? se::ConvertMode::clean : se::ConvertMode::raw;
+
+    // Each Sound lands on the canvas like a new one (the canvas finds it a place);
+    // a part that is sent is marked so, for the close-canvas warning.
+    const auto sendSpan = [&] (size_t from, size_t to, const std::string& name)
+    {
+        auto doc = se::soundFromTape (engine.tapeStore(), from, to, tape.rate(), name, mode);
+        return doc != nullptr && engine.addWindow (std::move (doc)) != 0;
+    };
+
+    bool ok = true;
+    if (whole)
+    {
+        ok = sendSpan (0, tape.length(), "Tape");
+        if (ok) tape.markAllSent();
+    }
+    else
+    {
+        for (int i : takes)
+        {
+            if (! sendSpan (tape.takeStart (i), tape.takeEnd (i), "Take " + std::to_string (i + 1))) { ok = false; break; }
+            tape.markSent (i);
+        }
+    }
+    if (! ok)
+        showFileFailure ("Couldn't send every take", "The canvas has no room for them all.");
+    canvas.refresh();
 }

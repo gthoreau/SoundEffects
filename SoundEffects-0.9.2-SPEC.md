@@ -254,6 +254,21 @@ space = play/pause toggle · F1–Fn = solo-play channel n · option-Fn = mute c
 > off the take is a punch-in/out that ends at the selection's end; with Loop on it
 > records round and round inside it. VOX, Auto Gain and the size limit are not
 > part of 0.4.0.
+
+> `[NATIVE]` (0.5.0) The **Magnetophon**, a reel-to-reel tape recorder under the
+> Mixer, has no 1995 ancestor. It records Main (after Main Level), one Sound's
+> post-fader output, an external input or the DAW input onto one tape of stereo
+> float at the device rate, with its own source, gain and monitor (the same Select
+> Audio Source popup). Takes are start markers. Record in the middle of the tape
+> records over it tape-like (only as far as the new take runs; the older tail
+> becomes a take of its own); Record while recording starts the next take with no
+> gap; Play runs to the end of the tape; Previous/Next jump between takes; the
+> waveform strip can be dragged to wind the tape by hand. The tape's own playback
+> is heard through Main Level but never re-recorded. The tape lives for the
+> session: **Send to Canvas** (the whole tape as one Sound, or chosen takes as one
+> Sound each, 16 bit at the device rate, Raw or Clean) is how to keep it, and
+> closing the canvas (New, Open, Revert, Quit) warns while takes are unsent. The
+> popup, the scrub, the seamless split and the warnings are not in the design.
 - Record cap preference: "Record no more than [1000] K (☐ only if virtual memory is active)".
 - "Beep when clipping occurs" while recording.
 

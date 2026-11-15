@@ -28,6 +28,8 @@
 #pragma once
 
 #include "Engine.h"
+#include "RecordConvert.h"
+#include "SoundDocument.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -168,5 +170,11 @@ private:
     std::vector<float> bufL, bufR;
     size_t dirtyFrom = static_cast<size_t> (-1), dirtyTo = 0;
 };
+
+/** Send to canvas (11.3): the tape's frames [from, to) as a new Sound at `rate`,
+    16 bit, two tracks (the left one routed left, the right one right), converted Raw
+    (truncated) or Clean (dithered). Null when the span is empty. */
+std::unique_ptr<SoundDocument> soundFromTape (const TapeStore& store, size_t from, size_t to, double rate,
+                                              const std::string& name, ConvertMode mode = ConvertMode::raw);
 
 } // namespace se

@@ -238,8 +238,37 @@ public:
             const auto file = fc.getResult();
 
             if (file != juce::File())
-                loadCanvasFile (file);
+                openCanvasAsking (file);
         });
+    }
+
+    /** The Magnetophon's tape belongs to the canvas (it is ephemeral): takes not sent
+        to the canvas are lost when the canvas closes. */
+    bool tapeUnsent() const { return processor().tapeDeck().tape().hasUnsent(); }
+
+    /** Open `file`, asking first when the tape holds unsent takes. */
+    void openCanvasAsking (const juce::File& file)
+    {
+        if (! tapeUnsent()) { loadCanvasFile (file); return; }
+        askThenDo ("Open " + file.getFileName() + "?",
+                   "The Magnetophon's tape holds takes not sent to the canvas. Opening another canvas "
+                   "throws the tape away. This cannot be undone.",
+                   "Open", [this, file] { loadCanvasFile (file); });
+    }
+
+    /** Quit, asking first when the tape holds unsent takes. */
+    void quitAsking (std::function<void()> quit)
+    {
+        if (! tapeUnsent()) { quit(); return; }
+        askThenDo ("Quit SoundEffects?",
+                   "The Magnetophon's tape holds takes not sent to the canvas. Quitting throws the "
+                   "tape away. This cannot be undone.",
+                   "Quit", std::move (quit));
+    }
+
+    juce::String tapeLostNote() const
+    {
+        return tapeUnsent() ? juce::String (" The Magnetophon's takes not sent to the canvas will be lost too.") : juce::String();
     }
 
     /** Empty canvas, no file, back to "Untitled Canvas".
@@ -252,7 +281,7 @@ public:
     void newCanvas()
     {
         askThenDo ("Start a new canvas?",
-                   "The Windows on the canvas will be thrown away. This cannot be undone.",
+                   "The Windows on the canvas will be thrown away. This cannot be undone." + tapeLostNote(),
                    "New Canvas",
                    [this]
                    {
@@ -271,7 +300,7 @@ public:
 
         askThenDo ("Revert to the last saved canvas?",
                    "Everything changed since " + file.getFileName()
-                       + " was last saved will be thrown away. This cannot be undone.",
+                       + " was last saved will be thrown away. This cannot be undone." + tapeLostNote(),
                    "Revert",
                    [this, file] { loadCanvasFile (file); });
     }
@@ -298,6 +327,7 @@ public:
         }
 
         processor().loadState (std::move (state));
+        processor().tapeDeck().clear();   // the tape went with the canvas it was recorded over
         setCanvasFile (file);
         return true;
     }
@@ -734,6 +764,10 @@ public:
                     app->systemRequestedQuit();
             });
         }
+        else if (mainWindow != nullptr)
+        {
+            mainWindow->quitAsking ([] { juce::JUCEApplicationBase::quit(); });
+        }
         else
         {
             quit();
@@ -1083,6 +1117,14 @@ private:
         {
             const juce::File file (token.unquoted());
 
+            if (file.existsAsFile() && mainWindow->tapeUnsent())
+            {
+                // A canvas opened from the Finder while the tape holds unsent takes: ask.
+                juce::Process::makeForegroundProcess();
+                mainWindow->toFront (true);
+                mainWindow->openCanvasAsking (file);
+                return;
+            }
             if (file.existsAsFile() && mainWindow->loadCanvasFile (file))
             {
                 juce::Process::makeForegroundProcess();

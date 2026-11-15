@@ -3205,6 +3205,33 @@ static void tapeEngineTests()
     }
 }
 
+static void tapeSendTests()
+{
+    std::printf ("tape send\n");
+    se::TapeStore s;
+    const size_t N = 1000;
+    std::vector<float> a (N), b (N);
+    for (size_t i = 0; i < N; ++i) { a[i] = 0.5f; b[i] = -0.25f; }
+    s.reserve (N); s.write (0, a.data(), b.data(), N); s.setLength (N);
+    a.assign (N, 0.0f); s.write (600, a.data(), b.data(), 400);   // frames 600.. silent on the left
+
+    auto d = se::soundFromTape (s, 100, 700, 48000.0, "Take 2");
+    check (d != nullptr && d->name == "Take 2" && d->numTracks() == 2 && d->bps == 16 && d->rateHz > 47999.0 && d->rateHz < 48001.0,
+           "send: a 16-bit two-track Sound at the tape's rate, named");
+    check (d->tracks[0].outLeft && ! d->tracks[0].outRight && d->tracks[1].outRight && ! d->tracks[1].outLeft,
+           "send: track 1 routed left, track 2 right");
+    check (d->tracks[0].data.size() == 600 * 2 && d->tracks[1].data.size() == 600 * 2, "send: exactly the span's frames");
+    const auto at = [&] (int t, size_t f) { return se::getSample (d->tracks[(size_t) t].data.data(), f * 2, 16); };
+    check (at (0, 0) == 16384 && at (1, 0) == -8192 && at (0, 499) == 16384 && at (0, 500) == 0,
+           "send: the samples, from the span's start (Raw: exact)");
+    check (se::soundFromTape (s, 500, 500, 48000.0, "x") == nullptr && se::soundFromTape (s, 2000, 3000, 48000.0, "x") == nullptr,
+           "send: an empty span gives nothing");
+    auto whole = se::soundFromTape (s, 0, 5000, 48000.0, "Tape", se::ConvertMode::clean);
+    check (whole != nullptr && whole->tracks[0].data.size() == N * 2, "send: clamped to the tape; Clean keeps the length");
+    const int v = se::getSample (whole->tracks[0].data.data(), 300 * 2, 16);
+    check (std::abs (v - 16384) <= 2, "send: Clean only dithers at the same rate");
+}
+
 // The tape under a real audio thread: the deck records, plays, jumps and clears
 // while render() runs. For TSan.
 static void tapeConcurrencyTests()
@@ -3514,6 +3541,7 @@ int main()
     tapeModelTests();
     tapeEngineTests();
     tapeConcurrencyTests();
+    tapeSendTests();
 
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());

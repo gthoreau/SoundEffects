@@ -1,5 +1,7 @@
 #include "Tape.h"
 
+#include "SampleFormat.h"
+
 #include <algorithm>
 
 namespace se {
@@ -330,6 +332,50 @@ void TapeDeck::drain()
         dirtyFrom = std::min (dirtyFrom, at);
         dirtyTo = std::max (dirtyTo, at + n);
     }
+}
+
+// ============================ Send to canvas ===================================
+
+std::unique_ptr<SoundDocument> soundFromTape (const TapeStore& store, size_t from, size_t to, double rate,
+                                              const std::string& name, ConvertMode mode)
+{
+    to = std::min (to, store.length());
+    if (from >= to || rate <= 0.0) return nullptr;
+
+    DocumentInit init;
+    init.name = name;
+    init.rateHz = rate;
+    init.bps = 16;
+    init.numTracks = 2;
+    init.sizeBytes = 0;
+    auto doc = std::make_unique<SoundDocument> (init);
+    doc->tracks[0].outLeft = true;  doc->tracks[0].outRight = false;
+    doc->tracks[1].outLeft = false; doc->tracks[1].outRight = true;
+
+    RecordConverter conv (rate, rate, 16, mode);
+    std::vector<int32_t> outL, outR;
+    outL.reserve (to - from); outR.reserve (to - from);
+    constexpr size_t kBatch = 8192;
+    std::vector<float> l (kBatch), r (kBatch);
+    for (size_t f = from; f < to;)
+    {
+        const size_t n = store.read (f, l.data(), r.data(), std::min (kBatch, to - f));
+        if (n == 0) break;
+        conv.process (l.data(), r.data(), n, outL, outR);
+        f += n;
+    }
+    conv.flush (outL, outR);
+
+    const size_t frames = std::min ({ outL.size(), outR.size(), to - from });
+    const size_t fs = (size_t) frameSizeFor (16);
+    doc->tracks[0].data.assign (frames * fs, 0);
+    doc->tracks[1].data.assign (frames * fs, 0);
+    for (size_t i = 0; i < frames; ++i)
+    {
+        setSample (doc->tracks[0].data.data(), i * fs, outL[i], 16);
+        setSample (doc->tracks[1].data.data(), i * fs, outR[i], 16);
+    }
+    return doc;
 }
 
 } // namespace se

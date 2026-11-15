@@ -135,6 +135,9 @@ private:
     /** Hand tapeChoice to the deck and the engine (gain, monitor). */
     bool applyTapeSource();
     juce::String tapeSourceName() const;
+    /** Send to canvas: the popup, then the Sounds it asked for. */
+    void openSendPopup();
+    void sendTape (bool whole, const std::vector<int>& takes, bool clean);
     uint64_t fastForwardWindow = 0;   // the Window F went down on: F's release lets go of it, wherever selection went
     /** The Window the menus act on: the canvas's selected one. */
     WindowComponent* targetWindow() const { return canvas.selectedWindowComponent(); }
