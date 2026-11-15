@@ -133,7 +133,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - [x] 12.3 Plug-in: VST3/AU built, validated (`auval`), notes and MPE from a host
 
 ### 13. Release
-- [~] 13.1 Re-sync the spec snapshot, version 0.5.0, README, `package.sh`; tag, GitHub release and merge into `main`, each on the author's go-ahead
+- [x] 13.1 Re-sync the spec snapshot, version 0.5.0, README, `package.sh`; tag, GitHub release and merge into `main`, each on the author's go-ahead
 
 ## Verification per sub-step
 - Tests: `cmake -S native/tests -B native/tests/build -G Ninja && cmake --build native/tests/build`, then **from `native/tests`** run `./build/effect-fixtures`, `./build/engine-tests` and `./build/state-tests`. Run TSan/ASan for engine changes.
@@ -195,3 +195,4 @@ One line per finished sub-step: date · sub-step · what was verified · commit.
 - 2026-11-15 · 12 · Tried by the author after the fix: MIDI and MPE work in the standalone (KeyStep 37, Push 3) and in the plug-in, window open or closed. **STEP 12 COMPLETE** (confirmed): next is 13.
 - 2026-11-15 · 13.1 (part) · Re-read both Specs blocks with `use_figma`: unchanged since the last sync (spot-checked every section against `specs_v0-5-0.md`), so no re-sync. Version **0.5.0** in `native/CMakeLists.txt` (the one source for `package.sh`). README: download names, the Keyboard's MIDI/MPE, Magnetophon, Main Level and colour-theme entries in "What works today", the old "MIDI does nothing" line replaced by the AU/VST3 MPE note and the unsaved tape. `native/packaging/package.sh` ran green: universal (arm64 + x86_64) app, VST3 and AU, ad-hoc signed, `dist/SoundEffects-0.5.0-macOS.dmg` and `.zip` (18 MB, not committed). **Still to do, each on the author's go-ahead:** tag `v0.5.0`, the GitHub release (upload the dmg and zip), merge `v0.5.0-dev` into `main`. Not installed: the release VST3 in `/Library/Audio/Plug-Ins/VST3` is still the 0.4.1 one.
 - 2026-11-15 · 13.1 (tag, merge) · On the author's go-ahead: `main` fast-forwarded to `1df1c5c` (it was a plain ancestor, no merge commit) and pushed, lightweight tag `v0.5.0` on the same commit pushed. **GitHub release not made** (the author said tag + merge): the dmg and zip are in `native/dist/`.
+- 2026-11-15 · 13.1 · **GitHub release 0.5.0** published on the author's go-ahead: https://github.com/gthoreau/SoundEffects/releases/tag/v0.5.0 with `SoundEffects-0.5.0-macOS.dmg` and `.zip` (app + VST3 + AU in the `Plug-ins` folder), notes in the 0.4.1 style; README already on `main` at the tag. **STEP 13 COMPLETE, 0.5.0 RELEASED.** The release VST3 is not installed over the 0.4.1 one in `/Library/Audio/Plug-Ins/VST3`.
