@@ -41,7 +41,7 @@ void Engine::prepare (double rate, int maxBlockSize)
 
 // ============================ message thread ================================
 
-uint64_t Engine::addWindow (std::unique_ptr<SoundDocument> doc)
+uint64_t Engine::addWindow (std::unique_ptr<SoundDocument> doc, uint32_t assetId)
 {
     if (registry.size() >= kMaxWindows) return 0;
 
@@ -53,9 +53,12 @@ uint64_t Engine::addWindow (std::unique_ptr<SoundDocument> doc)
     w->transport = std::make_unique<Transport> (deviceRate);
     w->uiDoc = std::move (doc);                          // UI-side authoritative
     w->slot = lowestFreeSlot();                          // a new Sound takes the lowest free slot
+    w->assetId = assetId != 0 ? assetId : assetCounter;
 
     Command c; c.kind = Command::Kind::AddWindow; c.id = id; c.window = w;
     if (! post (c)) { delete w; --nextId; return 0; }
+
+    assetCounter = std::max (assetCounter, w->assetId + 1);
 
     registry.emplace (id, w);
     order.push_back (id);

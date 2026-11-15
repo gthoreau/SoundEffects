@@ -158,13 +158,28 @@ bool writeProject (const fs::path& dir, const std::string& name, const EngineSta
     std::set<std::string> fresh;
     std::vector<uint8_t> wav;
 
+    // Stems are numbered by each Sound's asset id, which the engine gives once and
+    // never reuses: reordering the mixer or closing another Sound renames nothing.
+    // A state built without ids (never from the engine) gets fresh ones past the
+    // highest in use, and a repeated id gets a fresh one too, so no two Sounds
+    // ever share a file.
+    {
+        uint32_t next = std::max<uint32_t> (out.nextAssetId, 1);
+        for (const auto& w : out.windows) next = std::max (next, w.assetId + 1);
+        std::set<uint32_t> seen;
+        for (auto& w : out.windows)
+            if (w.assetId == 0 || ! seen.insert (w.assetId).second)
+                seen.insert (w.assetId = next++);
+        out.nextAssetId = next;
+    }
+
     for (size_t i = 0; i < out.windows.size(); ++i)
     {
         auto& w = out.windows[i];
         w.assetPaths.clear();
         w.assetBytes.clear();
         char num[16];
-        std::snprintf (num, sizeof (num), "%02zu ", i + 1);
+        std::snprintf (num, sizeof (num), "%02u ", (unsigned) w.assetId);
 
         for (size_t t = 0; t < w.tracks.size(); ++t)
         {
@@ -208,6 +223,7 @@ bool writeSoundExport (const fs::path& file, const WindowState& sound, std::stri
     w.gridRow = 0;
     w.assetPaths.clear();
     w.assetBytes.clear();
+    w.assetId = 0;      // ids belong to a canvas: the importer's gives a fresh one
 
     if (! writeAtomic (file, serializeState (st)))
     {

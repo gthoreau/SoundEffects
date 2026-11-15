@@ -4,7 +4,8 @@
 //   <Name>/                  the project folder: visible in the Finder
 //     <Name>.sefx            the canvas: Sounds, placement, mixer, settings (v3)
 //     Assets/
-//       01 <Sound> - track 1.wav   one mono WAV per Track, byte-exact
+//       01 <Sound> - track 1.wav   one mono WAV per Track, byte-exact, numbered by
+//                                  the Sound's asset id (Window::assetId, since v4)
 //
 // The .sefx names its assets by path relative to itself and keeps the exact
 // (non-integer) rate, the true bit depth and each Track's exact byte length, so the

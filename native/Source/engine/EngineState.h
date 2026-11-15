@@ -70,6 +70,7 @@ struct WindowState
     int   slot    = Window::kNoSlot;   // since v2: 0-based mixer slot
 
     uint8_t direction = 0;             // since v3: a PlayDirection (0 forward, 1 backward, 2 ping-pong)
+    uint32_t assetId  = 0;             // since v4: what its WAVs are numbered by; 0 = none yet
 
     /** Where each Track's audio lives when the file keeps it outside the .sefx (a
         project folder, v3): a path relative to the .sefx and the exact byte length.
@@ -89,6 +90,10 @@ struct EngineState
         parser has EMPTY track data until the project reader has loaded the assets. */
     bool externalAudio = false;
 
+    /** Since v4: the canvas's asset-id counter (the id the next new Sound gets).
+        0 = not known (an older file): ids are handed out afresh on open. */
+    uint32_t nextAssetId = 0;
+
     /** Set by parseEngineState: the version the blob was written as (0 if built in memory). */
     uint32_t sourceVersion = 0;
 };
@@ -96,8 +101,13 @@ struct EngineState
 /** Current format version written by serializeState(). Readers accept <= this.
     v2 (0.4.0) appends each Window's balance and mixer slot.
     v3 (0.4.0) adds a header byte (audio embedded / in Assets/ as WAVs) and appends each
-    Window's playback direction. */
-constexpr uint32_t kEngineStateVersion = 3;
+    Window's playback direction.
+    v4 (0.5.0) appends each Window's asset id and, after the Windows, the canvas's
+    asset-id counter. */
+constexpr uint32_t kEngineStateVersion = 4;
+
+/** Asset ids above this are not ids we handed out: a reader treats them as none. */
+constexpr uint32_t kMaxAssetId = 99999999;
 
 /** The extension a saved canvas wears on disk. Lives here, beside the magic and
     the version, because it is part of the same identity: a file called .sefx is

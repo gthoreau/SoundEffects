@@ -4,6 +4,7 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <set>
 
 namespace se {
 
@@ -246,8 +247,10 @@ std::vector<uint8_t> serializeState (const EngineState& state)
         putF32 (out, w.balance);
         putI32 (out, w.slot);
         putU8 (out, w.direction);
+        putU32 (out, w.assetId);
     }
 
+    putU32 (out, state.nextAssetId);
     return out;
 }
 
@@ -349,12 +352,23 @@ bool parseEngineState (const void* data, size_t sizeBytes, EngineState& out)
             w.direction = r.u8();
             if (w.direction > 2) return false;
         }
+        if (version >= 4)
+        {
+            w.assetId = r.u32();
+            if (w.assetId > kMaxAssetId) w.assetId = 0;   // not ours: a fresh one on open
+        }
 
         // A depth outside 1..32 would make frameSize/getSample nonsense, so a blob
         // claiming one is not a blob we wrote. Same for a document with no track.
         if (w.bps < 1 || w.bps > 32 || w.tracks.empty()) return false;
 
         parsed.windows.push_back (std::move (w));
+    }
+
+    if (version >= 4)
+    {
+        parsed.nextAssetId = r.u32();
+        if (parsed.nextAssetId > kMaxAssetId) parsed.nextAssetId = 0;
     }
 
     if (! r.ok) return false;
@@ -400,6 +414,7 @@ bool captureWindowState (Engine& engine, uint64_t id, WindowState& w)
     w.balance = window->balance.load (std::memory_order_relaxed);
     w.slot    = window->slot;
     w.direction = window->direction.load (std::memory_order_relaxed);
+    w.assetId   = window->assetId;
     return true;
 }
 
@@ -407,6 +422,7 @@ EngineState captureEngineState (Engine& engine)
 {
     EngineState state;
     state.windows.reserve (engine.numWindows());
+    state.nextAssetId = engine.nextAssetId();
 
     for (uint64_t id : engine.windowIds())
     {
@@ -420,7 +436,8 @@ EngineState captureEngineState (Engine& engine)
 
 namespace {
 
-bool addFromState (Engine& engine, const WindowState& w, bool restore)
+/** `assetId` 0 = a fresh one from the canvas's counter. */
+bool addFromState (Engine& engine, const WindowState& w, bool restore, uint32_t assetId)
 {
     DocumentInit init;
     init.name      = w.name;
@@ -443,7 +460,7 @@ bool addFromState (Engine& engine, const WindowState& w, bool restore)
     doc->firstSelTrack = std::max (1, std::min (w.firstSelTrack, numTracks));
     doc->lastSelTrack  = std::max (doc->firstSelTrack, std::min (w.lastSelTrack, numTracks));
 
-    const uint64_t id = engine.addWindow (std::move (doc));
+    const uint64_t id = engine.addWindow (std::move (doc), assetId);
     if (id == 0) return false;   // full: keep what we can
 
     auto* window = engine.windowById (id);
@@ -491,8 +508,17 @@ bool applyEngineState (Engine& engine, const EngineState& state)
     for (uint64_t id : existing)
         complete = engine.removeWindow (id) && complete;
 
+    // The canvas's asset-id counter comes with it. An older file has none (and no
+    // ids): the counter starts at 1 and the Windows are numbered in file order,
+    // which is the numbering its WAVs were written with, so nothing renames. A
+    // repeated id (a hand-edited file) gets a fresh one rather than share files.
+    engine.setNextAssetId (state.nextAssetId);
+    std::set<uint32_t> seen;
     for (const auto& w : state.windows)
-        complete = addFromState (engine, w, true) && complete;
+    {
+        const bool keep = w.assetId != 0 && seen.insert (w.assetId).second;
+        complete = addFromState (engine, w, true, keep ? w.assetId : 0) && complete;
+    }
 
     engine.normaliseSlots();
     return complete;
@@ -502,7 +528,7 @@ bool importEngineState (Engine& engine, const EngineState& state)
 {
     bool complete = true;
     for (const auto& w : state.windows)
-        complete = addFromState (engine, w, false) && complete;
+        complete = addFromState (engine, w, false, 0) && complete;   // an import is new to this canvas
 
     engine.normaliseSlots();
     return complete;

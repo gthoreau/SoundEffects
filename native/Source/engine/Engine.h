@@ -117,6 +117,12 @@ struct Window
     static constexpr int kNoSlot = -1;
     int slot = kNoSlot;
 
+    /** The Window's asset id: what its WAVs in a project's Assets/ folder are
+        numbered by (`<assetId> <name> - track T.wav`). Given once by addWindow from
+        the canvas's counter and never reused, so neither a mixer reorder nor closing
+        another Sound renames a file. 0 = none (never seen on an open Window). */
+    uint32_t assetId = 0;
+
     ~Window() { delete audioDoc; }
 };
 
@@ -134,7 +140,9 @@ public:
     void prepare (double deviceRate, int maxBlockSize);
 
     // --- message thread: structure ------------------------------------------
-    uint64_t addWindow (std::unique_ptr<SoundDocument> doc);
+    /** `assetId` 0 = take the next one from the canvas's counter; a saved id is
+        kept as it is, and the counter moves past it. */
+    uint64_t addWindow (std::unique_ptr<SoundDocument> doc, uint32_t assetId = 0);
     bool     removeWindow (uint64_t id);
     size_t   numWindows() const noexcept { return order.size(); }
     /** Is ANY Window soloed — i.e. is the solo filter on at all? The same question
@@ -145,6 +153,11 @@ public:
     void     unmuteAll() noexcept;
     void     clearAllSolos() noexcept;
     const std::vector<uint64_t>& windowIds() const noexcept { return order; }
+
+    /** The canvas's asset-id counter: the id the next new Window gets. Saved in the
+        .sefx (v4) so ids are never handed out twice for one canvas. */
+    uint32_t nextAssetId() const noexcept { return assetCounter; }
+    void     setNextAssetId (uint32_t next) noexcept { assetCounter = next < 1 ? 1 : next; }
 
     // --- message thread: mixer slots ----------------------------------------
     // Every Window sits in a numbered mixer slot (Window::slot), always 0..N-1 with
@@ -307,6 +320,7 @@ private:
     /** Renumber the seated Windows 0..N-1, keeping their order. */
     void compactSlots();
     uint64_t nextId = 1;
+    uint32_t assetCounter = 1;
 
     // --- shared, lock-free --------------------------------------------------
     SpscQueue<Command, 1024>       incoming;    // message -> audio

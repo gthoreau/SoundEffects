@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -397,6 +398,102 @@ int main()
         const auto eb = se::serializeState (evil);
         { std::ofstream f (dir / "Evil.sefx", std::ios::binary); f.write ((const char*) eb.data(), (std::streamsize) eb.size()); }
         check (! se::readSefx (dir / "Evil.sefx", back, err), "project: an asset path that climbs out of Assets/ is refused");
+    }
+
+    // --- asset ids (0.5.0 step 8): stems keep their names ---------------------------
+    {
+        const auto stems = [] (const fsys::path& dir)
+        {
+            std::set<std::string> names;
+            for (auto& e : fsys::directory_iterator (dir / "Assets")) names.insert (e.path().filename().string());
+            return names;
+        };
+        const auto has = [] (const std::set<std::string>& s, const std::string& n) { return s.count (n) == 1; };
+        std::string err;
+        const fsys::path dir = root / "Ids";
+
+        se::Engine engine;
+        const uint64_t a = engine.addWindow (rampDocument ("alpha", 1, 64));
+        const uint64_t b = engine.addWindow (rampDocument ("beta", 2, 64));
+        const uint64_t c = engine.addWindow (rampDocument ("gamma", 1, 64));
+        check (engine.windowById (a)->assetId == 1 && engine.windowById (b)->assetId == 2
+                 && engine.windowById (c)->assetId == 3 && engine.nextAssetId() == 4,
+               "asset ids: new Sounds get 1, 2, 3 from the canvas's counter");
+
+        check (se::writeProject (dir, "Ids", se::captureEngineState (engine), err), "asset ids: first save");
+        const auto first = stems (dir);
+        check (first.size() == 4 && has (first, "01 alpha - track 1.wav") && has (first, "02 beta - track 2.wav")
+                 && has (first, "03 gamma - track 1.wav"),
+               "asset ids: stems are named <id> <name> - track T");
+
+        // Reorder the mixer strips: gamma to the top, alpha to the bottom.
+        engine.moveToSlot (c, 0);
+        engine.moveToSlot (a, 99);
+        check (engine.windowById (c)->slot == 0 && engine.windowById (a)->slot == 2, "asset ids: strips reordered");
+        check (se::writeProject (dir, "Ids", se::captureEngineState (engine), err) && stems (dir) == first,
+               "asset ids: reordering mixer strips then saving renames nothing");
+
+        // Close beta: the others keep their names, beta's stems go; a new Sound never reuses 2.
+        engine.removeWindow (b);
+        const uint64_t d = engine.addWindow (rampDocument ("delta", 1, 64));
+        check (engine.windowById (d)->assetId == 4, "asset ids: a closed Sound's id is not reused");
+        check (se::writeProject (dir, "Ids", se::captureEngineState (engine), err), "asset ids: saved after a close");
+        const auto after = stems (dir);
+        check (after.size() == 3 && has (after, "01 alpha - track 1.wav") && has (after, "03 gamma - track 1.wav")
+                 && has (after, "04 delta - track 1.wav") && ! has (after, "02 beta - track 1.wav"),
+               "asset ids: closing a Sound renames none of the others and removes its own stems");
+
+        // Open it again: ids and the counter come back with the canvas.
+        se::EngineState back;
+        check (se::readSefx (dir / "Ids.sefx", back, err) && back.nextAssetId == 5, "asset ids: the counter is saved");
+        se::Engine reopened;
+        se::applyEngineState (reopened, back);
+        std::vector<uint32_t> ids;
+        for (auto id : reopened.windowIds()) ids.push_back (reopened.windowById (id)->assetId);
+        check (ids == std::vector<uint32_t> { 1, 3, 4 } && reopened.nextAssetId() == 5, "asset ids: restored on open");
+        check (reopened.windowById (reopened.addWindow (rampDocument ("epsilon", 1, 8)))->assetId == 5,
+               "asset ids: the next new Sound after an open carries on from the saved counter");
+        check (se::writeProject (dir, "Ids", se::captureEngineState (reopened), err)
+                 && stems (dir).size() == 4 && has (stems (dir), "01 alpha - track 1.wav"),
+               "asset ids: saving the reopened canvas renames nothing");
+
+        // Import Sound: the imported one is new to this canvas, whatever id it had.
+        se::EngineState imp = back;
+        imp.windows.resize (1);   // alpha, id 1
+        se::importEngineState (reopened, imp);
+        check (reopened.windowById (reopened.windowIds().back())->assetId == 6, "asset ids: an import gets a fresh id");
+
+        // An older file (no ids, no counter): ids are handed out in file order, so
+        // they match the 01, 02... its stems were written with: nothing renames.
+        se::EngineState old = back;
+        old.nextAssetId = 0;
+        for (auto& w : old.windows) w.assetId = 0;
+        se::Engine migrated;
+        se::applyEngineState (migrated, old);
+        ids.clear();
+        for (auto id : migrated.windowIds()) ids.push_back (migrated.windowById (id)->assetId);
+        check (ids == std::vector<uint32_t> { 1, 2, 3 } && migrated.nextAssetId() == 4,
+               "asset ids: an older project gets ids 1..n in file order on open");
+
+        // A hand-edited file repeating an id: two Sounds never share stems.
+        se::EngineState twin = back;
+        twin.windows[1].assetId = twin.windows[0].assetId;
+        se::Engine twins;
+        se::applyEngineState (twins, twin);
+        check (twins.windowById (twins.windowIds()[0])->assetId != twins.windowById (twins.windowIds()[1])->assetId,
+               "asset ids: a repeated id gets a fresh one on open");
+        const fsys::path tdir = root / "Twins";
+        check (se::writeProject (tdir, "Twins", twin, err) && stems (tdir).size() == 3,
+               "asset ids: a state repeating an id still writes one stem per Track");
+
+        // A blob claiming an absurd id is read as none.
+        se::EngineState huge = back;
+        huge.windows[0].assetId = 0xFFFFFFFFu;
+        huge.nextAssetId = 0xFFFFFFFFu;
+        const auto hb = se::serializeState (huge);
+        se::EngineState hp;
+        check (se::parseEngineState (hb.data(), hb.size(), hp) && hp.windows[0].assetId == 0 && hp.nextAssetId == 0,
+               "asset ids: an out-of-range id or counter is read as none");
     }
 
     // --- New Sound defaults (10.4) --------------------------------------------------
