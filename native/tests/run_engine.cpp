@@ -11,6 +11,7 @@
 #include "engine/RecordConvert.h"
 #include "engine/Recorder.h"
 #include "engine/Resample.h"
+#include "engine/Tape.h"
 #include "engine/SampleFormat.h"
 #include "engine/TransportButtons.h"
 #include "ui/ScrollTarget.h"
@@ -2879,6 +2880,372 @@ static void scrollTargetTests()
     check (go (900, 400, 1000, 100, 200, 350) == 75,  "a stale position past the end is brought back");
 }
 
+// --- Magnetophon (0.5.0 step 11.1) ------------------------------------------------
+// The pure tape model first: takes as start markers, tape-like record-over,
+// play to the end of the tape, next / previous, unsent audio.
+static std::vector<size_t> starts (const se::Tape& t)
+{
+    std::vector<size_t> v;
+    for (const auto& k : t.takes()) v.push_back (k.start);
+    return v;
+}
+
+static void tapeModelTests()
+{
+    std::printf ("tape model\n");
+    constexpr double R = 48000.0;
+    {
+        se::Tape t;
+        check (t.empty() && ! t.play() && ! t.nextTake() && ! t.previousTake (0) && ! t.hasUnsent(),
+               "blank tape: nothing to play, no takes, nothing unsent");
+        check (! t.stop(), "blank tape: Stop does nothing");
+    }
+    {
+        se::Tape t;
+        check (t.record (R) && t.mode() == se::Tape::Mode::recording && t.recordingTake() == 0, "Record on a blank tape starts take 1 at 0");
+        check (! t.record (R), "Record while recording: refused");
+        check (! t.play() && ! t.nextTake() && ! t.previousTake (0) && ! t.seek (0), "while recording: Play, Next, Previous and seek refused");
+        t.recorded (100);
+        check (t.stop() && t.length() == 100 && t.position() == 100 && starts (t) == std::vector<size_t> { 0 },
+               "Stop: one take of 100 frames, the tape where it stopped");
+        check (t.hasUnsent() && t.rate() > 47999.0, "the take is unsent; the tape took the device rate");
+        check (t.record (R), "Record again at the end");
+        t.recorded (50); t.stop();
+        check (starts (t) == std::vector<size_t> { 0, 100 } && t.length() == 150, "a second take appended at 100");
+        check (t.takeEnd (0) == 100 && t.takeEnd (1) == 150 && t.takeAt (120) == 1 && t.takeAt (99) == 0, "take spans");
+
+        // Previous: inside a take past the grace -> its start; at its start -> the one before.
+        check (t.previousTake (10) && t.position() == 100, "Previous from the end: the start of the last take");
+        check (t.previousTake (10) && t.position() == 0, "Previous at a take's start: the take before");
+        check (! t.previousTake (10), "Previous at 0: nothing");
+        t.seek (105);
+        check (t.previousTake (10) && t.position() == 0, "Previous within the grace of a take's start: the take before");
+        check (t.nextTake() && t.position() == 100, "Next: the next take's start");
+        check (t.nextTake() && t.position() == 150, "Next from the last take: the end of the tape");
+        check (! t.nextTake(), "Next at the end: nothing");
+
+        check (t.play() && t.position() == 100 && t.mode() == se::Tape::Mode::playing, "Play at the end replays the last take from its start");
+        t.played (130);
+        check (t.position() == 130 && t.mode() == se::Tape::Mode::playing, "playback follows");
+        check (t.previousTake (10) && t.position() == 100 && t.mode() == se::Tape::Mode::playing, "Previous while playing: plays on from the take's start");
+        check (t.nextTake() && t.position() == 150 && t.mode() == se::Tape::Mode::stopped, "Next off the end while playing: stops at the end");
+        t.seek (0); t.play(); t.played (150);
+        check (t.mode() == se::Tape::Mode::stopped && t.position() == 150, "playback across takes stops at the end of the tape");
+        t.seek (20); t.play(); t.played (60);
+        check (t.stop() && t.position() == 60 && t.mode() == se::Tape::Mode::stopped, "Stop while playing: the tape stays where it is");
+    }
+    {
+        // Record-over, tape-like: four takes of 100; stopped at 150, record 100 frames.
+        se::Tape t;
+        for (int i = 0; i < 4; ++i) { t.record (R); t.recorded (100); t.stop(); }
+        t.markSent (2);
+        check (starts (t) == std::vector<size_t> { 0, 100, 200, 300 } && t.length() == 400, "four takes");
+        t.seek (150);
+        t.record (R);
+        check (starts (t) == std::vector<size_t> { 0, 100, 150, 200, 300 }, "Record mid-take: a new marker at the position");
+        t.recorded (100);
+        check (starts (t) == std::vector<size_t> { 0, 100, 150, 300 } && t.length() == 400 && t.position() == 250,
+               "the marker run over (200) is gone; the tape keeps its length");
+        t.stop();
+        check (starts (t) == std::vector<size_t> { 0, 100, 150, 250, 300 }, "stopped inside older audio: its tail is a take of its own");
+        check (t.takes()[3].sent && ! t.takes()[2].sent && ! t.takes()[1].sent, "the tail keeps the run-over take's flag; the new take is unsent");
+        check (t.takeEnd (1) == 150, "the take recorded over is cut where the new one starts");
+
+        // Recording that ends exactly on a marker leaves it alone, adds nothing.
+        t.seek (250); t.record (R); t.recorded (50); t.stop();
+        check (starts (t) == std::vector<size_t> { 0, 100, 150, 250, 300 }, "a take ending on the next marker: markers unchanged");
+        check (! t.takes()[3].sent, "the take at 250 was re-recorded: unsent");
+
+        // Past the end: the tape grows, no tail.
+        t.seek (350); t.record (R); t.recorded (100); t.stop();
+        check (starts (t) == std::vector<size_t> { 0, 100, 150, 250, 300, 350 } && t.length() == 450, "recording over the end grows the tape");
+
+        // Record and Stop with nothing recorded: as if nothing happened.
+        t.markAllSent();
+        t.seek (100); t.record (R); t.stop();
+        check (starts (t) == std::vector<size_t> { 0, 100, 150, 250, 300, 350 } && t.takes()[1].sent && ! t.hasUnsent(),
+               "an empty take on a marker puts the marker (and its flag) back");
+        t.seek (120); t.record (R); t.stop();
+        check (starts (t) == std::vector<size_t> { 0, 100, 150, 250, 300, 350 } && ! t.hasUnsent(), "an empty take mid-take leaves nothing");
+        t.seek (0); t.record (R); t.recorded (450); t.stop();
+        check (starts (t) == std::vector<size_t> { 0 } && t.length() == 450, "recording over the whole tape leaves one take");
+        check (t.hasUnsent(), "and it is unsent");
+        t.markAllSent();
+        check (! t.hasUnsent(), "all sent: nothing unsent");
+    }
+    {
+        se::Tape t;
+        t.record (48000.0); t.recorded (10); t.stop();
+        check (! t.record (44100.0) && t.mode() == se::Tape::Mode::stopped, "a tape recorded at another device rate refuses to record");
+        t.clear();
+        check (t.empty() && t.numTakes() == 0 && t.position() == 0 && t.record (44100.0), "cleared: blank, and takes the new rate");
+    }
+}
+
+/** Render one block with constant input levels, then service the deck. */
+static void tapeBlock (se::Engine& e, se::TapeDeck& d, std::initializer_list<float> in, std::vector<float>& l, std::vector<float>& r)
+{
+    renderWithInput (e, in, l, r);
+    d.service();
+}
+
+static void tapeSettle (se::Engine& e, se::TapeDeck& d, std::initializer_list<float> in)
+{
+    std::vector<float> l, r;
+    for (int i = 0; i < 100 && (d.finishing() || d.tape().mode() == se::Tape::Mode::recording); ++i) tapeBlock (e, d, in, l, r);
+}
+
+static float tapeAt (se::Engine& e, size_t frame, bool right = false)
+{
+    float l = 0, r = 0;
+    e.tapeStore().read (frame, &l, &r, 1);
+    return right ? r : l;
+}
+
+static void tapeEngineTests()
+{
+    std::printf ("tape engine\n");
+    std::vector<float> l, r;
+    {
+        // Main: what the speakers get after Main Level.
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t a = e.addWindow (dcDocument (40, "a"));
+        se::PlayOptions loopAll; loopAll.loop = true;
+        e.play (a, loopAll);
+        e.setMasterGain (0.5f);
+        renderWithInput (e, {}, l, r);
+        renderWithInput (e, {}, l, r);
+        const float heard = l[0];
+        se::TapeDeck d (e);
+        check (d.record(), "Record with the Main source");
+        for (int i = 0; i < 10; ++i) tapeBlock (e, d, {}, l, r);
+        check (d.tape().length() == (size_t) (10 * kBlock), "the take grows as the blocks come in");
+        d.stop();
+        check (d.finishing(), "Stop: finishing until the audio thread lets go");
+        tapeSettle (e, d, {});
+        check (d.tape().mode() == se::Tape::Mode::stopped && d.tape().length() == (size_t) (10 * kBlock),
+               "Stop: exactly the blocks rendered while recording, nothing after");
+        checkClose (tapeAt (e, 5), heard, 1e-6f, "the tape holds what the speakers got (Main Level included)");
+        size_t from = 0, to = 0;
+        check (d.takeWrittenFrames (from, to) && from == 0 && to == (size_t) (10 * kBlock), "the written range is reported once");
+        check (! d.takeWrittenFrames (from, to), "...and only once");
+
+        // Playback: heard through Main Level, and NOT re-captured by the Main source.
+        e.stop (a);
+        renderWithInput (e, {}, l, r);
+        se::CaptureSetup main; main.kind = se::AudioSourceKind::canvas;
+        e.startCapture (main);
+        check (d.play() && d.tape().position() == 0, "Play at the end of a one-take tape: from its start");
+        renderWithInput (e, {}, l, r);
+        checkClose (l[0], heard * 0.5f, 1e-6f, "tape playback is heard, scaled by Main Level");
+        float got[4]; float gr[4];
+        e.captureRing().discard();
+        renderWithInput (e, {}, l, r);
+        const size_t n = e.captureRing().pop (got, gr, 4);
+        check (n == 4 && got[0] == 0.0f && l[0] > 0.0f, "the Recorder's Main Mix does not hear the tape");
+        e.stopCapture();
+        // Same for the tape's own Main capture, driven straight through the Engine.
+        e.tapeCaptureStart ({});
+        e.tapeRing().discard();
+        renderWithInput (e, {}, l, r);
+        const size_t m = e.tapeRing().pop (got, gr, 4);
+        check (m == 4 && got[0] == 0.0f && l[0] > 0.0f, "the tape's Main source does not hear the tape's playback");
+        e.tapeCaptureStop();
+        renderWithInput (e, {}, l, r);
+        e.tapeRing().discard();
+
+        // Play runs to the end of the tape and stops by itself.
+        for (int i = 0; i < 20; ++i) tapeBlock (e, d, {}, l, r);
+        check (d.tape().mode() == se::Tape::Mode::stopped && d.tape().position() == d.tape().length() && ! e.tapePlaying(),
+               "playback stops at the end of the tape");
+        renderWithInput (e, {}, l, r);
+        check (l[0] == 0.0f, "...and is silent after");
+
+        d.clear();
+        renderWithInput (e, {}, l, r);
+        d.service();
+        check (d.tape().empty() && e.tapeStore().reservedFrames() == 0 && e.tapeStore().length() == 0, "clear: blank tape, memory released");
+    }
+    {
+        // External source (one channel on both sides, then a pair), gain, monitor.
+        se::Engine e; e.prepare (kRate, kBlock);
+        se::TapeDeck d (e);
+        se::TapeSource ext; ext.kind = se::AudioSourceKind::external; ext.firstChannel = 1; ext.stereo = false;
+        check (d.setSource (ext), "source: Input 2 alone");
+        e.setTapeInputGain (2.0f);
+        d.record();
+        check (! d.setSource ({}), "the source cannot change while recording");
+        tapeBlock (e, d, { 0.1f, 0.2f, 0.3f }, l, r);
+        check (l[0] == 0.0f, "monitor off: the input is not heard");
+        e.setTapeMonitor (true);
+        tapeBlock (e, d, { 0.1f, 0.2f, 0.3f }, l, r);
+        checkClose (l[0], 0.4f, 1e-6f, "monitor on: the input is heard, with its gain");
+        e.setTapeMonitor (false);
+        e.setTapeInputGain (10.0f);
+        tapeBlock (e, d, { 0.1f, 0.2f, 0.3f }, l, r);
+        d.stop(); tapeSettle (e, d, {});
+        checkClose (tapeAt (e, 0), 0.4f, 1e-6f, "Input 2 x gain 2, left");
+        checkClose (tapeAt (e, 0, true), 0.4f, 1e-6f, "...the same on the right");
+        checkClose (tapeAt (e, (size_t) (2 * kBlock)), 1.0f, 1e-6f, "clamped to full scale");
+        check (e.tapeMeter() > 0.0f, "the tape's meter moved");
+
+        e.setTapeInputGain (1.0f);
+        ext.stereo = true; ext.firstChannel = 1;
+        d.setSource (ext);
+        d.record();
+        tapeBlock (e, d, { 0.1f, 0.2f, 0.3f }, l, r);
+        d.stop(); tapeSettle (e, d, {});
+        checkClose (tapeAt (e, (size_t) (3 * kBlock)), 0.2f, 1e-6f, "Inputs 2 + 3: left");
+        checkClose (tapeAt (e, (size_t) (3 * kBlock), true), 0.3f, 1e-6f, "Inputs 2 + 3: right");
+        check (d.tape().numTakes() == 2, "two takes");
+
+        se::TapeSource daw; daw.kind = se::AudioSourceKind::daw;
+        d.setSource (daw); d.record();
+        tapeBlock (e, d, { 0.5f, -0.5f }, l, r);
+        d.stop(); tapeSettle (e, d, {});
+        checkClose (tapeAt (e, (size_t) (4 * kBlock), true), -0.5f, 1e-6f, "DAW: the host's input pair");
+    }
+    {
+        // One Sound: post-fader, deaf to mute, the other Sounds left out.
+        se::Engine e; e.prepare (kRate, kBlock);
+        const uint64_t a = e.addWindow (dcDocument (20, "a"));
+        const uint64_t b = e.addWindow (dcDocument (40, "b"));
+        se::PlayOptions loopAll; loopAll.loop = true;
+        e.play (a, loopAll); e.play (b, loopAll);
+        e.windowById (a)->muted = true;
+        renderWithInput (e, {}, l, r);
+        e.windowById (a)->muted = false;
+        e.windowById (b)->muted = true;
+        renderWithInput (e, {}, l, r);
+        const float aAlone = l[0];
+        e.windowById (b)->muted = false;
+        e.windowById (a)->gain = 0.5f;
+        e.windowById (a)->muted = true;
+        se::TapeDeck d (e);
+        se::TapeSource s; s.tapWindow = a;
+        d.setSource (s); d.record();
+        tapeBlock (e, d, {}, l, r);
+        d.stop(); tapeSettle (e, d, {});
+        checkClose (tapeAt (e, 0), aAlone * 0.5f, 1e-6f, "Sound a: post-fader, heard though muted, b left out");
+    }
+    {
+        // Record-over through the deck: the replaced span holds the new audio, the rest the old.
+        se::Engine e; e.prepare (kRate, kBlock);
+        se::TapeDeck d (e);
+        se::TapeSource ext; ext.kind = se::AudioSourceKind::external; ext.stereo = false;
+        d.setSource (ext);
+        d.record();
+        for (int i = 0; i < 10; ++i) tapeBlock (e, d, { 0.25f }, l, r);
+        d.stop(); tapeSettle (e, d, { 0.25f });
+        d.seek ((size_t) (2 * kBlock));
+        d.record();
+        for (int i = 0; i < 3; ++i) tapeBlock (e, d, { -0.5f }, l, r);
+        d.stop(); tapeSettle (e, d, { -0.5f });
+        check (d.tape().length() == (size_t) (10 * kBlock), "record-over keeps the tape's length");
+        check (tapeAt (e, (size_t) (2 * kBlock) - 1) == 0.25f && tapeAt (e, (size_t) (2 * kBlock)) == -0.5f
+               && tapeAt (e, (size_t) (5 * kBlock) - 1) == -0.5f && tapeAt (e, (size_t) (5 * kBlock)) == 0.25f,
+               "record-over replaces exactly the span recorded");
+        check (starts (d.tape()) == std::vector<size_t> { 0, (size_t) (2 * kBlock), (size_t) (5 * kBlock) }, "takes: 0, the new one, the old tail");
+
+        // Next / Previous / Play from the deck, and Record while playing punches in.
+        d.seek (0);
+        check (d.nextTake() && d.tape().position() == (size_t) (2 * kBlock), "Next");
+        check (d.play(), "Play from take 2");
+        tapeBlock (e, d, {}, l, r);
+        checkClose (l[0], -0.5f, 1e-6f, "plays take 2");
+        check (d.nextTake() && e.tapeAckGen() != 0, "Next while playing");
+        tapeBlock (e, d, {}, l, r);
+        checkClose (l[0], 0.25f, 1e-6f, "plays on from take 3");
+        check (d.previousTake(), "Previous while playing");
+        tapeBlock (e, d, {}, l, r);
+        checkClose (l[0], -0.5f, 1e-6f, "back at the start of take 2 (inside the grace of take 3)");
+        tapeBlock (e, d, {}, l, r);
+        const size_t here = d.tape().position();
+        check (d.record() && d.tape().mode() == se::Tape::Mode::recording, "Record while playing records there");
+        check (d.tape().takes()[(size_t) d.tape().recordingTake()].start == here, "...from where the tape was");
+        tapeBlock (e, d, { 0.75f }, l, r);
+        check (l[0] == 0.0f && ! e.tapePlaying(), "playback stopped: nothing plays while recording");
+        d.stop(); tapeSettle (e, d, {});
+        check (tapeAt (e, here) == 0.75f, "the punch-in landed where playback was");
+
+        // Clear while recording throws the take away.
+        d.record();
+        tapeBlock (e, d, { 0.1f }, l, r);
+        d.clear();
+        check (! d.record(), "Record refused while a cleared take is still settling");
+        tapeSettle (e, d, { 0.1f });
+        check (d.tape().empty() && e.tapeStore().length() == 0 && e.tapeStore().reservedFrames() == 0, "clear mid-take: blank tape");
+        check (d.record(), "Record again after the clear");
+        tapeBlock (e, d, { 0.1f }, l, r);
+        d.stop(); tapeSettle (e, d, {});
+        check (d.tape().length() == (size_t) kBlock && tapeAt (e, 0) == 0.1f, "...a fresh take, none of the old one");
+    }
+    {
+        // The store across chunk boundaries.
+        se::TapeStore s;
+        const size_t N = se::TapeStore::kChunkFrames + 100;
+        std::vector<float> a (N), b (N);
+        for (size_t i = 0; i < N; ++i) { a[i] = (float) i; b[i] = -(float) i; }
+        check (s.reserve (N) && s.write (0, a.data(), b.data(), N) == N, "store: a write across two chunks");
+        check (s.length() == 0, "store: nothing readable before the length is published");
+        s.setLength (N);
+        std::vector<float> x (200), y (200);
+        const size_t at = se::TapeStore::kChunkFrames - 100;
+        check (s.read (at, x.data(), y.data(), 200) == 200 && x[0] == (float) at && x[199] == (float) (at + 199) && y[150] == -(float) (at + 150),
+               "store: a read across the chunk boundary");
+        check (s.read (N - 10, x.data(), y.data(), 200) == 10, "store: reads stop at the length");
+        check (! s.reserve (se::TapeStore::kMaxFrames + 1), "store: refuses past its maximum");
+    }
+}
+
+// The tape under a real audio thread: the deck records, plays, jumps and clears
+// while render() runs. For TSan.
+static void tapeConcurrencyTests()
+{
+    se::Engine e; e.prepare (kRate, kBlock);
+    const uint64_t a = e.addWindow (dcDocument (30, "a"));
+    se::PlayOptions loopAll; loopAll.loop = true;
+    e.play (a, loopAll);
+    se::TapeDeck d (e);
+    std::atomic<bool> done { false }, sane { true };
+    std::thread audio ([&]
+    {
+        std::vector<float> in0 ((size_t) kBlock, 0.25f), l ((size_t) kBlock), r ((size_t) kBlock);
+        const float* ins[1] = { in0.data() };
+        while (! done.load())
+        {
+            e.render (l.data(), r.data(), kBlock, ins, 1);
+            for (int i = 0; i < kBlock; ++i)
+                if (! std::isfinite (l[(size_t) i]) || std::fabs (l[(size_t) i]) > 1.0f) sane = false;
+        }
+    });
+    for (int i = 0; i < 4000; ++i)
+    {
+        switch (i % 9)
+        {
+            case 0: d.record(); break;
+            case 2: d.stop(); break;
+            case 3: d.play(); break;
+            case 4: d.previousTake(); break;
+            case 5: d.nextTake(); break;
+            case 6: d.seek ((size_t) (i * 7)); break;
+            case 7: if (i % 90 == 7) d.clear(); break;
+            case 8: { se::TapeSource s; s.tapWindow = (i % 2) ? a : 0; if (i % 3 == 0) s.kind = se::AudioSourceKind::external; d.setSource (s); } break;
+            default: break;
+        }
+        d.service();
+        if (i % 50 == 0) std::this_thread::sleep_for (std::chrono::microseconds (300));
+    }
+    d.stop();
+    for (int i = 0; i < 200 && d.finishing(); ++i) { std::this_thread::sleep_for (std::chrono::microseconds (200)); d.service(); }
+    done = true;
+    audio.join();
+    d.service();
+    check (sane.load(), "tape stress: output finite and in range");
+    check (! d.finishing() && d.tape().mode() != se::Tape::Mode::recording, "tape stress: the deck settles");
+    check (d.tape().length() == e.tapeStore().length(), "tape stress: the model and the store agree on the length");
+}
+
 int main()
 {
     se::Engine engine;
@@ -3137,6 +3504,9 @@ int main()
     captureConcurrencyTests();
     recordConcurrencyTests();
     metaTests();
+    tapeModelTests();
+    tapeEngineTests();
+    tapeConcurrencyTests();
 
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());

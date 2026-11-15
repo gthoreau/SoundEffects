@@ -30,7 +30,7 @@ void Engine::prepare (double rate, int maxBlockSize)
     deviceRate = rate;
     scratchL.assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
     scratchR.assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
-    for (auto* v : { &capL, &capR, &tapL, &tapR, &exL, &exR })
+    for (auto* v : { &capL, &capR, &tapL, &tapR, &exL, &exR, &tcapL, &tcapR, &ttapL, &ttapR, &tplayL, &tplayR })
         v->assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
     live.reserve (kMaxWindows);
 
@@ -282,6 +282,27 @@ bool Engine::stopCapture()
     return post (c);
 }
 
+bool Engine::tapeCaptureStart (const TapeSource& source)
+{
+    Command c; c.kind = Command::Kind::TapeCaptureStart; c.tape = source;
+    return post (c);
+}
+bool Engine::tapeCaptureStop()
+{
+    Command c; c.kind = Command::Kind::TapeCaptureStop;
+    return post (c);
+}
+bool Engine::tapePlay (size_t frame, uint32_t gen)
+{
+    Command c; c.kind = Command::Kind::TapePlay; c.seekBytes = frame; c.gen = gen;
+    return post (c);
+}
+bool Engine::tapeStop (uint32_t gen)
+{
+    Command c; c.kind = Command::Kind::TapeStop; c.gen = gen;
+    return post (c);
+}
+
 void Engine::collectRetired()
 {
     Window* w = nullptr;
@@ -443,6 +464,31 @@ void Engine::drainCommands() noexcept
                 capActive = false;
                 capRunning.store (false, std::memory_order_release);
                 break;
+
+            case Command::Kind::TapeCaptureStart:
+                tapeCap = c.tape;
+                tapeCapActive = true;
+                tapeCapRunning.store (true, std::memory_order_release);
+                break;
+
+            case Command::Kind::TapeCaptureStop:
+                tapeCapActive = false;
+                tapeCapRunning.store (false, std::memory_order_release);
+                break;
+
+            case Command::Kind::TapePlay:
+                tapePos = c.seekBytes;
+                tapePlayActive = true;
+                tapePlayPos.store (tapePos, std::memory_order_relaxed);
+                tapePlayingFlag.store (true, std::memory_order_release);
+                tapeAck.store (c.gen, std::memory_order_release);
+                break;
+
+            case Command::Kind::TapeStop:
+                tapePlayActive = false;
+                tapePlayingFlag.store (false, std::memory_order_release);
+                tapeAck.store (c.gen, std::memory_order_release);
+                break;
         }
     }
 }
@@ -459,6 +505,11 @@ void Engine::render (float* left, float* right, int frames,
     const bool capturing = capActive && capL.size() >= scratchL.size();
     if (capturing)
         for (auto* v : { &tapL, &tapR, &exL, &exR })
+            std::fill (v->begin(), v->begin() + cap_, 0.0f);
+    const bool tapeCapturing = tapeCapActive && tcapL.size() >= scratchL.size();
+    const bool tapeTapping = tapeCapturing && tapeCap.kind == AudioSourceKind::canvas && tapeCap.tapWindow != 0;
+    if (tapeTapping)
+        for (auto* v : { &ttapL, &ttapR })
             std::fill (v->begin(), v->begin() + cap_, 0.0f);
 
     // VU fall-off, ~-60 dB over 300 ms, applied once per block. Doing the decay
@@ -530,6 +581,15 @@ void Engine::render (float* left, float* right, int frames,
                         exR[static_cast<size_t> (i)] = scratchR[static_cast<size_t> (i)] * gr;
                     }
             }
+
+            // The Magnetophon's own tap on one Sound: post-fader, post-balance, deaf
+            // to mute and solo, like the Recorder's.
+            if (tapeTapping && w->id == tapeCap.tapWindow)
+                for (int i = 0; i < written; ++i)
+                {
+                    ttapL[static_cast<size_t> (i)] = scratchL[static_cast<size_t> (i)] * gl;
+                    ttapR[static_cast<size_t> (i)] = scratchR[static_cast<size_t> (i)] * gr;
+                }
         }
 
         const float heldL = w->meterLeft.load (std::memory_order_relaxed) * meterDecay;
@@ -605,6 +665,77 @@ void Engine::render (float* left, float* right, int frames,
             if (heard) { left[i] += capL[k]; right[i] += capR[k]; }
         }
         ring.push (capL.data(), capR.data(), static_cast<size_t> (n));
+    }
+
+    // The Magnetophon's capture: after Main Level and after the Recorder's monitor,
+    // so Main is what the speakers get so far, and BEFORE the tape's own playback is
+    // added below, so the tape never records itself.
+    if (tapeCapturing)
+    {
+        const float gain = tapeGainValue.load (std::memory_order_relaxed);
+        const int n = cap_;
+        bool heard = false;
+        if (tapeCap.kind == AudioSourceKind::canvas)
+        {
+            const bool tapped = tapeCap.tapWindow != 0;
+            for (int i = 0; i < n; ++i)
+            {
+                const size_t k = static_cast<size_t> (i);
+                tcapL[k] = (tapped ? ttapL[k] : left[i])  * gain;
+                tcapR[k] = (tapped ? ttapR[k] : right[i]) * gain;
+            }
+        }
+        else
+        {
+            const int ch = tapeCap.kind == AudioSourceKind::daw ? 0 : std::max (0, tapeCap.firstChannel);
+            const float* a = (inputs != nullptr && ch < numInputs) ? inputs[ch] : nullptr;
+            const float* b = (tapeCap.stereo && inputs != nullptr && ch + 1 < numInputs) ? inputs[ch + 1] : a;
+            for (int i = 0; i < n; ++i)
+            {
+                const size_t k = static_cast<size_t> (i);
+                tcapL[k] = (a != nullptr ? a[i] : 0.0f) * gain;
+                tcapR[k] = (b != nullptr ? b[i] : 0.0f) * gain;
+            }
+            heard = tapeMonitorOn.load (std::memory_order_relaxed);
+        }
+
+        float peak = 0.0f;
+        for (int i = 0; i < n; ++i)
+        {
+            const size_t k = static_cast<size_t> (i);
+            tcapL[k] = std::clamp (tcapL[k], -1.0f, 1.0f);
+            tcapR[k] = std::clamp (tcapR[k], -1.0f, 1.0f);
+            peak = std::max (peak, std::max (std::abs (tcapL[k]), std::abs (tcapR[k])));
+            if (heard) { left[i] += tcapL[k]; right[i] += tcapR[k]; }
+        }
+        tapeMeterValue.store (std::max (peak, tapeMeterValue.load (std::memory_order_relaxed) * meterDecay),
+                              std::memory_order_relaxed);
+        tapeRingBuf.push (tcapL.data(), tcapR.data(), static_cast<size_t> (n));
+    }
+    else
+    {
+        tapeMeterValue.store (tapeMeterValue.load (std::memory_order_relaxed) * meterDecay, std::memory_order_relaxed);
+    }
+
+    // The tape's playback, last of all: heard through Main Level, captured by nothing.
+    if (tapePlayActive && tplayL.size() >= scratchL.size())
+    {
+        const size_t want = static_cast<size_t> (cap_);
+        const size_t got = tape.read (tapePos, tplayL.data(), tplayR.data(), want);
+        const float m = masterApplied;
+        for (size_t k = 0; k < got; ++k)
+        {
+            left[k]  += tplayL[k] * m;
+            right[k] += tplayR[k] * m;
+        }
+        tapePos += got;
+        tapePlayPos.store (tapePos, std::memory_order_relaxed);
+        if (got < want)
+        {
+            // The end of the tape: playback stops there by itself.
+            tapePlayActive = false;
+            tapePlayingFlag.store (false, std::memory_order_release);
+        }
     }
 
     float peakL = 0.0f, peakR = 0.0f;

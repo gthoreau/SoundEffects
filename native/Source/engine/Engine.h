@@ -29,6 +29,7 @@
 #include "CaptureRing.h"
 #include "SoundDocument.h"
 #include "SpscQueue.h"
+#include "TapeStore.h"
 #include "Transport.h"
 
 #include <algorithm>
@@ -56,6 +57,18 @@ struct CaptureSetup
     /** external: the first device input channel; with `stereo` it is a pair. */
     int  firstChannel = 0;
     bool stereo = true;
+};
+
+/** What the Magnetophon's tape records from (0.5.0): a second capture path, with
+    its own ring, independent of the Recorder's. Stereo float at the device rate. */
+struct TapeSource
+{
+    /** canvas = the Main output (after Main Level) or, with `tapWindow`, one Sound's
+        own post-fader output; external = device inputs; daw = the host's input pair. */
+    AudioSourceKind kind = AudioSourceKind::canvas;
+    uint64_t tapWindow = 0;     // canvas: 0 = Main
+    int  firstChannel = 0;      // external: the first device input channel
+    bool stereo = true;         // external: a pair; false = one channel on both sides
 };
 
 /** One Window: a UI document, its audio document, transport, and mixer channel. */
@@ -245,6 +258,36 @@ public:
     bool captureRunning() const noexcept { return capRunning.load (std::memory_order_acquire); }
     CaptureRing& captureRing() noexcept { return ring; }
 
+    // --- Magnetophon (0.5.0): the tape's own capture and playback --------------
+    // A second capture path, independent of the Recorder's: its own source, gain,
+    // monitor and ring, so the tape can run while a Sound records. The Main source is
+    // what the speakers get after Main Level, WITHOUT the tape's own playback, which
+    // is added after every capture: the tape never re-records itself, and neither
+    // does the Recorder's Main Mix. Tape playback goes through Main Level too.
+    // The TapeDeck (Tape.h) drives all of this.
+    bool tapeCaptureStart (const TapeSource& source);
+    bool tapeCaptureStop();
+    /** The audio thread's acknowledgement, as captureRunning() is the Recorder's. */
+    bool tapeCaptureRunning() const noexcept { return tapeCapRunning.load (std::memory_order_acquire); }
+    CaptureRing& tapeRing() noexcept { return tapeRingBuf; }
+    void  setTapeInputGain (float g) noexcept { tapeGainValue.store (g, std::memory_order_relaxed); }
+    float tapeInputGain() const noexcept { return tapeGainValue.load (std::memory_order_relaxed); }
+    /** Hear an external or DAW source while the tape records it (off by default). */
+    void setTapeMonitor (bool on) noexcept { tapeMonitorOn.store (on, std::memory_order_relaxed); }
+    bool tapeMonitor() const noexcept { return tapeMonitorOn.load (std::memory_order_relaxed); }
+
+    TapeStore& tapeStore() noexcept { return tape; }
+    /** Play the tape from `frame` to its end (a seek when it already plays). `gen`
+        tags the command: tapeAckGen() says the audio thread has applied it. */
+    bool tapePlay (size_t frame, uint32_t gen);
+    bool tapeStop (uint32_t gen);
+    bool tapePlaying() const noexcept { return tapePlayingFlag.load (std::memory_order_acquire); }
+    /** The frame the tape's playback will read next (published once a block). */
+    size_t tapePlayFrame() const noexcept { return tapePlayPos.load (std::memory_order_relaxed); }
+    uint32_t tapeAckGen() const noexcept { return tapeAck.load (std::memory_order_acquire); }
+    /** Peaks of what the tape source delivers while it records, for the panel. */
+    float tapeMeter() const noexcept { return tapeMeterValue.load (std::memory_order_relaxed); }
+
     // --- Main Level (0.5.0): the master fader over the whole mix --------------
     // Linear, applied to the summed Windows BEFORE the final clamp (and before the
     // Canvas capture, so the Main source hears what the speakers get). Never stops
@@ -307,7 +350,8 @@ private:
     struct Command
     {
         enum class Kind : uint8_t { AddWindow, RemoveWindow, Transport, SwapDoc, SetMeta,
-                                    CaptureStart, CaptureStop } kind {};
+                                    CaptureStart, CaptureStop,
+                                    TapeCaptureStart, TapeCaptureStop, TapePlay, TapeStop } kind {};
         enum class Tx   : uint8_t { Play, Stop, Pause, Advance, NormalSpeed, Seek,
                                     RateScale, Direction, RecordStart, RecordPause,
                                     RecordResume, RecordStop, RecordJoin, RecordEnd, RecordRelease } tx {};
@@ -321,6 +365,8 @@ private:
         uint64_t        excludeMask = 0;
         int             refTrack = -1;      // RecordJoin
         DocMeta         meta {};            // SetMeta
+        TapeSource      tape {};            // TapeCaptureStart
+        uint32_t        gen = 0;            // TapePlay / TapeStop
     };
 
     bool post (const Command& c) noexcept { return incoming.push (c); }
@@ -362,6 +408,22 @@ private:
     std::atomic<bool>  capRunning { false };
     std::atomic<uint32_t> capStartGen { 0 };
     std::atomic<size_t>   capStartFrame { 0 };
+
+    // --- Magnetophon ----------------------------------------------------------
+    TapeStore tape;
+    CaptureRing tapeRingBuf;
+    std::vector<float> tcapL, tcapR, ttapL, ttapR, tplayL, tplayR;   // audio thread blocks
+    TapeSource tapeCap {};          // audio thread
+    bool tapeCapActive = false;     // audio thread
+    bool tapePlayActive = false;    // audio thread
+    size_t tapePos = 0;             // audio thread: next frame to play
+    std::atomic<bool> tapeCapRunning { false };
+    std::atomic<bool> tapePlayingFlag { false };
+    std::atomic<size_t> tapePlayPos { 0 };
+    std::atomic<uint32_t> tapeAck { 0 };
+    std::atomic<float> tapeGainValue { 1.0f };
+    std::atomic<bool> tapeMonitorOn { false };
+    std::atomic<float> tapeMeterValue { 0.0f };
 
     double deviceRate = 48000.0;
 };
