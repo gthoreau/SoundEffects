@@ -231,7 +231,7 @@ void Os8TextField::setNumeric (double stepValue, int places, double minimum, dou
     decimals = places;
     minValue = minimum;
     maxValue = maximum;
-    editor.setInputRestrictions (0, "0123456789.-");
+    editor.setInputRestrictions (0, kNumberChars);
 }
 
 double Os8TextField::getValue() const
@@ -294,6 +294,29 @@ bool Os8TextField::Editor::keyPressed (const juce::KeyPress& k)
     {
         if (k.getKeyCode() == juce::KeyPress::upKey   && owner.step (+1, mods.isShiftDown())) return true;
         if (k.getKeyCode() == juce::KeyPress::downKey && owner.step (-1, mods.isShiftDown())) return true;
+    }
+
+    if (k.getKeyCode() == juce::KeyPress::tabKey && owner.onTab != nullptr
+        && ! mods.isCommandDown() && ! mods.isAltDown() && ! mods.isCtrlDown())
+    {
+        owner.commit();
+        owner.onTab (! mods.isShiftDown());
+        return true;
+    }
+
+    // A numeric field would drop the character but still replace the selected
+    // text with nothing: Space after an edit wiped the value. Shielded, the key is
+    // the app's (Play, a letter's command) once what was typed is committed.
+    if (owner.shielded() && ! mods.isCommandDown() && ! mods.isCtrlDown())
+    {
+        const auto c = k.getTextCharacter();
+        const bool functionKey = c >= 0xf700 && c <= 0xf8ff;   // Apple's private-use key glyphs
+        if (c >= ' ' && c != 127 && ! functionKey && ! juce::String (kNumberChars).containsChar (c))
+        {
+            owner.commit();
+            owner.onRefusedKey();
+            return false;   // up the hierarchy to the editor's key mappings
+        }
     }
 
     const bool used = juce::TextEditor::keyPressed (k);

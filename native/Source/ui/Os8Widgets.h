@@ -152,6 +152,17 @@ public:
     /** Return was pressed, after the value was committed. */
     std::function<void()> onReturn;
 
+    /** Shielding (0.5.0 step 6.3), numeric fields only. When set, a key the field
+        would refuse (no ⌘/⌃, a character that is not part of a number: Space,
+        letters, ⌥-characters) commits what is typed, calls this (which should move
+        the keyboard focus away, so `isTyping` no longer greys the command), and
+        then goes on up to the app's commands instead of wiping the selected text. */
+    std::function<void()> onRefusedKey;
+
+    /** Tab / ⇧Tab (true = forward), after the value was committed. When unset, Tab
+        is left to JUCE's focus traversal. */
+    std::function<void (bool forward)> onTab;
+
     /** Escape was pressed (after the text went back to what was committed), and
         every keystroke that changed the text. */
     std::function<void()> onEscape, onTextChange;
@@ -183,6 +194,13 @@ private:
         void focusGained (FocusChangeType) override;
         void focusLost (FocusChangeType) override;
         void mouseDoubleClick (const juce::MouseEvent&) override;
+        /** Shielded, no input-method text path: on macOS a printable key goes to
+            insertTextAtCaret straight from the input context, never to keyPressed,
+            so the shield would never see it. A numeric field needs no IME. */
+        bool isTextInputActive() const override
+        {
+            return owner.shielded() ? false : juce::TextEditor::isTextInputActive();
+        }
         Os8TextField& owner;
     };
 
@@ -192,6 +210,7 @@ private:
     void textEditorFocusLost (juce::TextEditor&) override;
     void globalFocusChanged (juce::Component*) override;
 
+    bool shielded() const noexcept { return numeric && onRefusedKey != nullptr && ! editor.isReadOnly(); }
     bool step (int direction, bool big);
     void commit();
     void clearSelection();
@@ -204,6 +223,7 @@ private:
 
     std::optional<os8::FieldState> forcedState;
     bool numeric = false;
+    static constexpr const char* kNumberChars = "0123456789.-";
     double stepSize = 1.0, minValue = 0.0, maxValue = 0.0;
     int decimals = 0;
 

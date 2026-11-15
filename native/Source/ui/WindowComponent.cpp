@@ -57,6 +57,17 @@ WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
     lengthField.onCommit = [this] (const juce::String&) { commitSelectionField (1); };
     endField.onCommit    = [this] (const juce::String&) { commitSelectionField (2); };
 
+    // Shielded (0.5.0 step 6.3): Return hands the keyboard back to the Window, and
+    // Space or a letter typed in a field commits it and goes on to the commands
+    // (Space plays what was just set). Tab and ⇧Tab cycle start → length → end.
+    Os8TextField* const fields[] = { &startField, &lengthField, &endField };
+    for (int i = 0; i < 3; ++i)
+    {
+        fields[i]->onReturn     = [this] { grabKeyboardFocus(); };
+        fields[i]->onRefusedKey = [this] { grabKeyboardFocus(); };
+        fields[i]->onTab = [fields, i] (bool forward) { fields[(i + (forward ? 1 : 2)) % 3]->grabFocus(); };
+    }
+
     unitDropdown.setItems (kUnitNames, kUnitShorts);
     unitDropdown.setSelectedIndex (AppPrefs::get().timeUnit());
     unitDropdown.onChange = [] (int i) { AppPrefs::get().setTimeUnit (i); };
