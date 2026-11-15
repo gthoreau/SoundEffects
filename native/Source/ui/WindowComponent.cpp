@@ -209,7 +209,9 @@ std::vector<int> WindowComponent::playheadXs() const
     std::vector<int> xs;
     auto* d = doc();
     auto* w = engineWindow();
-    if (d == nullptr || w == nullptr || w->transport->uiState() != se::TransportState::playing) return xs;
+    // Paused too (0.5.0): the held playheads show where playback will carry on. A
+    // paused transport keeps the positions it last published.
+    if (d == nullptr || w == nullptr || w->transport->uiState() == se::TransportState::stopped) return xs;
 
     const size_t maxSize = d->maxTrackSize();
     xs.assign ((size_t) d->numTracks(), kNoHead);
