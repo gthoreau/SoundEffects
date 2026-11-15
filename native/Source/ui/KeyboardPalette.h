@@ -136,8 +136,12 @@ public:
      * before. A note outside the drawn keyboard is ignored. The key shows pressed
      * and the badge reads it, exactly as a click does.
      */
-    void midiNoteOn (int note);
-    void midiNoteOff (int note);
+    void midiNoteOn (int id, int note, double bendSemitones);
+    void midiNoteOff (int id);
+    /** One finger's pitch slide (MPE per-note bend, in semitones). */
+    void midiBend (int id, double bendSemitones);
+    /** The plain pitch wheel, in semitones: bends every plain key (id < 1000). */
+    void midiPlainBend (double semitones);
     void midiAllOff();
 
     void paint (juce::Graphics&) override;
@@ -165,8 +169,10 @@ private:
     juce::Point<int> keysOrigin() const;
 
     /** Play `note` on every selected track of the current target. */
-    void strike (int note);
+    void strike (int note, double bendSemitones = 0.0);
     void release();
+    /** The sounding key's pitch moved: re-rate the voice in place. */
+    void retune();
     void applyPitch();
     /** Apply is live only when a key has been played on a real target, and the key
         was not the base note — committing unison is a no-op the module itself
@@ -199,6 +205,11 @@ private:
 
     /** The MIDI keys held down, newest last. */
     se::NoteStack midiHeld;
+    double midiPlainBendSt = 0.0;
+    /** The bend of the key now sounding: what `strike` and `retune` add to its note. */
+    double sounding = 0.0;
+    /** The bend of the sounding key, the plain wheel included. */
+    double soundingBend() const;
 
     /**
      * Did the keyboard START that Window, or only BORROW a rolling one's pitch?

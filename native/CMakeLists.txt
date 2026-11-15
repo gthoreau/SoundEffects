@@ -97,6 +97,7 @@ target_sources(SoundEffects PRIVATE
     Source/ui/EffectLayouts.cpp
     Source/ui/KeyboardArt.cpp
     Source/ui/KeyboardPalette.cpp
+    Source/ui/MidiKeyboardInput.cpp
     Source/ui/CanvasComponent.cpp
     Source/ui/WindowComponent.cpp
     Source/ui/MixerComponent.cpp

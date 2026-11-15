@@ -133,19 +133,50 @@ void SoundEffectsAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 {
     juce::ScopedNoDenormals noDenormals;
 
-    // MIDI in: notes (and the "everything off" messages) become events for the
-    // keyboard palette. Wait-free: a push to the SPSC queue, nothing else.
+    // MIDI in: wait-free, a push to the SPSC queue and nothing else. Channel 1
+    // (the MPE master channel, and where a plain keyboard plays) gives plain notes
+    // and a plain pitch wheel; every other message goes through raw for the
+    // message thread's MPE tracker (per-note pitch bend on the member channels).
     for (const auto meta : midi)
     {
         const auto m = meta.getMessage();
+        if (m.getRawDataSize() > 3 || m.getRawDataSize() < 1) continue;
+        const uint8_t* d = m.getRawData();
+
         se::MidiEvent e;
         e.channel = (uint8_t) juce::jlimit (0, 15, m.getChannel() - 1);
-        if (m.isNoteOn())            { e.type = se::MidiEvent::noteOn;  e.note = (uint8_t) m.getNoteNumber(); }
-        else if (m.isNoteOff())      { e.type = se::MidiEvent::noteOff; e.note = (uint8_t) m.getNoteNumber(); }
-        else if (m.isAllNotesOff() || m.isAllSoundOff())
-                                     { e.type = se::MidiEvent::allOff; }
-        else continue;
-        midiQueue.push (e);
+        const bool master = (e.channel == 0);
+
+        if (m.isAllNotesOff() || m.isAllSoundOff())
+        {
+            e.type = se::MidiEvent::allOff;
+            midiQueue.push (e);
+        }
+        else if (master && m.isNoteOn())
+        {
+            e.type = se::MidiEvent::noteOn;  e.note = (uint8_t) m.getNoteNumber();
+            midiQueue.push (e);
+        }
+        else if (master && m.isNoteOff())
+        {
+            e.type = se::MidiEvent::noteOff; e.note = (uint8_t) m.getNoteNumber();
+            midiQueue.push (e);
+        }
+        else if (master && m.isPitchWheel())
+        {
+            e.type = se::MidiEvent::bend;    e.value = (float) m.getPitchWheelValue();
+            midiQueue.push (e);
+            // The master wheel also bends the MPE notes (+-2 st): the tracker sees it.
+        }
+
+        if (! (master && (m.isNoteOn() || m.isNoteOff())) && ! m.isAllNotesOff() && ! m.isAllSoundOff())
+        {
+            e.type   = se::MidiEvent::raw;
+            e.status = d[0];
+            e.note   = m.getRawDataSize() > 1 ? d[1] : 0;
+            e.d2     = m.getRawDataSize() > 2 ? d[2] : 0;
+            midiQueue.push (e);
+        }
     }
 
     const int numFrames = buffer.getNumSamples();

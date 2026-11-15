@@ -23,13 +23,16 @@ struct MidiEvent
         noteOn,     // note
         noteOff,    // note
         bend,       // value = semitones, relative to the key's own pitch (see MidiBend)
-        allOff      // every key up (All Notes Off, All Sound Off, a host stop)
+        allOff,     // every key up (All Notes Off, All Sound Off, a host stop)
+        raw         // any other message, three bytes, for the MPE tracker (status, note = data1, d2)
     };
 
     Type    type    = noteOn;
     uint8_t channel = 0;     // 0..15
     uint8_t note    = 0;     // 0..127
-    float   value   = 0.0f;  // bend: semitones
+    float   value   = 0.0f;  // bend: the 14-bit wheel, 0..16383 (8192 = centre)
+    uint8_t status  = 0;     // raw: the status byte
+    uint8_t d2      = 0;     // raw: the second data byte
 };
 
 /** Audio thread pushes, message thread pops. 256 events is far more than a hand
@@ -46,43 +49,56 @@ class NoteStack
 public:
     static constexpr int kMax = 16;
 
-    /** Press `note` (0..127). Returns the note that now sounds. */
-    int press (int note) noexcept
+    /** Press `note` (0..127) under the identity `id` (plain keys: the note number;
+        an MPE note: its own id). Returns the note that now sounds. */
+    int press (int id, int note, double bend) noexcept
     {
         if (note < 0 || note > 127) return top();
-        remove (note);
+        remove (id);
         if (count == kMax)   // more than sixteen fingers: the oldest gives way
         {
             for (int i = 1; i < kMax; ++i) held[i - 1] = held[i];
             --count;
         }
-        held[count++] = (uint8_t) note;
+        held[count++] = { id, note, bend };
         return top();
     }
+    int press (int note) noexcept { return press (note, note, 0.0); }
 
-    /** Let go of `note`. Returns the note that sounds now, or -1 when none is held. */
-    int lift (int note) noexcept
+    /** Let go of the key `id`. Returns the note that sounds now, or -1. */
+    int lift (int id) noexcept
     {
-        remove (note);
+        remove (id);
         return top();
     }
 
-    /** The note that sounds, or -1. */
-    int top() const noexcept { return count > 0 ? (int) held[count - 1] : -1; }
+    /** Move the bend of the key `id` (semitones, MPE per-note). */
+    void setBend (int id, double bend) noexcept
+    {
+        for (int i = 0; i < count; ++i)
+            if (held[i].id == id) held[i].bend = bend;
+    }
+
+    /** The note that sounds, or -1; and the identity / bend of that key. */
+    int top() const noexcept { return count > 0 ? held[count - 1].note : -1; }
+    int topId() const noexcept { return count > 0 ? held[count - 1].id : -1; }
+    double topBend() const noexcept { return count > 0 ? held[count - 1].bend : 0.0; }
     bool empty() const noexcept { return count == 0; }
     int size() const noexcept { return count; }
     void clear() noexcept { count = 0; }
 
 private:
-    void remove (int note) noexcept
+    struct Key { int id = 0; int note = 0; double bend = 0.0; };
+
+    void remove (int id) noexcept
     {
         int w = 0;
         for (int i = 0; i < count; ++i)
-            if (held[i] != note) held[w++] = held[i];
+            if (held[i].id != id) held[w++] = held[i];
         count = w;
     }
 
-    uint8_t held[kMax] {};
+    Key held[kMax] {};
     int count = 0;
 };
 

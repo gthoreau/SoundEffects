@@ -161,7 +161,8 @@ void KeyboardPalette::paint (Graphics& g)
         return;
     }
 
-    const int semitones = lastNote - baseNote();
+    // A pitch slide (MPE, or the wheel) shows in the offset while the key is down.
+    const int semitones = lastNote - baseNote() + (heldNote >= 0 ? (int) std::lround (sounding) : 0);
     os8::drawText (g, kbd::noteName (lastNote), os8::TextStyle::largeLabel,
                    { (float) badge.getX() + 5.0f, (float) badge.getY() + 6.0f, 29.0f, 14.0f },
                    juce::Justification::horizontallyCentred);
@@ -178,18 +179,19 @@ void KeyboardPalette::paint (Graphics& g)
 
 // --- playing -----------------------------------------------------------------
 
-void KeyboardPalette::strike (int note)
+void KeyboardPalette::strike (int note, double bendSemitones)
 {
     if (note < kbd::kLowNote || note > kbd::kHighNote) return;
     if (! hasTarget()) return;
 
     heldNote = note;
     lastNote = note;
+    sounding = bendSemitones;
 
     // The entire synthesis engine: twelve-tone equal temperament out of one pow(),
     // and a "sampler" that is a multiply. Auditioning never touches the document —
     // the scale rides along with the transport. Only Apply commits.
-    const double rateScale = std::pow (2.0, (note - baseNote()) / 12.0);
+    const double rateScale = std::pow (2.0, (note - baseNote() + bendSemitones) / 12.0);
 
     // ORDER MATTERS. Our own note is tested first, because once the keyboard has
     // started one the transport is rolling too — and asking "is it rolling?" first
@@ -262,20 +264,48 @@ void KeyboardPalette::allNotesOff()
     heldNote = -1;
 }
 
-void KeyboardPalette::midiNoteOn (int note)
+double KeyboardPalette::soundingBend() const
 {
-    if (note < kbd::kLowNote || note > kbd::kHighNote) return;
-    strike (midiHeld.press (note));
+    const int id = midiHeld.topId();
+    return midiHeld.topBend() + (id >= 0 && id < 1000 ? midiPlainBendSt : 0.0);
 }
 
-void KeyboardPalette::midiNoteOff (int note)
+void KeyboardPalette::retune()
+{
+    // Only a voice the palette is driving is re-rated, and only once it sounds.
+    if (voiceId == 0 || voiceId != targetId || midiHeld.empty()) return;
+    sounding = soundingBend();
+    engine.setRateScale (targetId, std::pow (2.0, (midiHeld.top() - baseNote() + sounding) / 12.0));
+    repaint();
+}
+
+void KeyboardPalette::midiNoteOn (int id, int note, double bendSemitones)
 {
     if (note < kbd::kLowNote || note > kbd::kHighNote) return;
-    const bool wasTop = midiHeld.top() == note;
-    const int now = midiHeld.lift (note);
+    midiHeld.press (id, note, bendSemitones);
+    strike (note, soundingBend());
+}
+
+void KeyboardPalette::midiNoteOff (int id)
+{
+    const bool wasTop = midiHeld.topId() == id;
+    const int now = midiHeld.lift (id);
     if (! wasTop) return;               // a key under the sounding one: nothing changes
-    if (now >= 0) strike (now);         // the key before it takes over
+    if (now >= 0) strike (now, soundingBend());   // the key before it takes over
     else          release();
+}
+
+void KeyboardPalette::midiBend (int id, double bendSemitones)
+{
+    midiHeld.setBend (id, bendSemitones);
+    if (midiHeld.topId() == id) retune();
+}
+
+void KeyboardPalette::midiPlainBend (double semitones)
+{
+    midiPlainBendSt = semitones;
+    const int id = midiHeld.topId();
+    if (id >= 0 && id < 1000) retune();
 }
 
 void KeyboardPalette::midiAllOff()

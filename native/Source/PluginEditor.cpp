@@ -68,16 +68,7 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
 
     // MIDI in plays the keyboard palette (standalone devices from the Audio/MIDI
     // dialog, the host's MIDI in the plug-in).
-    processorRef.setMidiListener ([this] (const se::MidiEvent& e)
-    {
-        switch (e.type)
-        {
-            case se::MidiEvent::noteOn:  keyboard.midiNoteOn (e.note);  break;
-            case se::MidiEvent::noteOff: keyboard.midiNoteOff (e.note); break;
-            case se::MidiEvent::allOff:  keyboard.midiAllOff();         break;
-            case se::MidiEvent::bend:    break;   // 12.2
-        }
-    });
+    processorRef.setMidiListener ([this] (const se::MidiEvent& e) { midiInput.handle (e); });
 
     // The effects panel acts on the canvas's SELECTED Window — not the focused
     // one. Clicking into the panel takes keyboard focus away from the Window, and

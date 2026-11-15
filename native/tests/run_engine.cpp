@@ -2908,6 +2908,20 @@ static void midiNoteTests()
     for (int n = 59; n >= 44; --n) s.lift (n);
     check (s.empty(), "the oldest four gave way, the rest come off in turn");
 
+    // Fingers with their own identity and bend (MPE): the newest sounds with its own bend.
+    s.clear();
+    s.press (1001, 60, 0.5);
+    s.press (1002, 64, -2.0);
+    check (s.top() == 64 && s.topId() == 1002 && s.topBend() == -2.0, "MPE key: note, id and bend of the top");
+    s.setBend (1001, 7.0);
+    check (s.topBend() == -2.0, "bending a key under the sounding one does not touch it");
+    s.setBend (1002, 3.25);
+    check (s.topBend() == 3.25, "bending the sounding key moves its bend");
+    check (s.lift (1002) == 60 && s.topBend() == 7.0, "lifting it brings the other back with its own bend");
+    s.press (60);
+    check (s.size() == 2, "a plain key and an MPE key on the same note are two fingers");
+    s.clear();
+
     // The bend wheel: centre, ends, clamping.
     check (se::midibend::normalised (8192) == 0.0, "bend centre");
     check (se::midibend::normalised (0) == -1.0, "bend bottom");
