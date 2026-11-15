@@ -52,6 +52,22 @@ bool selectLoop (SoundDocument& doc);
 bool extendToBeginning (SoundDocument& doc);
 bool extendToEnd (SoundDocument& doc);
 
+/** The selection-info icons (0.5.0 step 6, no 1995 original). "The selection's
+    audio" is the longest of the selected tracks: with a caret, the tracks the caret
+    is in. The track range is never changed and the Set Loop region is left alone.
+    Each returns false when nothing changed (already there, or nothing to act on).
+
+    - selectionToStart: the start goes to 0, the end stays; a caret goes to 0. False
+      on an empty sound.
+    - selectionToWholeTracks: 0 to the end of the selection's audio, from a caret
+      too. False when the selection's tracks are all empty.
+    - selectionToEnd: the end goes to the end of the selection's audio (which may
+      shorten a selection running past it); a caret goes there. A selection that
+      starts at or past that end is left alone (the end would come before the start). */
+bool selectionToStart (SoundDocument& doc);
+bool selectionToWholeTracks (SoundDocument& doc);
+bool selectionToEnd (SoundDocument& doc);
+
 /** Selection ▸ Extend Above / Below (0.4.0) — one more track above or below the
     selected ones, the time range kept. False at the first / last track. */
 bool extendAbove (SoundDocument& doc);

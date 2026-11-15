@@ -93,6 +93,46 @@ bool extendToEnd (SoundDocument& doc)
     return true;
 }
 
+namespace
+{
+/** The end of the selection's audio: its longest track, snapped down to a frame. */
+size_t selectionAudioEnd (const SoundDocument& doc)
+{
+    const size_t frameSize = static_cast<size_t> (std::max (1, doc.frameSize()));
+    const size_t max = doc.maxSelectedTrackSize();
+    return max - max % frameSize;
+}
+
+bool setRange (SoundDocument& doc, size_t st, size_t en)
+{
+    if (doc.selSt == st && doc.selEnd == en) return false;
+    doc.selSt = st;
+    doc.selEnd = en;
+    return true;
+}
+} // namespace
+
+bool selectionToStart (SoundDocument& doc)
+{
+    if (doc.maxTrackSize() == 0) return false;
+    return setRange (doc, 0, doc.selEnd == doc.selSt ? 0 : doc.selEnd);
+}
+
+bool selectionToWholeTracks (SoundDocument& doc)
+{
+    const size_t end = selectionAudioEnd (doc);
+    if (end == 0) return false;
+    return setRange (doc, 0, end);
+}
+
+bool selectionToEnd (SoundDocument& doc)
+{
+    const size_t end = selectionAudioEnd (doc);
+    if (doc.selEnd == doc.selSt) return setRange (doc, end, end);
+    if (doc.selSt >= end) return false;
+    return setRange (doc, doc.selSt, end);
+}
+
 bool extendAbove (SoundDocument& doc)
 {
     if (doc.firstSelTrack <= 1) return false;

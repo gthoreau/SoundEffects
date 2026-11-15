@@ -2397,6 +2397,117 @@ bool lights (const se::TransportButtons& b, se::RecordLight rec, bool stop, bool
     return b.record() == rec && b.stopOn() == stop && b.playOn() == play && b.pauseOn() == pause && b.ffOn() == ff;
 }
 
+// 0.5.0 step 6: the selection-info icons (start, length, end), pure.
+void selectionInfoTests()
+{
+    const auto sel = [] (se::SoundDocument& d, size_t st, size_t en, int a, int b)
+    { d.selSt = st; d.selEnd = en; d.firstSelTrack = a; d.lastSelTrack = b; };
+    const auto is = [] (const se::SoundDocument& d, size_t st, size_t en, int a, int b)
+    { return d.selSt == st && d.selEnd == en && d.firstSelTrack == a && d.lastSelTrack == b; };
+
+    // Uneven tracks: 100, 60, 0 (empty), 80.
+    auto doc = rampDocument ({ 100, 60, 0, 80 });
+    auto& d = *doc;
+
+    // --- start
+    sel (d, 20, 50, 2, 4);
+    check (se::selectionToStart (d) && is (d, 0, 50, 2, 4), "selection info, start: the start goes to 0, end and tracks kept");
+    check (! se::selectionToStart (d), "selection info, start: already at 0, nothing changes");
+    sel (d, 40, 40, 2, 3);
+    check (se::selectionToStart (d) && is (d, 0, 0, 2, 3), "selection info, start: a caret goes to 0 in its tracks");
+    check (! se::selectionToStart (d), "selection info, start: a caret at 0 stays");
+    sel (d, 70, 90, 2, 2);   // past track 2's end (the longest track allows it)
+    check (se::selectionToStart (d) && is (d, 0, 90, 2, 2), "selection info, start: a selection past its track's end keeps its end");
+    sel (d, 10, 30, 3, 3);   // the empty track
+    check (se::selectionToStart (d) && is (d, 0, 30, 3, 3), "selection info, start: on an empty track too (it is a time range)");
+
+    // --- whole tracks
+    sel (d, 20, 50, 2, 4);
+    check (se::selectionToWholeTracks (d) && is (d, 0, 80, 2, 4),
+           "selection info, length: 0 to the longest selected track (80 of 60/0/80), not the sound's 100");
+    check (! se::selectionToWholeTracks (d), "selection info, length: already whole, nothing changes");
+    sel (d, 30, 30, 1, 2);
+    check (se::selectionToWholeTracks (d) && is (d, 0, 100, 1, 2), "selection info, length: a caret selects its tracks whole");
+    sel (d, 70, 90, 2, 2);
+    check (se::selectionToWholeTracks (d) && is (d, 0, 60, 2, 2), "selection info, length: a selection past its track's end comes back to it");
+    sel (d, 10, 30, 3, 3);
+    check (! se::selectionToWholeTracks (d) && is (d, 10, 30, 3, 3), "selection info, length: an empty track has nothing to select");
+    sel (d, 0, 0, 3, 3);
+    check (! se::selectionToWholeTracks (d) && is (d, 0, 0, 3, 3), "selection info, length: a caret in an empty track stays");
+    sel (d, 5, 10, 2, 3);
+    check (se::selectionToWholeTracks (d) && is (d, 0, 60, 2, 3), "selection info, length: an empty track among others is ignored");
+
+    // --- end
+    sel (d, 20, 50, 1, 2);
+    check (se::selectionToEnd (d) && is (d, 20, 100, 1, 2), "selection info, end: the end goes to the longest selected track");
+    check (! se::selectionToEnd (d), "selection info, end: already there, nothing changes");
+    sel (d, 20, 90, 2, 3);
+    check (se::selectionToEnd (d) && is (d, 20, 60, 2, 3), "selection info, end: a selection running past its audio is shortened to it");
+    sel (d, 70, 90, 2, 2);
+    check (! se::selectionToEnd (d) && is (d, 70, 90, 2, 2), "selection info, end: a selection wholly past its audio is left alone");
+    sel (d, 60, 90, 2, 2);
+    check (! se::selectionToEnd (d) && is (d, 60, 90, 2, 2), "selection info, end: one starting at its audio's end is left alone");
+    sel (d, 10, 10, 2, 4);
+    check (se::selectionToEnd (d) && is (d, 80, 80, 2, 4), "selection info, end: a caret goes to the end of its tracks' audio");
+    check (! se::selectionToEnd (d), "selection info, end: a caret already there stays");
+    sel (d, 90, 90, 2, 2);
+    check (se::selectionToEnd (d) && is (d, 60, 60, 2, 2), "selection info, end: a caret past its track's end comes back to it");
+    sel (d, 30, 30, 3, 3);
+    check (se::selectionToEnd (d) && is (d, 0, 0, 3, 3), "selection info, end: a caret in an empty track goes to 0, its end");
+
+    // --- the Set Loop region is never touched
+    sel (d, 30, 50, 1, 4);
+    se::setLoop (d);
+    sel (d, 40, 45, 2, 2);
+    se::selectionToStart (d); se::selectionToWholeTracks (d); se::selectionToEnd (d);
+    check (d.loopSt == 30 && d.loopEnd == 50, "selection info: the Set Loop region is left alone");
+
+    // --- an empty sound: nothing to do
+    {
+        auto e = rampDocument ({ 0, 0 });
+        check (! se::selectionToStart (*e) && ! se::selectionToWholeTracks (*e) && ! se::selectionToEnd (*e)
+               && e->selSt == 0 && e->selEnd == 0, "selection info: an empty sound does nothing");
+    }
+
+    // --- frames: 16-bit tracks end on a frame; a ragged tail is snapped down
+    {
+        se::DocumentInit init; init.numTracks = 2; init.bps = 16; init.sizeBytes = 0;
+        se::SoundDocument s (init);
+        s.tracks[0].data.assign (200, 0);
+        s.tracks[1].data.assign (301, 0);   // malformed: half a frame at the end
+        sel (s, 40, 40, 1, 1);
+        check (se::selectionToEnd (s) && is (s, 200, 200, 1, 1), "selection info, 16 bit: the caret goes to the track's last frame boundary");
+        sel (s, 40, 40, 1, 2);
+        check (se::selectionToWholeTracks (s) && s.selEnd == 300 && s.selEnd % (size_t) s.frameSize() == 0,
+               "selection info, 16 bit: a ragged tail is snapped to a frame");
+    }
+
+    // --- playing: a region loop is not re-aimed by the icons; a selection loop follows them
+    {
+        se::PlayOptions region; region.loop = true; region.useLoopRegion = true;
+        auto r = rampDocument ({ 100, 60 });
+        sel (*r, 30, 50, 1, 2);
+        se::setLoop (*r);
+        sel (*r, 10, 20, 2, 2);
+        se::Transport tr (kRate);
+        tr.play (*r, region);
+        renderTransport (tr, *r, 25);
+        se::selectionToWholeTracks (*r);
+        renderTransport (tr, *r, 100);
+        check (tr.uiPlaySt() == 30 && tr.uiPlayEnd() == 50, "selection info, playing: the Set Loop region keeps looping");
+
+        auto q = rampDocument ({ 100, 60 });
+        sel (*q, 10, 20, 2, 2);
+        se::Transport t2 (kRate);
+        t2.play (*q, region);
+        renderTransport (t2, *q, 25);
+        se::selectionToWholeTracks (*q);
+        renderTransport (t2, *q, 100);
+        check (t2.uiPlaySt() == 0 && t2.uiPlayEnd() == 60 && t2.uiFirstPlayTrack() == 2 && t2.uiLastPlayTrack() == 2,
+               "selection info, playing: a selection loop re-aims at the whole track");
+    }
+}
+
 void transportButtonsTests()
 {
     using B = se::TransportButtons;
@@ -2902,6 +3013,7 @@ int main()
     playOnceSelectionTests();
     playFromCaretTests();
     unsetLoopTests();
+    selectionInfoTests();
     directionEngineTests();
     switchingTests();
     concurrencyTests();

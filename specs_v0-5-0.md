@@ -4,7 +4,7 @@
     - "Application Menus — v.0.5.0"   node 1078:6637
   Read with use_figma: figma.spec.getContent({ specNodeId: '<node>' }).
   Figma is the source of truth; re-sync this file whenever the Figma spec changes.
-  Last sync: 2026-11-14. Decisions that resolve contradictions in this text live in
+  Last sync: 2026-11-14 (To-do re-read for step 6). Decisions that resolve contradictions in this text live in
   docs/0.5.0/PLAN.md ("Decisions").
 -->
 
@@ -51,7 +51,7 @@ I understand it does not follow strictly the behaviors described below, but it w
 
 ## Improvement of the 'selection-info' component
 
-The 'selection-start', 'selection-length' and 'selection-end' icons are now clickable:
+### The 'selection-start', 'selection-length' and 'selection-end' icons are now clickable:
 
 - selection-start: click to set start-value = 0
   - IF there's no selection → set the caret at 0
@@ -61,6 +61,11 @@ The 'selection-start', 'selection-length' and 'selection-end' icons are now clic
   - IF there's no selection → set the caret at the end of the audio
 
 Implement with care to cover all possible edge cases.
+
+### ISSUE: Using critical shortcuts (Space in particular) when editing text fields
+
+After editing a value in selection-start, length or end fields, I tend to want to hit the space bar to hear the result, but allas it just replaces the value in the still-selected text field :(
+Would it be possible to "shield" the text fields in the selection-info component from keystrokes like Space and letters?
 
 ## NEW - Magnetophon
 
