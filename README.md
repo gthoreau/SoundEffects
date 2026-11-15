@@ -20,7 +20,7 @@ unsynchronised loopers you arrange spatially.
 
 ## Download
 
-**SoundEffects 0.4.1** — the app plus the **VST3** and **Audio Unit** plug-ins,
+**SoundEffects 0.5.0** — the app plus the **VST3** and **Audio Unit** plug-ins,
 universal (Apple Silicon + Intel), macOS 11 Big Sur or later.
 
 This repository is private, so there's no public download page. **The app is
@@ -29,8 +29,8 @@ they install identically:
 
 | | |
 |---|---|
-| `SoundEffects-0.4.1-macOS.dmg` | A disk image. Open it and drag the app into Applications; the plug-ins are in its `Plug-ins` folder. |
-| `SoundEffects-0.4.1-macOS.zip` | The same in an archive, for when it came by email. Unzip, move the app into Applications. |
+| `SoundEffects-0.5.0-macOS.dmg` | A disk image. Open it and drag the app into Applications; the plug-ins are in its `Plug-ins` folder. |
+| `SoundEffects-0.5.0-macOS.zip` | The same in an archive, for when it came by email. Unzip, move the app into Applications. |
 
 <details>
 <summary>Why two formats?</summary>
@@ -134,7 +134,17 @@ xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/SoundEffects.vst3 ~
   and Set Loop, all from the in-app **Edit** and **Selection** menus. The
   selection's start, length and end are live fields in seconds, ms or samples.
 - **The Keyboard.** A palette that plays the selected window at chromatic pitches
-  (`K`).
+  (`K`). **MIDI plays it**: a keyboard such as a KeyStep, and **MPE** controllers
+  (Push 3, LinnStrument) whose per-note pitch slide bends the sound continuously.
+  It is mono, the last note played sounding. In the app, tick your device in
+  **Audio/Midi Setup**; in the plug-ins the DAW's MIDI plays it, window open or not.
+- **The Magnetophon.** A reel-to-reel tape recorder under the mixer. It records
+  the main mix, one window's output, an input or the DAW into takes, plays them
+  back (drag the tape to wind it by hand), and **Send** puts the whole tape, or
+  chosen takes, on the canvas as new sounds. The tape lives for the session.
+- **Main Level.** One fader for the whole canvas, saved with it.
+- **Colour theme.** **Canvas → Hide Color Theme** swaps every colour for a sober
+  Mac OS 8 grey.
 - **Projects.** **Save Canvas** (⌘S) writes a folder holding the `.sefx` file and
   an `Assets` folder with every track as a WAV. **Export Sound** and **Import
   Sound** move single sounds between canvases. **Open Sound** (⌘O) reads WAV and
@@ -147,8 +157,10 @@ Worth knowing before you spend an evening on a patch:
 - **There is no undo**, and there never will be. That one is deliberate: the
   menu item is there and always greyed. See the original's own alert text in the
   spec.
-- **MIDI from the DAW** does nothing yet in the plug-in. The Keyboard palette
-  plays as in the app.
+- **The plug-in's MPE** reaches the Audio Unit; the VST3 wrapper has no
+  note-expression support yet, so try the AU for a pitch slide from a DAW.
+- **The Magnetophon's tape is not saved**: use **Send** to keep it. Closing a
+  canvas warns while takes are unsent.
 - **The canvas is only saved when you ask, or when you quit.** A crash loses what
   you did since the last ⌘S.
 - **Not back yet from the original:** the Preferences pages, the level meter,
@@ -205,8 +217,9 @@ cmake -B native/build -S native -G Ninja && cmake --build native/build
 The plug-ins are the `SoundEffects_VST3` and `SoundEffects_AU` targets of the
 same build.
 
-The 0.4.0 work, its decisions and its journal are in
-[docs/0.4.0/PLAN.md](docs/0.4.0/PLAN.md); what comes next is in
+The 0.5.0 work, its decisions and its journal are in
+[docs/0.5.0/PLAN.md](docs/0.5.0/PLAN.md); the 0.4.0 work is in
+[docs/0.4.0/PLAN.md](docs/0.4.0/PLAN.md), and what comes next is in
 [docs/0.4.0/perf-audit-plan.md](docs/0.4.0/perf-audit-plan.md).
 
 ## Repository layout
