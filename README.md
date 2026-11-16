@@ -1,12 +1,13 @@
 # SoundEffects
 
-A rebuild of Alberto Ricci's **SoundEffects 0.9.2** (Macintosh, 1993–95) — the
-shareware destructive sound editor — as a native macOS app, reverse-engineered
+A rebuild of Alberto Ricci's **SoundEffects 0.9.2** (Macintosh, 1993–95), a
+shareware destructive sound editor, as a native macOS app, reverse-engineered
 from the original's resource fork, its Developer's Kit sources, and a
 disassembly of its 68k code.
 
-It is not a nostalgia skin. The original's personality *is* the spec: every edit
-is destructive, there is no undo, channels are independent buffers of unequal
+It is not a clone of the original, but I wanted to recreate the inimitable personality
+and the wonderfully creative flaws of the original, never finished, SoundEffects.
+In SoundEffects every edit is destructive, there is no undo, channels are independent buffers of unequal
 length, and the app talks to you in the first person. Where the 1995 app had a
 quirk, this one has the same quirk on purpose.
 
