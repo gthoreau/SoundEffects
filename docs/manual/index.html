@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SoundEffects User Manual</title>
+<meta name="description" content="The user manual for SoundEffects 0.5.0, a native macOS rebuild of Alberto Ricci's destructive sound editor.">
+<style>
+@font-face { font-family: "Chicago"; src: url("fonts/ClassicChicago.ttf") format("truetype"); font-display: swap; }
+:root {
+  --bg: #e9e9e9; --paper: #ffffff; --ink: #111; --muted: #555; --line: #111;
+  --soft: #d4d4d4; --accent: #c0392b; --note: #fff7c2; --warn: #ffe0dc;
+  --chrome: "Chicago", "Geneva", ui-monospace, monospace;
+  --text: -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1c1c1c; --paper: #262626; --ink: #eee; --muted: #aaa; --line: #bbb;
+    --soft: #3a3a3a; --accent: #ff8a7a; --note: #3b3714; --warn: #4a2420;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 16px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 var(--text); }
+a { color: inherit; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { background: var(--ink); color: var(--paper); }
+.layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 0; max-width: 1180px; margin: 0 auto; }
+nav.toc { position: sticky; top: 0; align-self: start; height: 100vh; overflow: auto; padding: 20px 16px 20px 20px; border-right: 2px solid var(--line); background: var(--bg); }
+nav.toc .brand { font: 17px/1.2 var(--chrome); margin: 0 0 4px; }
+nav.toc .ver { font-size: 12px; color: var(--muted); margin: 0 0 16px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; counter-reset: s; }
+nav.toc li { counter-increment: s; }
+nav.toc a { display: block; padding: 3px 6px; font: 13px/1.35 var(--chrome); text-decoration: none; }
+nav.toc a::before { content: counter(s) ". "; color: var(--muted); }
+nav.toc a:hover::before { color: inherit; }
+main { padding: 24px 28px 80px; min-width: 0; }
+header.hero { margin-bottom: 28px; }
+header.hero h1 { font: 34px/1.1 var(--chrome); margin: 0 0 8px; }
+header.hero p.lede { font-size: 18px; max-width: 46em; margin: 0 0 16px; }
+section { background: var(--paper); border: 2px solid var(--line); box-shadow: 4px 4px 0 var(--line); margin: 0 0 28px; }
+section > h2 { margin: 0; padding: 6px 12px; font: 18px/1.3 var(--chrome); border-bottom: 2px solid var(--line);
+  background: repeating-linear-gradient(0deg, var(--paper) 0 2px, var(--soft) 2px 4px); }
+section > h2 span { background: var(--paper); padding: 0 10px; }
+.body { padding: 4px 20px 16px; }
+h3 { font: 15px/1.3 var(--chrome); margin: 26px 0 6px; }
+p, ul, ol, table, figure, details { max-width: 46em; }
+.body > figure, .body > .wide { max-width: none; }
+kbd { font: 12.5px/1 var(--chrome); border: 1.5px solid var(--line); border-radius: 3px; padding: 2px 5px 1px; background: var(--paper); box-shadow: 0 1.5px 0 var(--line); white-space: nowrap; }
+code { font: 13px ui-monospace, Menlo, monospace; background: var(--soft); padding: 1px 4px; }
+pre { background: var(--soft); padding: 10px 12px; overflow: auto; font: 13px/1.5 ui-monospace, Menlo, monospace; max-width: 46em; }
+pre code { background: none; padding: 0; }
+figure { margin: 18px 0; }
+figure img { display: block; max-width: 100%; height: auto; image-rendering: pixelated; border: 1.5px solid var(--line); background: #fff; }
+figure.photo img { image-rendering: auto; }
+figcaption { font-size: 13.5px; color: var(--muted); margin-top: 6px; max-width: 46em; }
+.row { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+.row figure { margin: 10px 0; }
+.note, .warn { padding: 10px 14px; border: 2px solid var(--line); margin: 16px 0; max-width: 46em; }
+.note { background: var(--note); } .warn { background: var(--warn); }
+.note b:first-child, .warn b:first-child { font: 13px var(--chrome); }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; margin: 12px 0; }
+th, td { border: 1.5px solid var(--line); padding: 5px 9px; text-align: left; vertical-align: top; }
+th { font: 13px var(--chrome); background: var(--soft); }
+td:first-child { white-space: nowrap; }
+.shortcuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 28px; max-width: none; }
+.shortcuts table { max-width: none; }
+/* annotated figure */
+.anno { position: relative; max-width: 700px; }
+.anno img { width: 100%; }
+.pin { position: absolute; transform: translate(-50%, -50%); width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff;
+  font: 700 12px/22px var(--text); text-align: center; border: 2px solid #fff; box-shadow: 0 0 0 1.5px #111; }
+ol.legend { padding-left: 0; list-style: none; counter-reset: l; }
+ol.legend li { counter-increment: l; padding-left: 32px; position: relative; margin: 6px 0; }
+ol.legend li::before { content: counter(l); position: absolute; left: 0; top: 2px; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; font: 700 12px/22px var(--text); text-align: center; }
+details { border: 1.5px solid var(--line); padding: 6px 12px; margin: 12px 0; }
+details summary { cursor: pointer; font: 13px var(--chrome); }
+footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
+.menu-btn { display: none; }
+@media (max-width: 860px) {
+  .layout { display: block; }
+  nav.toc { position: static; height: auto; border-right: 0; border-bottom: 2px solid var(--line); padding: 14px 16px; }
+  nav.toc ol { columns: 2; }
+  main { padding: 18px 16px 60px; }
+  td:first-child { white-space: normal; }
+  code { overflow-wrap: anywhere; }
+  table { font-size: 13.5px; }
+  th, td { padding: 4px 6px; }
+  header.hero h1 { font-size: 26px; }
+  .body { padding: 2px 14px 12px; }
+}
+@media print { nav.toc { display: none; } .layout { display: block; } section { box-shadow: none; break-inside: avoid-page; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="Contents">
+  <p class="brand">SoundEffects</p>
+  <p class="ver">User manual · version 0.5.0</p>
+  <ol>
+    <li><a href="#welcome">Welcome</a></li>
+    <li><a href="#install">Installing</a></li>
+    <li><a href="#tour">A tour of the screen</a></li>
+    <li><a href="#canvas">The canvas</a></li>
+    <li><a href="#windows">Sound windows and tracks</a></li>
+    <li><a href="#transport">Playing</a></li>
+    <li><a href="#recording">Recording</a></li>
+    <li><a href="#editing">Selecting and editing</a></li>
+    <li><a href="#effects">Effects</a></li>
+    <li><a href="#mixer">The mixer</a></li>
+    <li><a href="#keyboard">The Keyboard and MIDI</a></li>
+    <li><a href="#tape">The Magnetophon</a></li>
+    <li><a href="#files">Saving and files</a></li>
+    <li><a href="#plugins">Using it in a DAW</a></li>
+    <li><a href="#shortcuts">Keyboard shortcuts</a></li>
+    <li><a href="#limits">Limits and troubleshooting</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>SoundEffects</h1>
+  <p class="lede">A canvas of looping sounds, each one a window you can record into, cut up, run through effects and play against the others. This is the manual for version 0.5.0.</p>
+  <figure class="photo"><img src="img/hero.png" alt="The SoundEffects canvas: seven coloured sound windows, the mixer on the left, the Effects panel on the right, the keyboard palette at the bottom." width="1400" height="850"><figcaption>The whole app at a glance: the canvas in the middle, the mixer and the Magnetophon on the left, the Effects panel on the right.</figcaption></figure>
+</header>
+
+<section id="welcome"><h2><span>1. Welcome</span></h2><div class="body">
+  <p>SoundEffects is a rebuild of Alberto Ricci's <em>SoundEffects 0.9.2</em>, a Macintosh shareware sound editor from 1993–95, as a native macOS app. It keeps the original's personality on purpose, and adds one big idea of its own: instead of one document at a time, every sound is a <strong>window</strong> on an unbounded <strong>canvas</strong>, and all of them play at once.</p>
+  <h3>Four things to know first</h3>
+  <ul>
+    <li><strong>Every edit is destructive, and there is no undo.</strong> The Undo menu item is there and always greyed out. This is deliberate. Save a copy (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd>) before you try something drastic.</li>
+    <li><strong>Tracks are independent.</strong> A window holds one or more tracks. Each track has its own length, its own left/right speaker routing and its own loop. Tracks of different lengths drift against each other, and so do different windows. That drifting is the point of the app.</li>
+    <li><strong>Everything plays together.</strong> Each window has its own transport. The mixer sums every window into the output.</li>
+    <li><strong>The canvas is saved when you ask, or when you quit.</strong> A crash loses what you did since your last <kbd>⌘</kbd><kbd>S</kbd>.</li>
+  </ul>
+  <h3>Words used in this manual</h3>
+  <table>
+    <tr><th>Term</th><th>Meaning</th></tr>
+    <tr><td>Canvas</td><td>The whole board holding every window.</td></tr>
+    <tr><td>Window</td><td>One sound: a set of tracks with a transport. It is the unit you play, mix and save.</td></tr>
+    <tr><td>Track</td><td>One lane inside a window: a single audio buffer.</td></tr>
+    <tr><td>Selection</td><td>One rectangle per window: a range of tracks and one span of time. Edits and effects act on it.</td></tr>
+    <tr><td>Output channel</td><td>Where a track is heard: left, right, or both.</td></tr>
+    <tr><td>Transport</td><td>A window's Record, Stop, Pause, Play, Advance and Loop buttons.</td></tr>
+    <tr><td>Advance</td><td>Plays at twice the speed. It is not a seek or a wind. The menu calls it Fast Forward.</td></tr>
+  </table>
+</div></section>
+
+<section id="install"><h2><span>2. Installing</span></h2><div class="body">
+  <p>SoundEffects needs <strong>macOS 11 Big Sur or later</strong>, on Apple Silicon or Intel. The download holds the app plus the VST3 and Audio Unit plug-ins.</p>
+  <ol>
+    <li>Get <code>SoundEffects-0.5.0-macOS.dmg</code> or <code>.zip</code> from the <a href="https://github.com/gthoreau/SoundEffects/releases">releases page</a>.</li>
+    <li>Drag <strong>SoundEffects</strong> into your <strong>Applications</strong> folder (open the <code>.dmg</code>, or unzip the <code>.zip</code> first).</li>
+    <li>Launch it. macOS will refuse with <em>"Apple could not verify SoundEffects is free of malware."</em> That is expected.</li>
+    <li>Open <strong>System Settings → Privacy &amp; Security</strong>, scroll to the Security section, click <strong>Open Anyway</strong> next to SoundEffects, and confirm.</li>
+  </ol>
+  <p>You do this once. The app is not signed with an Apple Developer ID and not notarized, so macOS cannot attach a name to it and blocks it the first time.</p>
+  <details><summary>On macOS 14 Sonoma or older</summary><p>Right-click the app, choose <strong>Open</strong>, then <strong>Open</strong> again in the dialog. macOS 15 Sequoia removed that shortcut.</p></details>
+  <details><summary>Prefer the command line?</summary><pre><code>xattr -dr com.apple.quarantine /Applications/SoundEffects.app</code></pre></details>
+  <p>The plug-ins are covered in <a href="#plugins">Using it in a DAW</a>.</p>
+  <h3>What it leaves on your disk</h3>
+  <ul>
+    <li><code>~/Library/Application Support/SoundEffects.settings</code> holds your audio device and the canvas you had open when you last quit. It can reach tens of megabytes once you have real samples loaded.</li>
+    <li><code>~/Library/Application Support/SoundEffects/Preferences.settings</code> holds the selection unit, Auto-apply and your effect setups.</li>
+  </ul>
+  <p>Delete the app and those two files and nothing remains.</p>
+  <p>Choose your audio input and output in <strong>File → Audio/Midi Setup</strong> (<kbd>⌘</kbd><kbd>,</kbd>).</p>
+</div></section>
+
+<section id="tour"><h2><span>3. A tour of the screen</span></h2><div class="body">
+  <figure><img src="img/app.png" alt="The SoundEffects window with its menu bar, mixer, two sound windows, the Effects panel, the Magnetophon and the zoom bar." width="1440" height="900"><figcaption>A fresh canvas with two sounds: one empty, one holding a two-track recording.</figcaption></figure>
+  <table>
+    <tr><th>Where</th><th>What it is</th><th>Chapter</th></tr>
+    <tr><td>Menu bar</td><td>File, Edit, Selection, Sound and Canvas. Every command in the app is here, with its shortcut.</td><td><a href="#shortcuts">15</a></td></tr>
+    <tr><td>Centre</td><td>The canvas, with a window for each sound.</td><td><a href="#canvas">4</a>, <a href="#windows">5</a></td></tr>
+    <tr><td>Left, top</td><td>The mixer: one strip per window, and <strong>New Sound</strong> and <strong>Open Sound</strong> buttons.</td><td><a href="#mixer">10</a></td></tr>
+    <tr><td>Left, bottom</td><td>The Magnetophon tape recorder.</td><td><a href="#tape">12</a></td></tr>
+    <tr><td>Right</td><td>The Effects panel.</td><td><a href="#effects">9</a></td></tr>
+    <tr><td>Bottom centre</td><td>The zoom bar, with the grid and free-canvas switch and the keyboard button.</td><td><a href="#canvas">4</a>, <a href="#keyboard">11</a></td></tr>
+  </table>
+  <p>Press <kbd>⌘</kbd><kbd>.</kbd> to hide both side panels and give the canvas the whole screen.</p>
+</div></section>
+
+<section id="canvas"><h2><span>4. The canvas</span></h2><div class="body">
+  <p>The canvas is unbounded. Windows sit on it wherever you put them, and every window plays whether or not it is in view.</p>
+  <h3>Zoom and move</h3>
+  <ul>
+    <li><strong>Zoom</strong> from 20% to 400% with <kbd>⌘</kbd> + mouse wheel, a trackpad pinch, the slider in the zoom bar, or <kbd>+</kbd> and <kbd>-</kbd>.</li>
+    <li><kbd>⌘</kbd><kbd>1</kbd> returns to 100%. <kbd>⌘</kbd><kbd>0</kbd> zooms to fit every window.</li>
+    <li><strong>Pan</strong> by dragging with the right mouse button, or hold <kbd>H</kbd> and drag.</li>
+  </ul>
+  <div class="row">
+    <figure><img src="img/zoombar.png" alt="The zoom bar: grid and free-canvas buttons, a zoom slider with minus and plus, a 100% button and a keyboard button." width="688" height="88" style="width:344px"><figcaption>The zoom bar. On the left, the grid and free-canvas switch. Then the zoom slider and the 100% button. On the right, the keyboard.</figcaption></figure>
+  </div>
+  <h3>Grid or free</h3>
+  <p>The canvas has two layouts, and <kbd>G</kbd> flips between them. On the <strong>grid</strong>, you drag windows between cells and they snap into place. On the <strong>free</strong> canvas, you put them anywhere. The menu item reads <em>Free Canvas</em> when you are on the grid, and the reverse when you are not.</p>
+  <h3>Colour</h3>
+  <p>Each sound wears a colour from one of 24 themes, on its window and on its mixer strip. Choose one with <strong>Sound → Color</strong> (<kbd>⌘</kbd><kbd>T</kbd>). <strong>Canvas → Hide Color Theme</strong> swaps every colour for a plain Mac OS 8 grey.</p>
+  <div class="row">
+    <figure><img src="img/app-menu-canvas.png" alt="The Canvas menu." width="162" height="144" style="width:243px"><figcaption>The Canvas menu.</figcaption></figure>
+    <figure><img src="img/app-menu-sound-color.png" alt="The Color submenu listing the colour themes." width="147" height="438" style="width:221px"><figcaption>Sound → Color.</figcaption></figure>
+  </div>
+  <h3>Sound slots</h3>
+  <p>Windows take numbered slots, shown on their mixer strips. Press <kbd>1</kbd> to <kbd>9</kbd>, or <kbd>0</kbd> for the tenth, to select the sound in that slot. The same list is at the bottom of the Canvas menu.</p>
+</div></section>
+
+<section id="windows"><h2><span>5. Sound windows and tracks</span></h2><div class="body">
+  <p>Make a window with <strong>New Sound</strong> (<kbd>⌘</kbd><kbd>N</kbd>), or load a file with <strong>Open Sound</strong> (<kbd>⌘</kbd><kbd>O</kbd>), which reads WAV and AIFF. A stereo file arrives as two tracks, routed left and right.</p>
+  <div class="anno">
+    <img src="img/window.png" alt="A sound window with two tracks, numbered 1 to 9 for the parts described below." width="1072" height="516">
+    <span class="pin" style="left:8.5%;top:6.6%">1</span>
+    <span class="pin" style="left:36%;top:6.6%">2</span>
+    <span class="pin" style="left:88%;top:6.6%">3</span>
+    <span class="pin" style="left:38%;top:11.8%">4</span>
+    <span class="pin" style="left:74%;top:11.8%">5</span>
+    <span class="pin" style="left:4.3%;top:47%">6</span>
+    <span class="pin" style="left:48.5%;top:45.7%">7</span>
+    <span class="pin" style="left:95.3%;top:78%">8</span>
+    <span class="pin" style="left:77%;top:89%">9</span>
+  </div>
+  <ol class="legend">
+    <li><strong>Close box.</strong> Closes the sound (<kbd>⌘</kbd><kbd>W</kbd>). It asks before throwing away audio you have not saved.</li>
+    <li><strong>Title.</strong> The sound's name. Rename it with <kbd>⌘</kbd><kbd>R</kbd>.</li>
+    <li><strong>M and S.</strong> Mute and solo for this window, the same as on its mixer strip.</li>
+    <li><strong>Readout.</strong> Sample rate, bit depth, number of tracks and length of the longest track.</li>
+    <li><strong>Selection fields.</strong> The start, length and end of the selection, live. Type a value to set it. The menu beside them chooses seconds, milliseconds or samples.</li>
+    <li><strong>Track routing.</strong> Which speaker a track plays through. See below.</li>
+    <li><strong>Waveform.</strong> One lane per track. Drag across it to select. The selection is the black area.</li>
+    <li><strong>Trash.</strong> Drop a track here to delete it.</li>
+    <li><strong>Transport.</strong> Record, Stop, Play, Pause, Advance and Loop, plus <strong>Source</strong> to choose what you record from.</li>
+  </ol>
+  <h3>Working with tracks</h3>
+  <ul>
+    <li><strong>Reorder</strong> tracks by dragging them.</li>
+    <li><strong>Duplicate</strong> a track by <kbd>⌥</kbd>-dragging it.</li>
+    <li><strong>Add</strong> a track, or <strong>trash</strong> one, from the window.</li>
+    <li><strong>Route</strong> each track to the left speaker, the right speaker or both. A mono track on both speakers sits in the middle. Two tracks, one on each side, make stereo.</li>
+  </ul>
+  <p>Tracks may differ in length. When you play a window, each track runs, and loops, on its own length. A short loop against a long one makes a pattern that takes a long time to repeat.</p>
+  <h3>Resizing and zooming a window</h3>
+  <p>Drag the grip at the bottom-right corner to resize. <strong>Sound → Zoom Sound</strong> zooms the waveform in (<kbd>⌘</kbd><kbd>=</kbd>) and out (<kbd>⌘</kbd><kbd>-</kbd>). <strong>Fit Window</strong> (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>0</kbd>) shows the whole sound, and <strong>Fit Selection</strong> (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>=</kbd>) fills the window with the selection.</p>
+</div></section>
+
+<section id="transport"><h2><span>6. Playing</span></h2><div class="body">
+  <p>Every window has its own transport. Select a window and use the buttons, the Sound menu, or these keys:</p>
+  <table>
+    <tr><th>Key</th><th>Does</th></tr>
+    <tr><td><kbd>Space</kbd></td><td>Play. While it plays, the same key pauses.</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>Stop.</td></tr>
+    <tr><td><kbd>F</kbd></td><td>Advance: play at double speed.</td></tr>
+    <tr><td><kbd>L</kbd></td><td>Loop on or off.</td></tr>
+    <tr><td><kbd>D</kbd></td><td>Flip direction.</td></tr>
+    <tr><td><kbd>⌥</kbd><kbd>Space</kbd></td><td>Play ping-pong.</td></tr>
+    <tr><td><kbd>M</kbd> / <kbd>S</kbd></td><td>Mute / solo the window.</td></tr>
+  </table>
+  <h3>Direction</h3>
+  <p>A window plays <strong>Forward</strong>, <strong>Backward</strong> or <strong>Ping-pong</strong> (forward, then back, then forward again). Change it with <kbd>D</kbd>, or from the small strip on the Play button. You can switch while it plays, with no click or gap.</p>
+  <h3>Loops</h3>
+  <p>With Loop on, a window repeats. <strong>The loop follows your selection:</strong> if you change the selection while the loop runs, the loop follows it.</p>
+  <p>You can also fix a loop in place. Select a span and use <strong>Selection → Set Loop</strong> (<kbd>⌘</kbd><kbd>L</kbd>). The window then loops that span whatever you select afterwards. <strong>Unset Loop</strong> (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>L</kbd>) takes it away, and <strong>Select Set Loop</strong> (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>A</kbd>) selects it again.</p>
+  <figure><img src="img/window-setloop.png" alt="A sound window after Set Loop: the loop span is marked on the scroll bar and a different part of the waveform is selected." width="1072" height="516"><figcaption>A loop set on one span, with a different span selected.</figcaption></figure>
+  <div class="note"><b>Gain, mute and solo never stop a transport.</b> Muting a window silences it, and the window keeps its place. Unmute it later and it is where it would have been.</div>
+</div></section>
+
+<section id="recording"><h2><span>7. Recording</span></h2><div class="body">
+  <h3>Choose a source</h3>
+  <p>Press the <strong>Source</strong> button, or use <strong>Sound → Select Audio Source…</strong> (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>R</kbd>). You can record from:</p>
+  <ul>
+    <li>an <strong>audio input</strong> (a microphone or interface),</li>
+    <li>the <strong>canvas</strong>: the main mix, or one window's own output (resampling),</li>
+    <li>in a plug-in, the <strong>DAW</strong> input.</li>
+  </ul>
+  <h3>Record</h3>
+  <p>Press the red Record button. <kbd>R</kbd> arms recording and <kbd>⇧</kbd><kbd>R</kbd> is <strong>Direct Recording</strong>.</p>
+  <p><strong>Where the take goes depends on what is selected:</strong></p>
+  <ul>
+    <li>With <strong>nothing selected</strong>, the take goes into new tracks.</li>
+    <li>With a selection over one or two tracks, it goes <strong>into the selection</strong>, as a punch-in or looping over it.</li>
+  </ul>
+  <h3>Raw or Clean</h3>
+  <p>Conversion is <strong>Raw</strong> (lo-fi, and the default) or <strong>Clean</strong>. Raw keeps the gritty character of the original. Pick Clean for a faithful take.</p>
+  <h3>Setting up audio</h3>
+  <p>Choose the input and output device in <strong>File → Audio/Midi Setup</strong> (<kbd>⌘</kbd><kbd>,</kbd>). macOS asks for microphone access the first time you record.</p>
+</div></section>
+
+<section id="editing"><h2><span>8. Selecting and editing</span></h2><div class="body">
+  <p>Drag across a waveform to select. The selection is one rectangle: a range of tracks and one span of time. Its start, length and end show in the window header, where you can type exact values. Choose seconds, milliseconds or samples with the menu beside the fields.</p>
+  <h3>Edit menu</h3>
+  <table>
+    <tr><th>Command</th><th>Key</th><th>Does</th></tr>
+    <tr><td>Cut, Copy, Paste</td><td><kbd>⌘</kbd><kbd>X</kbd> <kbd>C</kbd> <kbd>V</kbd></td><td>The usual, on the selection.</td></tr>
+    <tr><td>Duplicate</td><td><kbd>⌘</kbd><kbd>D</kbd></td><td>Repeats the selection straight after itself.</td></tr>
+    <tr><td>Clear</td><td><kbd>⌫</kbd></td><td>Deletes the selection and closes the gap.</td></tr>
+    <tr><td>Leave Silence…</td><td></td><td>Opens a dialog to silence everything except the selection.</td></tr>
+    <tr><td>Shift Sound…</td><td></td><td>Opens a dialog to shift the sound in time.</td></tr>
+  </table>
+  <h3>Selection menu</h3>
+  <table>
+    <tr><th>Command</th><th>Key</th><th>Does</th></tr>
+    <tr><td>Select All</td><td><kbd>⌘</kbd><kbd>A</kbd></td><td>Every track, the whole length.</td></tr>
+    <tr><td>Extend to Beginning / End</td><td><kbd>⌘</kbd><kbd>←</kbd> <kbd>→</kbd></td><td>Stretches the selection to the start or end.</td></tr>
+    <tr><td>Extend Above / Below</td><td><kbd>⌘</kbd><kbd>↑</kbd> <kbd>↓</kbd></td><td>Adds the track above or below.</td></tr>
+    <tr><td>Insert Silence</td><td><kbd>⇧</kbd><kbd>⌫</kbd></td><td>Puts silence the length of the selection at its start.</td></tr>
+    <tr><td>Crop</td><td><kbd>⌥</kbd><kbd>⌫</kbd></td><td>Keeps only the selection.</td></tr>
+    <tr><td>Set Loop, Unset Loop, Select Set Loop</td><td><kbd>⌘</kbd><kbd>L</kbd>, <kbd>⇧</kbd>, <kbd>⇧</kbd><kbd>A</kbd></td><td>See <a href="#transport">Playing</a>.</td></tr>
+    <tr><td>Select Exactly…</td><td></td><td>Opens a dialog where you type the selection.</td></tr>
+    <tr><td>Select Peak…</td><td></td><td>Opens a dialog to select around the loudest point.</td></tr>
+    <tr><td>Select Silence</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>⌫</kbd></td><td>Selects a stretch of silence.</td></tr>
+  </table>
+  <div class="row">
+    <figure><img src="img/app-menu-edit.png" alt="The Edit menu." width="137" height="162" style="width:206px"><figcaption>The Edit menu. Undo is greyed out, always.</figcaption></figure>
+    <figure><img src="img/app-menu-selection.png" alt="The Selection menu." width="192" height="256" style="width:288px"><figcaption>The Selection menu.</figcaption></figure>
+    <figure><img src="img/popup-select-exactly.png" alt="The Select Exactly dialog." width="271" height="214" style="width:271px"><figcaption>Select Exactly…</figcaption></figure>
+    <figure><img src="img/popup-shift-sound.png" alt="The Shift Sound dialog." width="271" height="176" style="width:271px"><figcaption>Shift Sound…</figcaption></figure>
+  </div>
+  <div class="warn"><b>No undo.</b> Cut, Clear, Crop and every effect change the audio for good. Use <strong>Save Canvas as…</strong> to keep a copy to go back to.</div>
+</div></section>
+
+<section id="effects"><h2><span>9. Effects</span></h2><div class="body">
+  <p>The panel on the right holds <strong>37 effects</strong>, ported from the original and checked against reference outputs. An effect acts on the selected window's <strong>selection</strong>.</p>
+  <div class="row">
+    <figure><img src="img/effects-panel.png" alt="The Effects panel with its six groups of buttons." width="270" height="867" style="width:270px"></figure>
+    <div style="flex:1; min-width: 260px">
+      <h3 style="margin-top:0">One-click effects</h3>
+      <p>These run at once, when <strong>Auto Apply</strong> is ticked: Invert, Noise, Normalize, Reverse, Robotize, Silence, Selection to Channel, Smooth, Sum and Weird Tempo. With Auto Apply off, they open a tray like the others.</p>
+      <h3>Effects with settings</h3>
+      <p>Click an effect to open its <strong>tray</strong> beneath it. Set the values, then press <strong>Apply</strong>, or <strong>Cancel</strong> to leave the sound untouched.</p>
+      <figure style="margin:6px 0 0"><img src="img/tray-echo.png" alt="The Echo effect's tray." width="268" height="219" style="width:268px"><figcaption>Echo's tray.</figcaption></figure>
+    </div>
+  </div>
+  <h3>The groups</h3>
+  <table>
+    <tr><th>Group</th><th>Effects</th></tr>
+    <tr><td>1-Click Effects</td><td>Invert, Noise, Normalize, Reverse, Robotize, Silence, Selection to Channel, Smooth, Sum, Weird Tempo</td></tr>
+    <tr><td>FIR Filters</td><td>Bandpass FIR, Bandstop FIR, Hi-Pass FIR, Low-Pass FIR</td></tr>
+    <tr><td>Misc</td><td>Amplify, Dither, Difference, Draw Line, Fade-In, Fade-Out, Quick Mix, Replicate, Waveform Generator, Zero Crosser</td></tr>
+    <tr><td>Echoes &amp; Reverbs</td><td>Echo, Delay, Flanger</td></tr>
+    <tr><td>IIR Filters</td><td>Hi-Pass IIR, Low-Pass IIR, Shelving</td></tr>
+    <tr><td>Mike's Modules</td><td>Granular Synthesis, Iterative Crossfade, Sample Hose</td></tr>
+    <tr><td>Resampling</td><td>Downsample Bits, Resample Rate, Upsample Bits</td></tr>
+  </table>
+  <p>Some buttons are greyed out when they cannot apply. <strong>Sum</strong>, <strong>Difference</strong> and <strong>Iterative Crossfade</strong> need a selection across more than one track, for example.</p>
+  <h3>Setups</h3>
+  <p>Every effect with a tray has a <strong>Setup</strong> menu. Save your values under a name and call them up later. Setups are saved with your preferences.</p>
+  <figure><img src="img/popup-save.png" alt="The dialog that saves an effect setup under a name." width="268" height="136"><figcaption>Saving a setup.</figcaption></figure>
+</div></section>
+
+<section id="mixer"><h2><span>10. The mixer</span></h2><div class="body">
+  <div class="row">
+    <figure><img src="img/mixer.png" alt="The mixer panel with two strips, New Sound and Open Sound buttons, and the Main Level fader." width="540" height="1250" style="width:270px"></figure>
+    <div style="flex:1; min-width: 260px">
+      <p>The mixer has <strong>one strip per window</strong>, in numbered slots, in the window's colour. Press <kbd>1</kbd> to <kbd>0</kbd> to select a slot.</p>
+      <ul>
+        <li>The <strong>fader</strong> sets the window's level, with a stereo VU meter.</li>
+        <li>The <strong>balance</strong> control sets left against right.</li>
+        <li><strong>M</strong> mutes the window and <strong>S</strong> solos it. Solo silences every other window.</li>
+        <li><strong>Drag a strip</strong> up or down to reorder it.</li>
+        <li><strong>Main Level</strong> at the bottom is one fader for the whole canvas. It is saved with the canvas.</li>
+      </ul>
+      <p>Changing a gain, a mute or a solo never interrupts a transport. The window just gets quieter, or silent.</p>
+    </div>
+  </div>
+</div></section>
+
+<section id="keyboard"><h2><span>11. The Keyboard and MIDI</span></h2><div class="body">
+  <p>The <strong>Keyboard</strong> plays the selected window at chromatic pitches, so any sound becomes an instrument. Show or hide it with <kbd>K</kbd>, or with the keyboard button on the right of the zoom bar.</p>
+  <figure><img src="img/palette-keyboard.png" alt="The keyboard palette: a piano keyboard, a note readout and an Apply button." width="575" height="62" style="width:575px"><figcaption>The Keyboard palette. The readout shows the note and its distance from the original in semitones.</figcaption></figure>
+  <ul>
+    <li><strong>Click or drag</strong> on the keys to play.</li>
+    <li>The Keyboard is <strong>mono</strong>: the last note played is the one that sounds.</li>
+    <li><strong>Apply</strong> writes the pitch change into the sound.</li>
+  </ul>
+  <h3>Playing it from MIDI</h3>
+  <p>A MIDI keyboard such as a KeyStep plays the Keyboard. <strong>MPE controllers</strong> (such as the Push 3 or LinnStrument) work too: the per-note pitch slide bends the sound continuously.</p>
+  <ol>
+    <li>Open <strong>File → Audio/Midi Setup</strong> (<kbd>⌘</kbd><kbd>,</kbd>).</li>
+    <li>Tick your device in the MIDI inputs list.</li>
+    <li>Select a window and play.</li>
+  </ol>
+  <p>In a plug-in, the DAW's MIDI plays the Keyboard, whether its window is open or not.</p>
+</div></section>
+
+<section id="tape"><h2><span>12. The Magnetophon</span></h2><div class="body">
+  <div class="row">
+    <figure><img src="img/magnetophon.png" alt="The Magnetophon panel: two tape reels, a take list and its own transport." width="540" height="550" style="width:270px"></figure>
+    <div style="flex:1; min-width: 260px">
+      <p>The Magnetophon is a reel-to-reel tape recorder under the mixer. It is a quick way to capture what the canvas is doing.</p>
+      <ul>
+        <li><strong>Record</strong> the main mix, one window's output, an input, or the DAW. Choose with its own <strong>Source</strong> button. Each recording is a <strong>take</strong>.</li>
+        <li><strong>Play</strong> takes back. Drag the tape to wind it by hand.</li>
+        <li><strong>Send</strong> (the arrow button) puts the whole tape, or the takes you choose, on the canvas as new sounds.</li>
+      </ul>
+      <div class="warn"><b>The tape is not saved.</b> It lives for the session. Use Send to keep a take. Closing a canvas warns you while takes are unsent.</div>
+    </div>
+  </div>
+</div></section>
+
+<section id="files"><h2><span>13. Saving and files</span></h2><div class="body">
+  <table>
+    <tr><th>Command</th><th>Key</th><th>Does</th></tr>
+    <tr><td>Save Canvas</td><td><kbd>⌘</kbd><kbd>S</kbd></td><td>Writes a folder holding the <code>.sefx</code> file and an <code>Assets</code> folder with every track as a WAV.</td></tr>
+    <tr><td>Save Canvas as…</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd></td><td>The same, to a new place. Use it to keep a copy before a destructive edit.</td></tr>
+    <tr><td>Open Canvas / New Canvas</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>O</kbd> / <kbd>N</kbd></td><td>Open a saved canvas, or start an empty one.</td></tr>
+    <tr><td>Revert Canvas</td><td></td><td>Goes back to the last saved version.</td></tr>
+    <tr><td>Open Sound</td><td><kbd>⌘</kbd><kbd>O</kbd></td><td>Reads a WAV or AIFF file into a new window. Stereo arrives as two tracks.</td></tr>
+    <tr><td>Export Sound… / Import Sound…</td><td></td><td>Move a single sound between canvases.</td></tr>
+  </table>
+  <p>The app also keeps your last canvas for you: it is written to its settings file when you quit, and opens again at launch. Do not rely on this as your only copy.</p>
+  <figure><img src="img/app-menu-file.png" alt="The File menu." width="181" height="216" style="width:271px"><figcaption>The File menu.</figcaption></figure>
+</div></section>
+
+<section id="plugins"><h2><span>14. Using it in a DAW</span></h2><div class="body">
+  <p>The download holds <code>SoundEffects.vst3</code> and <code>SoundEffects.component</code> (Audio Unit). The whole app runs inside the plug-in: canvas, mixer, effects, and recording from the DAW's input. The canvas is saved with your DAW set.</p>
+  <h3>Installing the plug-ins</h3>
+  <p>In the Finder, choose <strong>Go → Go to Folder…</strong> and copy:</p>
+  <table>
+    <tr><th>File</th><th>Into</th></tr>
+    <tr><td><code>SoundEffects.vst3</code></td><td><code>~/Library/Audio/Plug-Ins/VST3</code> (create the folder if it is not there)</td></tr>
+    <tr><td><code>SoundEffects.component</code></td><td><code>~/Library/Audio/Plug-Ins/Components</code></td></tr>
+  </table>
+  <p>Restart your DAW, or rescan its plug-ins. In Ableton Live, SoundEffects is under <strong>Plug-ins → SoundEffects</strong>.</p>
+  <ul>
+    <li>If an older <code>SoundEffects.vst3</code> is in <code>/Library/Audio/Plug-Ins/VST3</code> (the computer-wide folder), replace or remove it so the DAW does not find two.</li>
+    <li>If the DAW will not load a downloaded plug-in, clear the quarantine flag:</li>
+  </ul>
+  <pre><code>xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/SoundEffects.vst3 ~/Library/Audio/Plug-Ins/Components/SoundEffects.component</code></pre>
+  <div class="note"><b>MPE:</b> pitch slide from an MPE controller reaches the Audio Unit. The VST3 wrapper has no note-expression support yet, so use the AU when you want it.</div>
+</div></section>
+
+<section id="shortcuts"><h2><span>15. Keyboard shortcuts</span></h2><div class="body">
+  <p>Every shortcut is shown in the menus too. <kbd>⌘</kbd> is Command, <kbd>⇧</kbd> Shift, <kbd>⌥</kbd> Option.</p>
+  <div class="shortcuts wide">
+    <div>
+      <h3>File</h3>
+      <table>
+        <tr><td>New Sound</td><td><kbd>⌘</kbd><kbd>N</kbd></td></tr>
+        <tr><td>Open Sound</td><td><kbd>⌘</kbd><kbd>O</kbd></td></tr>
+        <tr><td>Close Sound</td><td><kbd>⌘</kbd><kbd>W</kbd></td></tr>
+        <tr><td>New Canvas</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>N</kbd></td></tr>
+        <tr><td>Open Canvas</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>O</kbd></td></tr>
+        <tr><td>Save Canvas</td><td><kbd>⌘</kbd><kbd>S</kbd></td></tr>
+        <tr><td>Save Canvas as…</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>S</kbd></td></tr>
+        <tr><td>Audio/Midi Setup</td><td><kbd>⌘</kbd><kbd>,</kbd></td></tr>
+      </table>
+      <h3>Edit</h3>
+      <table>
+        <tr><td>Cut / Copy / Paste</td><td><kbd>⌘</kbd><kbd>X</kbd> / <kbd>C</kbd> / <kbd>V</kbd></td></tr>
+        <tr><td>Duplicate</td><td><kbd>⌘</kbd><kbd>D</kbd></td></tr>
+        <tr><td>Clear</td><td><kbd>⌫</kbd></td></tr>
+        <tr><td>Undo (always greyed)</td><td><kbd>⌘</kbd><kbd>Z</kbd></td></tr>
+      </table>
+      <h3>Selection</h3>
+      <table>
+        <tr><td>Select All</td><td><kbd>⌘</kbd><kbd>A</kbd></td></tr>
+        <tr><td>Extend to Beginning / End</td><td><kbd>⌘</kbd><kbd>←</kbd> / <kbd>→</kbd></td></tr>
+        <tr><td>Extend Above / Below</td><td><kbd>⌘</kbd><kbd>↑</kbd> / <kbd>↓</kbd></td></tr>
+        <tr><td>Insert Silence</td><td><kbd>⇧</kbd><kbd>⌫</kbd></td></tr>
+        <tr><td>Crop</td><td><kbd>⌥</kbd><kbd>⌫</kbd></td></tr>
+        <tr><td>Set Loop</td><td><kbd>⌘</kbd><kbd>L</kbd></td></tr>
+        <tr><td>Unset Loop</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>L</kbd></td></tr>
+        <tr><td>Select Set Loop</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>A</kbd></td></tr>
+        <tr><td>Select Silence</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>⌫</kbd></td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Sound</h3>
+      <table>
+        <tr><td>Color</td><td><kbd>⌘</kbd><kbd>T</kbd></td></tr>
+        <tr><td>Rename…</td><td><kbd>⌘</kbd><kbd>R</kbd></td></tr>
+        <tr><td>Arm Record</td><td><kbd>R</kbd></td></tr>
+        <tr><td>Direct Recording</td><td><kbd>⇧</kbd><kbd>R</kbd></td></tr>
+        <tr><td>Select Audio Source…</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>R</kbd></td></tr>
+        <tr><td>Stop</td><td><kbd>Esc</kbd></td></tr>
+        <tr><td>Play / Pause</td><td><kbd>Space</kbd></td></tr>
+        <tr><td>Play ping-pong</td><td><kbd>⌥</kbd><kbd>Space</kbd></td></tr>
+        <tr><td>Flip Direction</td><td><kbd>D</kbd></td></tr>
+        <tr><td>Fast Forward (Advance)</td><td><kbd>F</kbd></td></tr>
+        <tr><td>Loop</td><td><kbd>L</kbd></td></tr>
+        <tr><td>Mute / Solo</td><td><kbd>M</kbd> / <kbd>S</kbd></td></tr>
+        <tr><td>Zoom Sound in / out</td><td><kbd>⌘</kbd><kbd>=</kbd> / <kbd>⌘</kbd><kbd>-</kbd></td></tr>
+        <tr><td>Fit Window</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>0</kbd></td></tr>
+        <tr><td>Fit Selection</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>=</kbd></td></tr>
+      </table>
+      <h3>Canvas</h3>
+      <table>
+        <tr><td>Free Canvas / Grid</td><td><kbd>G</kbd></td></tr>
+        <tr><td>Show / hide Keyboard</td><td><kbd>K</kbd></td></tr>
+        <tr><td>Hide side panels</td><td><kbd>⌘</kbd><kbd>.</kbd></td></tr>
+        <tr><td>Zoom in / out</td><td><kbd>+</kbd> / <kbd>-</kbd></td></tr>
+        <tr><td>Zoom 100%</td><td><kbd>⌘</kbd><kbd>1</kbd></td></tr>
+        <tr><td>Zoom to Fit</td><td><kbd>⌘</kbd><kbd>0</kbd></td></tr>
+        <tr><td>Sound in slot 1–9, 10</td><td><kbd>1</kbd>…<kbd>9</kbd>, <kbd>0</kbd></td></tr>
+        <tr><td>Pan</td><td>right-drag, or hold <kbd>H</kbd></td></tr>
+      </table>
+    </div>
+  </div>
+</div></section>
+
+<section id="limits"><h2><span>16. Limits and troubleshooting</span></h2><div class="body">
+  <h3>What is not there yet</h3>
+  <ul>
+    <li><strong>No undo</strong>, by design.</li>
+    <li>From the original, not back yet: the <strong>Preferences</strong> pages, the <strong>level meter</strong>, <strong>Spectrum</strong>, the <strong>Chunk List</strong> and <strong>Play Clipboard</strong>.</li>
+    <li>The VST3 wrapper has no MPE note-expression support. The Audio Unit does.</li>
+    <li>The Magnetophon's tape is not saved. Use Send.</li>
+  </ul>
+  <h3>When something goes wrong</h3>
+  <table>
+    <tr><th>Symptom</th><th>Try</th></tr>
+    <tr><td>macOS refuses to open the app</td><td>See <a href="#install">Installing</a>: <strong>Open Anyway</strong> in System Settings → Privacy &amp; Security.</td></tr>
+    <tr><td>No sound</td><td>Check <strong>File → Audio/Midi Setup</strong> for the right output. Check that the window is not muted, that no other window is soloed, and that Main Level is up.</td></tr>
+    <tr><td>Nothing records</td><td>Check <strong>Source</strong>, and that macOS allows SoundEffects to use the microphone (System Settings → Privacy &amp; Security → Microphone).</td></tr>
+    <tr><td>My MIDI keyboard does nothing</td><td>Tick it in <strong>Audio/Midi Setup</strong>, then select a window. The Keyboard plays the selected window.</td></tr>
+    <tr><td>The DAW does not list the plug-in</td><td>Check the folders in <a href="#plugins">Using it in a DAW</a>, remove duplicates, rescan, and clear the quarantine flag.</td></tr>
+    <tr><td>I lost my canvas</td><td>The canvas is saved only on <kbd>⌘</kbd><kbd>S</kbd> and when you quit. After a crash, open your last saved canvas.</td></tr>
+  </table>
+  <p>Found a bug? Report it on the <a href="https://github.com/gthoreau/SoundEffects/issues">issues page</a>.</p>
+</div></section>
+
+<footer>
+  <p>SoundEffects was written by <strong>Alberto Ricci</strong> (Torino, 1993–95) and released as $15 shareware. This project is an independent reconstruction, built for the love of it. The About box of the original credits "pizza by: Mommy" and "manual by: No manual, folks!" This is that manual, thirty years late.</p>
+  <p><a href="https://github.com/gthoreau/SoundEffects">Source on GitHub</a></p>
+</footer>
+</main>
+</div>
+</body>
+</html>
