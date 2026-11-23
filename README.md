@@ -17,6 +17,8 @@ unsynchronised loopers you arrange spatially.
 
 ![The SoundEffects canvas, mixer and effects panel](docs/screenshot.png)
 
+**New here? Read the [user manual](docs/manual/index.html)** ([online](https://gthoreau.github.io/SoundEffects/manual/) once GitHub Pages is on).
+
 ---
 
 ## Download
