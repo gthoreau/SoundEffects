@@ -5,6 +5,8 @@ shareware destructive sound editor, as a native macOS app, reverse-engineered
 from the original's resource fork, its Developer's Kit sources, and a
 disassembly of its 68k code.
 
+**Read the [user manual](docs/manual/index.html)** ([online](https://gthoreau.github.io/SoundEffects/manual/)).
+
 It is not a clone of the original, but I wanted to recreate the inimitable personality
 and the wonderfully creative flaws of the original, never finished, SoundEffects.
 In SoundEffects every edit is destructive, there is no undo, channels are independent buffers of unequal
@@ -17,7 +19,6 @@ unsynchronised loopers you arrange spatially.
 
 ![The SoundEffects canvas, mixer and effects panel](docs/screenshot.png)
 
-**New here? Read the [user manual](docs/manual/index.html)** ([online](https://gthoreau.github.io/SoundEffects/manual/)).
 
 ---
 
