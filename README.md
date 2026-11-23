@@ -17,7 +17,7 @@ unsynchronised loopers you arrange spatially.
 
 ![The SoundEffects canvas, mixer and effects panel](docs/screenshot.png)
 
-**New here? Read the [user manual](docs/manual/index.html)** ([online](https://gthoreau.github.io/SoundEffects/manual/) once GitHub Pages is on).
+**New here? Read the [user manual](docs/manual/index.html)** ([online](https://gthoreau.github.io/SoundEffects/manual/)).
 
 ---
 
@@ -26,9 +26,9 @@ unsynchronised loopers you arrange spatially.
 **SoundEffects 0.5.0** — the app plus the **VST3** and **Audio Unit** plug-ins,
 universal (Apple Silicon + Intel), macOS 11 Big Sur or later.
 
-This repository is private, so there's no public download page. **The app is
-handed out directly — ask me and I'll send it.** It arrives one of two ways, and
-they install identically:
+Download it from the
+**[releases page](https://github.com/gthoreau/SoundEffects/releases/latest)**.
+It comes one of two ways, and they install identically:
 
 | | |
 |---|---|
@@ -46,8 +46,8 @@ same extensions. A zipped `.app` isn't on that list, so it goes through. The
 Signal, AirDrop.
 </details>
 
-If you have access to this repository, releases are also attached to
-[github.com/gthoreau/SoundEffects/releases](https://github.com/gthoreau/SoundEffects/releases).
+If the app reaches you some other way (by email, say), the zip is the safe one:
+see the note above.
 
 ### Installing
 
