@@ -13,6 +13,7 @@
 #include "engine/RecordConvert.h"
 #include "engine/Recorder.h"
 #include "engine/Resample.h"
+#include "engine/SoundGroup.h"
 #include "engine/Tape.h"
 #include "engine/SampleFormat.h"
 #include "engine/TransportButtons.h"
@@ -3882,6 +3883,50 @@ static void tapeConcurrencyTests()
     check (d.tape().length() == e.tapeStore().length(), "tape stress: the model and the store agree on the length");
 }
 
+// --- multi-selection (0.6.0 step 7): the model ------------------------------
+
+static void soundGroupTests()
+{
+    using Ids = std::vector<uint64_t>;
+    se::SoundGroup g;
+    check (g.primary() == 0 && g.members().empty() && ! g.isGroup(), "group: nothing selected at first");
+    check (g.targets (0).empty(), "group: no Sound, no targets");
+
+    check (g.click (1) && g.primary() == 1 && ! g.isGroup(), "group: a click selects one Sound");
+    check (! g.click (1), "group: clicking it again changes nothing");
+    check (g.click (2) && g.members() == Ids { 2 }, "group: a click elsewhere moves the selection");
+
+    check (g.shiftClick (3) && g.isGroup() && g.primary() == 3, "group: shift-click adds, the added one is primary");
+    check (g.shiftClick (4) && g.members() == Ids ({ 2, 3, 4 }), "group: as many as you like");
+    check (g.targets (3) == Ids ({ 3, 2, 4 }), "group: a member reaches every member, itself first");
+    check (g.targets (9) == Ids { 9 }, "group: a non-member reaches itself alone");
+
+    check (g.click (2) && g.primary() == 2 && g.members() == Ids ({ 3, 4, 2 }),
+           "group: a plain click on a member makes it primary and keeps the group");
+
+    check (g.shiftClick (4) && g.members() == Ids ({ 3, 2 }) && g.primary() == 2,
+           "group: shift-click on a member removes it, the primary stays");
+    check (g.shiftClick (4) && g.shiftClick (4) && g.primary() == 2,
+           "group: removing the primary hands over to the one clicked before it");
+    check (g.shiftClick (2) && g.members() == Ids { 3 } && ! g.isGroup(), "group: down to one, no group");
+    check (g.targets (3) == Ids { 3 }, "group: one Sound reaches only itself");
+    check (! g.shiftClick (3) && g.primary() == 3, "group: shift-click leaves the only selected Sound selected");
+
+    g.shiftClick (5);
+    check (g.click (7) && g.members() == Ids { 7 }, "group: a plain click outside ends the group");
+    g.shiftClick (8);
+    check (g.click (0) && g.members().empty(), "group: a click on the empty canvas ends it");
+    check (! g.click (0), "group: and again changes nothing");
+    check (g.shiftClick (6) && g.members() == Ids { 6 }, "group: shift-click from nothing selects one");
+    check (! g.shiftClick (0), "group: shift-click on nothing is not a Sound");
+
+    g.shiftClick (7); g.shiftClick (8);
+    check (g.close (7) && g.members() == Ids ({ 6, 8 }), "group: a closed member leaves");
+    check (! g.close (9) && g.members() == Ids ({ 6, 8 }), "group: closing a non-member leaves the group");
+    check (g.close (8) && g.primary() == 6, "group: closing the primary hands over");
+    check (g.close (6) && g.primary() == 0, "group: closing the last leaves nothing selected");
+}
+
 int main()
 {
     se::Engine engine;
@@ -4143,6 +4188,7 @@ int main()
     scrollTargetTests();
     midiNoteTests();
     keyboardVoiceTests();
+    soundGroupTests();
     transportButtonsTests();
     masterLevelTests();
     mainMuteTests();
