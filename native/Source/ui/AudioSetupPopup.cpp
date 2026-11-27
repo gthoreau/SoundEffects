@@ -266,8 +266,13 @@ private:
                 rates.add (r);
                 rateItems.add (juce::String (juce::roundToInt (r)) + " Hz");
             }
+            // The usual sizes only (the author's list); a device offers dozens. The
+            // one in force stays listed whatever it is, so the menu can show it.
+            const int current = open ? device->getCurrentBufferSizeSamples() : setup.bufferSize;
             for (int n : device->getAvailableBufferSizes())
             {
+                const bool usual = n >= 32 && n <= 1024 && juce::isPowerOfTwo (n);
+                if (! usual && n != current) continue;
                 sizes.add (n);
                 sizeItems.add (juce::String (n) + " samples ("
                                + juce::String (now > 0.0 ? n * 1000.0 / now : 0.0, 1) + " ms)");

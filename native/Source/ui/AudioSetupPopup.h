@@ -7,7 +7,7 @@
 //   Output channels:  | [x] Output 1 + 2 ... |      one pair at a time
 //   Input channels:   | [x] Input 1 + 2  ... |      one pair at a time
 //   Sample rate:      [48000 Hz      v]
-//   Buffer Size:      [512 samples (10.7 ms) v]
+//   Buffer Size:      [512 samples (10.7 ms) v]   32 to 1024, powers of two
 //   Midi inputs:      | [x] each device ... |
 //                                                   [ OK ]
 //
