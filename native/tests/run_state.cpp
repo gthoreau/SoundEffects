@@ -659,7 +659,7 @@ int main()
         v4s.windows[0].assetId = 7;
         v4s.nextAssetId = 8;
         auto b4 = se::serializeState (v4s);
-        b4.resize (b4.size() - 4);   // the gain
+        b4.resize (b4.size() - 72 - 4);   // the v6 map, then the gain
         b4[4] = 4;
         se::EngineState p4;
         check (se::parseEngineState (b4.data(), b4.size(), p4) && p4.masterGain == 1.0f
@@ -682,6 +682,53 @@ int main()
             check (se::parseEngineState (jb.data(), jb.size(), jp) && jp.masterGain == 1.0f,
                    "master: an out-of-range gain in the file reads as unity");
         }
+    }
+
+    // --- MIDI mapping (v6): the twelve pads are saved with the canvas ------------
+    {
+        using A = se::MapAction;
+        se::Engine e;
+        e.addWindow (rampDocument ("alpha", 1, 64));
+        check (se::captureEngineState (e).midiMap == std::array<se::MapPad, 12> {}, "midi map: a new canvas is empty");
+        e.midiMap().setPad (0,  { 0, A::play, A::pause });
+        e.midiMap().setPad (5,  { 3, A::stop, A::play });
+        e.midiMap().setPad (11, { 255, A::pause, A::play });
+
+        const auto blob6 = se::serializeEngine (e);
+        se::EngineState back6;
+        check (se::parseEngineState (blob6.data(), blob6.size(), back6) && back6.sourceVersion == 6
+                 && se::serializeState (back6) == blob6, "midi map: the blob round-trips byte for byte");
+        se::Engine again;
+        again.midiMap().setSlot (2, 1);
+        check (se::applyEngineState (again, back6), "midi map: opens");
+        bool same = true;
+        for (int i = 0; i < 12; ++i) same = same && again.midiMap().pad (i) == e.midiMap().pad (i);
+        check (same, "midi map: every pad restored, the canvas's own replaced");
+
+        auto b5 = blob6;
+        b5.resize (b5.size() - 72);
+        b5[4] = 5;
+        se::EngineState p5;
+        check (se::parseEngineState (b5.data(), b5.size(), p5) && se::applyEngineState (again, p5)
+                 && again.midiMap().empty(), "midi map: a v5 file opens with an empty map");
+
+        auto cut = blob6;
+        cut.pop_back();
+        se::EngineState none;
+        check (! se::parseEngineState (cut.data(), cut.size(), none), "midi map: a truncated map is refused");
+
+        auto junk = blob6;
+        junk[junk.size() - 1] = 77;   // pad B0's end action
+        junk[junk.size() - 2] = 99;   // and its start
+        se::EngineState pj;
+        check (se::parseEngineState (junk.data(), junk.size(), pj) && pj.midiMap[11].start == A::play
+                 && pj.midiMap[11].end == A::stop, "midi map: unknown actions read as the defaults");
+
+        se::Engine importer;
+        importer.midiMap().setSlot (4, 0);
+        se::importEngineState (importer, back6);
+        check (importer.midiMap().pad (4).slot == 0 && importer.midiMap().pad (5).slot == se::MapPad::kNoSlot,
+               "midi map: Import Sound leaves the map alone");
     }
 
     // --- New Sound defaults (10.4) --------------------------------------------------

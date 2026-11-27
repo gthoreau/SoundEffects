@@ -252,6 +252,12 @@ std::vector<uint8_t> serializeState (const EngineState& state)
 
     putU32 (out, state.nextAssetId);
     putF32 (out, state.masterGain);
+    for (const auto& pad : state.midiMap)
+    {
+        putI32 (out, pad.slot);
+        putU8 (out, static_cast<uint8_t> (pad.start));
+        putU8 (out, static_cast<uint8_t> (pad.end));
+    }
     return out;
 }
 
@@ -379,6 +385,23 @@ bool parseEngineState (const void* data, size_t sizeBytes, EngineState& out)
         parsed.masterGain = (std::isfinite (g) && g >= 0.0f && g <= Engine::kMaxMasterGain) ? g : 1.0f;
     }
 
+    if (version >= 6)
+    {
+        MidiMap map;
+        for (int i = 0; i < MidiMap::kPads; ++i)
+        {
+            MapPad pad;
+            pad.slot = r.i32();
+            const uint8_t start = r.u8(), end = r.u8();
+            // A slot or an action we could not have written reads as none / the default.
+            if (pad.slot >= static_cast<int> (Engine::kMaxWindows)) pad.slot = MapPad::kNoSlot;
+            if (start <= static_cast<uint8_t> (MapAction::pause)) pad.start = static_cast<MapAction> (start);
+            if (end <= static_cast<uint8_t> (MapAction::pause))   pad.end = static_cast<MapAction> (end);
+            map.setPad (i, pad);   // makes the pair legal
+            parsed.midiMap[static_cast<size_t> (i)] = map.pad (i);
+        }
+    }
+
     if (! r.ok) return false;
 
     out = std::move (parsed);
@@ -432,6 +455,8 @@ EngineState captureEngineState (Engine& engine)
     state.windows.reserve (engine.numWindows());
     state.nextAssetId = engine.nextAssetId();
     state.masterGain = engine.masterGain();
+    for (int i = 0; i < MidiMap::kPads; ++i)
+        state.midiMap[static_cast<size_t> (i)] = engine.midiMap().pad (i);
 
     for (uint64_t id : engine.windowIds())
     {
@@ -523,6 +548,8 @@ bool applyEngineState (Engine& engine, const EngineState& state)
     // repeated id (a hand-edited file) gets a fresh one rather than share files.
     engine.setNextAssetId (state.nextAssetId);
     engine.setMasterGain (state.masterGain);
+    for (int i = 0; i < MidiMap::kPads; ++i)
+        engine.midiMap().setPad (i, state.midiMap[static_cast<size_t> (i)]);
     engine.setMasterMuted (false);   // never saved: a canvas opens unmuted
     engine.setTapeSoloed (false);    // nor this: a canvas opens with its Sounds' solos only
     std::set<uint32_t> seen;

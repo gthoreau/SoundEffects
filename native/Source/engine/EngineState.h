@@ -36,6 +36,7 @@
 #include "SoundDocument.h"
 #include "Track.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -98,6 +99,9 @@ struct EngineState
         what an older file gets). */
     float masterGain = 1.0f;
 
+    /** Since v6: the MIDI mapping, pads C0..B0 (all empty is what an older file gets). */
+    std::array<MapPad, MidiMap::kPads> midiMap {};
+
     /** Set by parseEngineState: the version the blob was written as (0 if built in memory). */
     uint32_t sourceVersion = 0;
 };
@@ -108,8 +112,10 @@ struct EngineState
     Window's playback direction.
     v4 (0.5.0) appends each Window's asset id and, after the Windows, the canvas's
     asset-id counter.
-    v5 (0.5.0) appends the Main Level (master gain) after that counter. */
-constexpr uint32_t kEngineStateVersion = 5;
+    v5 (0.5.0) appends the Main Level (master gain) after that counter.
+    v6 (0.6.0) appends the MIDI mapping's twelve pads after that: slot (i32, -1
+    none), start and end action (a byte each). */
+constexpr uint32_t kEngineStateVersion = 6;
 
 /** Asset ids above this are not ids we handed out: a reader treats them as none. */
 constexpr uint32_t kMaxAssetId = 99999999;
