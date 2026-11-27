@@ -9,7 +9,7 @@ namespace se {
 static double floatDivisor (int bps) noexcept
 {
     const int bits = std::min (frameSizeFor (bps), 4) * 8;
-    return std::pow (2.0, bits - 1);
+    return static_cast<double> (uint64_t (1) << (bits - 1));   // per track per frame
 }
 
 static float clampFloat (double v) noexcept
@@ -114,13 +114,62 @@ double phaseToRead (PlayDirection dir, size_t span, size_t frameInSpan, bool up,
     return (static_cast<double> (u) + 0.25) * static_cast<double> (fs) - pos;
 }
 
+double trackSampleAt (const SoundDocument& doc, int track, const TrackRead& r, double pos,
+                      const PlayContext& ctx, const MixOptions& opts) noexcept
+{
+    const Track& t = doc.tracks[static_cast<size_t> (track)];
+    const size_t fs = static_cast<size_t> (doc.frameSize());
+    const size_t len = t.data.size() / fs;
+    const double divisor = floatDivisor (doc.bps);
+    const auto at = [&] (size_t frame)
+    {
+        return frame < len ? getSample (t.data.data(), frame * fs, doc.bps) / divisor : 0.0;
+    };
+
+    double v = at (r.frame);
+    if (opts.ramp <= 0 || opts.srcStep <= 0.0) return v;
+
+    const size_t slot = static_cast<size_t> (std::min (track, kPhaseTracks - 1));
+    const double u = (pos + ctx.phase[slot]) / static_cast<double> (fs);
+    const double frac = u - std::floor (u);                       // how far into the frame
+    const double edge = opts.ramp * opts.srcStep;                  // the ramp, in sound frames
+
+    // The data ends inside the span.
+    if (r.frame < len && len < r.lo + r.span)
+    {
+        const double left = static_cast<double> (len - r.frame) - (r.up ? frac : 1.0 - frac);
+        v *= std::clamp ((left - opts.srcStep) / edge, 0.0, 1.0);
+    }
+
+    if (r.wrap && ctx.dir != PlayDirection::pingPong && r.span > 1)
+    {
+        // Sound frames to go before the wrap; a short loop gives the ramp half a lap.
+        const size_t i = r.frame - r.lo;
+        const double togo = static_cast<double> (r.up ? r.span - i : i + 1) - frac;
+        const double x = std::min (edge, 0.5 * static_cast<double> (r.span));
+        const double w = std::clamp ((x + opts.srcStep - togo) / x, 0.0, 1.0);
+        if (w > 0.0)
+        {
+            const size_t head = r.up ? r.lo : r.lo + r.span - 1;
+            const size_t next = r.up ? head + 1 : head - 1;
+            const size_t last = r.up ? r.lo + r.span - 1 : r.lo;
+            const double target = std::clamp (2.0 * at (head) - at (next), -1.0, 1.0);
+            v += w * (target - at (last));
+        }
+    }
+
+    // Late from a caret: silent until its next lap, which it fades into.
+    if (ctx.silentUntil[slot] > 0.0)
+    {
+        const double since = (pos - ctx.silentUntil[slot]) / static_cast<double> (fs);
+        v *= std::clamp (since / edge, 0.0, 1.0);
+    }
+    return v;
+}
+
 StereoFrame mixFrameAt (const SoundDocument& doc, double pos,
                         const PlayContext& ctx, const MixOptions& opts) noexcept
 {
-    const int    frameSize = doc.frameSize();
-    const size_t fs        = static_cast<size_t> (frameSize);
-    const double divisor   = floatDivisor (doc.bps);
-
     double left = 0.0, right = 0.0;
 
     for (int t = 0; t < doc.numTracks(); ++t)
@@ -129,15 +178,13 @@ StereoFrame mixFrameAt (const SoundDocument& doc, double pos,
 
         const Track& track = doc.tracks[static_cast<size_t> (t)];
         const TrackRead tr = trackRead (doc, t, pos, ctx);
-        if (! tr.present) continue;
-
-        const size_t rp = tr.frame * fs;
-        if (rp + fs > track.data.size()) continue;
+        // An absent track still sounds where a wrap is bringing it back.
+        if (! tr.inSpan || (! tr.present && opts.ramp <= 0)) continue;
 
         const double vol = track.volume / static_cast<double> (0x0100);   // 8.8 fixed
         if (vol <= 0.0) continue;
 
-        const double s = (getSample (track.data.data(), rp, doc.bps) / divisor) * vol;
+        const double s = trackSampleAt (doc, t, tr, pos, ctx, opts) * vol;
         if (track.outLeft)  left  += s;
         if (track.outRight) right += s;
     }

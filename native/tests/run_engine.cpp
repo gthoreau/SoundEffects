@@ -237,32 +237,33 @@ void directionTests()
     // on from where it was, and what is left of the step is crossfaded.
     const auto maxStep = [] (const std::vector<float>& a, const std::vector<float>& b)
     {
-        // Over the start of the crossfade; the loop's own wrap is not what is asked about.
+        // Over the 2 ms the crossfade lasts; the loop's own wrap is not what is asked about.
         float worst = 0.0f, prev = a.empty() ? 0.0f : a.back();
         for (size_t i = 0; i < b.size() && i < 30; ++i) { worst = std::max (worst, std::fabs (b[i] - prev)); prev = b[i]; }
         return worst * 128.0f;   // in sample units
     };
     {
         auto doc = rampDocument ({ 100, 60 });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
-        const auto before = renderTransport (tr, *doc, 337);           // past the fade-in; next reads 37 and 37
+        const auto before = renderTransport (tr, *doc, 37);            // pos 37: next reads 37 and 37
         size_t p0 = 0, p1 = 0;
         tr.setDirection (PlayDirection::backward, *doc);
         check (tr.uiTrackPosition (0, p0) && tr.uiTrackPosition (1, p1) && p0 == 37 && p1 == 37,
                "switch: forward -> backward, every track stays on the frame it was on");
-        const auto after = renderTransport (tr, *doc, 240);
+        const auto after = renderTransport (tr, *doc, 120);
         check (maxStep (before.rawL, after.rawL) < 2.5f, "switch: no step in the signal (micro-crossfade)");
-        // Once the crossfade is over, it is plainly walking down from 37 (wrapping).
-        const int skip = 120;
-        const auto want = walk (0, 100, 37, -1, false, 240);
+        // Once the 2 ms crossfade is over, it is plainly walking down from 37 (wrapping).
+        const int skip = 60;
+        const auto want = walk (0, 100, 37, -1, false, 120);
         check (std::vector<int> (after.left.begin() + skip, after.left.end()) == std::vector<int> (want.begin() + skip, want.end()),
                "switch: backward carries on from 37 downward");
 
         tr.setDirection (PlayDirection::pingPong, *doc);   // heading down: keeps heading down, bounces at 0
-        // Track 0 reads 37 - 240 mod 100 = 97 next.
+        const size_t pos1 = 37 + 120;                     // track 0: 37 - 120 mod 100 -> index 17 after the wrap
+        (void) pos1;
         const auto a2 = renderTransport (tr, *doc, 160);
-        const auto w2 = walk (0, 100, 97, -1, true, 160);   // heading down from 97, bounce at 0, then up
+        const auto w2 = walk (0, 100, 17, -1, true, 160);   // heading down from 17, bounce at 0, then up
         check (std::vector<int> (a2.left.begin() + skip, a2.left.end()) == std::vector<int> (w2.begin() + skip, w2.end()),
                "switch: backward -> ping-pong keeps heading the same way, then bounces");
 

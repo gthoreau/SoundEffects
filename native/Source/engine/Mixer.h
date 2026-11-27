@@ -17,6 +17,12 @@ namespace se {
 struct MixOptions
 {
     uint64_t excludeMask = 0;    // tracks (bit t = track t, 0-based) that do not sound: the ones being recorded into
+
+    // Declicking (0.6.0): where a track's own audio would cut. `ramp` is the length
+    // in output frames (0 = off), `srcStep` the sound frames read per output frame,
+    // so an edge takes the same time to cross at any pitch.
+    int    ramp = 0;
+    double srcStep = 1.0;
 };
 
 /** Which way a Window reads its tracks. Per Window, not per track: every track
@@ -89,6 +95,21 @@ double phaseToRead (PlayDirection dir, size_t span, size_t frameInSpan, bool up,
                     double pos, size_t frameSize, int64_t* uFrames = nullptr) noexcept;
 
 struct StereoFrame { float left = 0.0f; float right = 0.0f; };
+
+/**
+ * One track's sample (full scale = 1, before its volume) as heard at `pos`: the
+ * frame `r` names, 0 where the track has none, and with `opts.ramp` the three edges
+ * a track can have smoothed over — the audio file is never touched:
+ *  - a loop wrap: the lap's last ramp bends from what it reads to what leads up to
+ *    the next lap's start (that start carried back one frame along its own slope),
+ *    so the lap keeps its length and its attack, and a loop that already joins
+ *    cleanly is left as it is. Ping-pong turns without a step, so it has none.
+ *  - the end of a track's data inside a longer span: it fades out (reading down,
+ *    fades in).
+ *  - a track coming in late from a caret: it fades in.
+ */
+double trackSampleAt (const SoundDocument& doc, int track, const TrackRead& r, double pos,
+                      const PlayContext& ctx, const MixOptions& opts) noexcept;
 
 /**
  * Mix one frame at monotonic transport position `pos` (fractional, the transport's

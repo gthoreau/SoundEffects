@@ -212,12 +212,14 @@ private:
     float level = 0.0f;         // the live voice's gain, rising to 1
     double lastStep = 0.0;      // the step the live voice last rendered with
     uint64_t soundingMask = 0;  // the excludeMask it last rendered with
+    double edgeStep = 0.0;      // MixOptions::srcStep, easing toward the played speed
 
     /** A voice fading out. Plain copies: the audio thread never allocates. */
     struct Tail
     {
         PlayContext ctx;
         double   pos = 0.0, step = 0.0, stopPos = 0.0;
+        double   edgeStep = 1.0;    // the mixer's srcStep it sounded with
         uint64_t mask = 0;
         float    from = 0.0f;       // its gain when it was retired
         int      left = 0, total = 1;

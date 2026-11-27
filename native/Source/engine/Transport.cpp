@@ -102,6 +102,7 @@ void Transport::retire() noexcept
     slot->ctx = ctx;
     slot->pos = pos;
     slot->step = lastStep;
+    slot->edgeStep = edgeStep;
     slot->once = ctx.mode == LoopMode::once;
     slot->stopPos = stopPos;
     slot->mask = soundingMask;
@@ -447,8 +448,15 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
         lastStep = s;
     }
 
+    const size_t fs = static_cast<size_t> (std::max (1, doc.frameSize()));
+    // The mixer's edges are timed by the speed being played; a change of speed
+    // reaches them gradually, so a ramp in progress does not jump.
+    const double srcStep = s / static_cast<double> (fs);
+    if (! wasPlaying || level <= 0.0f || edgeStep <= 0.0) edgeStep = srcStep;
+
     MixOptions mix;
     mix.excludeMask = excludeMask;
+    mix.ramp = ramp;
 
     bool ranOut = false;
     int written = 0;
@@ -468,6 +476,9 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
         StereoFrame f;
         if (playing)
         {
+            const double most = std::max (srcStep, edgeStep) * rise;
+            edgeStep += std::clamp (srcStep - edgeStep, -most, most);
+            mix.srcStep = edgeStep;
             const StereoFrame now = mixFrameAt (doc, pos, ctx, mix);
             const float g = level * (once ? endGain (pos, stopPos, s, ramp) : 1.0f);
             f.left  = now.left  * g;
@@ -481,6 +492,8 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
             if (t.once && t.pos >= t.stopPos) { t.left = 0; continue; }
             MixOptions was;
             was.excludeMask = t.mask;
+            was.ramp = ramp;
+            was.srcStep = t.edgeStep;
             const StereoFrame o = mixFrameAt (doc, t.pos, t.ctx, was);
             const float g = t.from * static_cast<float> (t.left) / static_cast<float> (t.total)
                           * (t.once ? endGain (t.pos, t.stopPos, t.step, ramp) : 1.0f);

@@ -342,20 +342,20 @@ const Scenario kScenarios[] = {
     { "play again while playing",     restartWhilePlaying, 0.0000f, 0.0131f },
     { "play once runs out",           onceRunsOut,         0.0021f, 0.0131f },
     { "close a playing Sound",        closeSound,          0.0021f, 0.0099f },
-    { "loop wrap, whole sound",       wrapWhole,           0.0000f, 1.0000f },
-    { "loop wrap, backward",          wrapBackward,        0.0000f, 1.0000f },
-    { "loop wrap, FF",                wrapFast,            0.0000f, 0.9999f },
-    { "loop wrap, two own lengths",   wrapOwnLengths,      0.0000f, 1.0000f },
-    { "loop wrap, selection",         wrapSelection,       0.0000f, 1.0000f },
-    { "loop wrap, Set Loop region",   wrapRegion,          0.0000f, 1.0000f },
-    { "loop wrap, short track",       wrapShortTrack,      0.5000f, 1.0000f },
-    { "caret loop, late track",       caretLateTrack,      0.5000f, 1.0000f },
+    { "loop wrap, whole sound",       wrapWhole,           0.0000f, 0.0131f },
+    { "loop wrap, backward",          wrapBackward,        0.0000f, 0.0173f },
+    { "loop wrap, FF",                wrapFast,            0.0000f, 0.0304f },
+    { "loop wrap, two own lengths",   wrapOwnLengths,      0.0000f, 0.0131f },
+    { "loop wrap, selection",         wrapSelection,       0.0000f, 0.0131f },
+    { "loop wrap, Set Loop region",   wrapRegion,          0.0000f, 0.0131f },
+    { "loop wrap, short track",       wrapShortTrack,      0.0021f, 0.0131f },
+    { "caret loop, late track",       caretLateTrack,      0.0021f, 0.0131f },
     { "keyboard strike",              keyStrike,           0.0021f, 0.0131f },
     { "keyboard release",             keyRelease,          0.0021f, 0.0099f },
     { "keyboard retrigger",           keyRetrigger,        0.0021f, 0.0099f },
     { "MIDI retrigger",               midiRetrigger,       0.0021f, 0.0099f },
     { "MIDI glide",                   midiGlide,           0.0000f, 0.0262f },
-    { "MPE slide over wraps",         mpeSlide,            0.0000f, 1.0000f },
+    { "MPE slide over wraps",         mpeSlide,            0.0000f, 0.0345f },
     { "mute on",                      muteOn,              0.5000f, 0.9999f },
     { "mute off",                     muteOff,             0.5000f, 1.0000f },
     { "solo elsewhere on",            soloOn,              0.5000f, 0.9999f },
@@ -470,12 +470,85 @@ void fadeShapes()
     }
 }
 
+// ---- what a loop wrap changes ----------------------------------------------------
+
+/** The left output of `frames` frames of a Transport looping `d`. */
+std::vector<float> loopOutput (const se::SoundDocument& d, int frames, double declickMs, double rate = 1.0,
+                               se::PlayDirection dir = se::PlayDirection::forward)
+{
+    se::Transport t (kRate, declickMs);
+    t.setDirection (dir, d);
+    se::PlayOptions o = looping();
+    o.rateScale = rate;
+    t.play (d, o);
+    std::vector<float> l ((size_t) frames), r ((size_t) frames);
+    t.render (d, l.data(), r.data(), frames);
+    return l;
+}
+
+float largestDifference (const std::vector<float>& a, const std::vector<float>& b, size_t from, size_t to)
+{
+    float worst = 0.0f;
+    for (size_t i = from; i < to; ++i) worst = std::max (worst, std::fabs (a[i] - b[i]));
+    return worst;
+}
+
+float largestStep (const std::vector<float>& a, size_t from)
+{
+    float worst = 0.0f;
+    for (size_t i = from; i < a.size(); ++i) worst = std::max (worst, std::fabs (a[i] - a[i - 1]));
+    return worst;
+}
+
+void wrapShapes()
+{
+    const size_t lap = kOffZero;
+    const auto off = document (Signal::sine, { lap });
+    const auto bare = loopOutput (*off, (int) (4 * lap), 0.0);
+    const auto smooth = loopOutput (*off, (int) (4 * lap), se::kDeclickMs);
+    bool attack = true;
+    for (size_t k = 1; k < 4; ++k)
+        attack = attack && largestDifference (bare, smooth, k * lap, (k + 1) * lap - kRamp5ms - 1) == 0.0f;
+    expect (attack, "a wrap changes the lap's last 5 ms only: same length, same attack");
+    expect (largestDifference (bare, smooth, lap - kRamp5ms - 1, lap) > 0.5f, "...which bend to meet the next lap");
+
+    const auto clean = document (Signal::sine, { 4 * kPeriod });
+    for (auto dir : { se::PlayDirection::forward, se::PlayDirection::backward })
+    {
+        const float d = largestDifference (loopOutput (*clean, 8000, 0.0, 1.0, dir),
+                                           loopOutput (*clean, 8000, se::kDeclickMs, 1.0, dir), kRamp5ms, 8000);
+        expect (d < 0.001f, dir == se::PlayDirection::forward ? "a loop that joins cleanly is left as it is"
+                                                              : "...backward too");
+    }
+    // A loop shorter than twice the ramp is ramped over half of itself.
+    auto tiny = document (Signal::sine, { 48000 });
+    tiny->loopSt = 0; tiny->loopEnd = kPeriod / 4 * 2;      // 120 frames: 0 up to the peak
+    const auto t = loopOutput (*tiny, 4000, se::kDeclickMs);
+    expect (largestStep (t, kRamp5ms) < 0.05f && *std::max_element (t.begin() + kRamp5ms, t.end()) > 0.3f,
+            "a 2.5 ms loop: no click, and still heard");
+
+    expect (largestDifference (loopOutput (*off, 8000, 0.0, 1.0, se::PlayDirection::pingPong),
+                               loopOutput (*off, 8000, se::kDeclickMs, 1.0, se::PlayDirection::pingPong), kRamp5ms, 8000) == 0.0f,
+            "ping-pong turns without a step: untouched");
+
+    for (double rate : { 1.0 / 32.0, 0.25, 0.7071, 3.0 })
+    {
+        const auto out = loopOutput (*off, (int) (3.0 * (double) lap / rate), se::kDeclickMs, rate);
+        // The sound's own step at that speed (held samples below 1x), plus the ramp's.
+        const float most = (float) (0.0132 * std::max (1.0, rate) + 0.01);
+        const float got = largestStep (out, kRamp5ms);
+        std::printf ("     declick: wrap at %.4fx, worst jump %.4f (allowed %.4f)\n", rate, got, most);
+        expect (got < most, "a wrap is as smooth at any pitch");
+    }
+}
+
 } // namespace
 
 int declickTests()
 {
     std::printf ("declick: largest sample-to-sample jump (full scale = 1)\n");
     fadeShapes();
+    wrapShapes();
     int failures = 0;
     for (const auto& sc : kScenarios)
         for (Signal s : { Signal::dc, Signal::sine })
