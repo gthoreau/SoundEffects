@@ -744,56 +744,57 @@ bool SoundEffectsAudioProcessorEditor::recordSetupFor (uint64_t window, se::Reco
     return true;
 }
 
-void SoundEffectsAudioProcessorEditor::openSourcePopup (uint64_t window, bool reshown)
+void SoundEffectsAudioProcessorEditor::openSourcePopup (uint64_t window,
+                                                       std::optional<audiosource::SourceChoice> pending)
 {
     auto* wc = canvas.windowComponentFor (window);
     if (wc == nullptr) return;
 
     audiosource::Context ctx;
     ctx.engine = &processorRef.engine();
+    ctx.owner = this;
     ctx.window = window;
     ctx.numInputChannels = numInputChannels();
     ctx.dawAvailable = isPluginHost();
     if (onShowAudioSettings) ctx.openAudioSettings = [this] { onShowAudioSettings(); };
 
-    // Clean conversion starts checked at every opening; Cancel leaves the Sound's mode
-    // as it was. A popup shown again for another kind keeps what was ticked.
-    auto shown = choiceFor (window);
-    if (! reshown) shown.clean = true;
+    // Clean conversion starts checked at every opening; Cancel leaves the Sound's
+    // choice as it was. A popup shown again for another kind keeps what was picked.
+    auto shown = pending.value_or (choiceFor (window));
+    if (! pending) shown.clean = true;
 
     auto built = audiosource::build (ctx, shown,
         [this, window] (const audiosource::SourceChoice& c) { choiceFor (window) = c; },
         [this, window] (const audiosource::SourceChoice& c)
         {
-            // The kind changed: keep what was picked and show the popup in its new shape.
-            choiceFor (window) = c;
-            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this), window]
+            // The kind changed: the popup is shown again in its new shape.
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this), window, c]
             {
-                if (safe != nullptr) safe->openSourcePopup (window, true);
+                if (safe != nullptr) safe->openSourcePopup (window, c);
             });
         });
     auto* popup = built.popup.release();
     popup->showOver (*wc, { (wc->getWidth() - popup->getWidth()) / 2, (wc->getHeight() - popup->getHeight()) / 2 });
 }
 
-void SoundEffectsAudioProcessorEditor::openTapeSourcePopup()
+void SoundEffectsAudioProcessorEditor::openTapeSourcePopup (std::optional<audiosource::SourceChoice> pending)
 {
     audiosource::Context ctx;
     ctx.engine = &processorRef.engine();
+    ctx.owner = this;
     ctx.window = 0;   // every Sound is a source for the tape
     ctx.offersClean = false;
     ctx.numInputChannels = numInputChannels();
     ctx.dawAvailable = isPluginHost();
     if (onShowAudioSettings) ctx.openAudioSettings = [this] { onShowAudioSettings(); };
 
-    auto built = audiosource::build (ctx, tapeChoice,
+    auto built = audiosource::build (ctx, pending.value_or (tapeChoice),
         [this] (const audiosource::SourceChoice& c) { tapeChoice = c; applyTapeSource(); },
         [this] (const audiosource::SourceChoice& c)
         {
-            tapeChoice = c;
-            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this)]
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this), c]
             {
-                if (safe != nullptr) safe->openTapeSourcePopup();
+                if (safe != nullptr) safe->openTapeSourcePopup (c);
             });
         });
     auto* popup = built.popup.release();

@@ -30,7 +30,7 @@ void Engine::prepare (double rate, int maxBlockSize)
     deviceRate = rate;
     scratchL.assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
     scratchR.assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
-    for (auto* v : { &capL, &capR, &tapL, &tapR, &exL, &exR, &tcapL, &tcapR, &ttapL, &ttapR, &tplayL, &tplayR })
+    for (auto* v : { &capL, &capR, &tapL, &tapR, &exL, &exR, &pexL, &pexR, &tcapL, &tcapR, &ttapL, &ttapR, &tplayL, &tplayR })
         v->assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
     // Room for any fade-out the tape is asked for (kDeclickMs, with room to tune it).
     for (auto* v : { &tfadeL, &tfadeR, &tsnapL, &tsnapR })
@@ -321,6 +321,17 @@ bool Engine::stopCapture()
     return post (c);
 }
 
+bool Engine::probeStart (const CaptureSetup& source)
+{
+    Command c; c.kind = Command::Kind::ProbeStart; c.capture = source;
+    return post (c);
+}
+bool Engine::probeStop()
+{
+    Command c; c.kind = Command::Kind::ProbeStop;
+    return post (c);
+}
+
 bool Engine::tapeCaptureStart (const TapeSource& source)
 {
     Command c; c.kind = Command::Kind::TapeCaptureStart; c.tape = source;
@@ -568,6 +579,19 @@ void Engine::drainCommands() noexcept
                 capRunning.store (false, std::memory_order_release);
                 break;
 
+            case Command::Kind::ProbeStart:
+                probe = c.capture;
+                probeActive = true;
+                probeMeterL.store (0.0f, std::memory_order_relaxed);
+                probeMeterR.store (0.0f, std::memory_order_relaxed);
+                break;
+
+            case Command::Kind::ProbeStop:
+                probeActive = false;
+                probeMeterL.store (0.0f, std::memory_order_relaxed);
+                probeMeterR.store (0.0f, std::memory_order_relaxed);
+                break;
+
             case Command::Kind::TapeCaptureStart:
                 tapeCap = c.tape;
                 tapeCapActive = true;
@@ -632,6 +656,13 @@ void Engine::render (float* left, float* right, int frames,
     if (tapeTapping)
         for (auto* v : { &ttapL, &ttapR })
             std::fill (v->begin(), v->begin() + cap_, 0.0f);
+
+    const bool probing = probeActive && pexL.size() >= scratchL.size();
+    const bool probingCanvas = probing && probe.kind == AudioSourceKind::canvas;
+    if (probingCanvas)
+        for (auto* v : { &pexL, &pexR })
+            std::fill (v->begin(), v->begin() + cap_, 0.0f);
+    float probePeakL = 0.0f, probePeakR = 0.0f;
 
     // VU fall-off, ~-60 dB over 300 ms, applied once per block. Doing the decay
     // here rather than in the UI keeps the meters honest at any repaint rate: a
@@ -713,6 +744,21 @@ void Engine::render (float* left, float* right, int frames,
                     }
             }
 
+            // The source meter: one Sound's own tap, or the share of the one the
+            // main mix leaves out.
+            if (probingCanvas && probe.tapWindow != 0 && w->id == probe.tapWindow)
+                for (int i = 0; i < written; ++i)
+                {
+                    probePeakL = std::max (probePeakL, std::abs (scratchL[static_cast<size_t> (i)] * w->faderLeft.at (i)));
+                    probePeakR = std::max (probePeakR, std::abs (scratchR[static_cast<size_t> (i)] * w->faderRight.at (i)));
+                }
+            if (probingCanvas && w->id == probe.excludeWindow)
+                for (int i = 0; i < written; ++i)
+                {
+                    pexL[static_cast<size_t> (i)] = scratchL[static_cast<size_t> (i)] * w->faderLeft.at (i) * w->gate.at (i);
+                    pexR[static_cast<size_t> (i)] = scratchR[static_cast<size_t> (i)] * w->faderRight.at (i) * w->gate.at (i);
+                }
+
             // The Magnetophon's own tap on one Sound: post-fader, post-balance, deaf
             // to mute and solo, like the Recorder's.
             if (tapeTapping && w->id == tapeCap.tapWindow)
@@ -762,6 +808,38 @@ void Engine::render (float* left, float* right, int frames,
                 exR[static_cast<size_t> (i)] *= m;
             }
         }
+    }
+
+    // The source meter reads here, where the captures do: after Main Level, before
+    // anything is added to the output.
+    if (probing)
+    {
+        if (probingCanvas && probe.tapWindow == 0)
+        {
+            for (int i = 0; i < cap_; ++i)
+            {
+                const size_t k = static_cast<size_t> (i);
+                const float m = masterRamp.at (i);
+                probePeakL = std::max (probePeakL, std::abs (left[i]  - pexL[k] * m));
+                probePeakR = std::max (probePeakR, std::abs (right[i] - pexR[k] * m));
+            }
+        }
+        else if (! probingCanvas)
+        {
+            const int ch = probe.kind == AudioSourceKind::daw ? 0 : std::max (0, probe.firstChannel);
+            const float* a = (inputs != nullptr && ch < numInputs) ? inputs[ch] : nullptr;
+            const float* b = (probe.stereo && inputs != nullptr && ch + 1 < numInputs) ? inputs[ch + 1] : a;
+            for (int i = 0; i < cap_; ++i)
+            {
+                probePeakL = std::max (probePeakL, std::abs (a != nullptr ? a[i] : 0.0f));
+                probePeakR = std::max (probePeakR, std::abs (b != nullptr ? b[i] : 0.0f));
+            }
+        }
+        const float gain = probeGainValue.load (std::memory_order_relaxed);
+        probeMeterL.store (std::max (std::min (probePeakL * gain, 1.0f),
+                                     probeMeterL.load (std::memory_order_relaxed) * meterDecay), std::memory_order_relaxed);
+        probeMeterR.store (std::max (std::min (probePeakR * gain, 1.0f),
+                                     probeMeterR.load (std::memory_order_relaxed) * meterDecay), std::memory_order_relaxed);
     }
 
     if (capturing)

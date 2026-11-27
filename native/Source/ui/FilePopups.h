@@ -23,9 +23,9 @@ juce::String summaryOf (const se::WindowState&);
     ("Export…") answers 1; the caller then asks for the file. */
 std::unique_ptr<Os8Popup> exportSound (const se::WindowState& sound);
 
-/** Import Sound: the Sounds found in the file, each with a checkbox. `import` gets the
-    indices ticked (in file order). A file holding a single Sound opens with it ticked;
-    Import stays greyed while nothing is. */
+/** Import Sound (1447:9162): the Sounds found in the file, ticked in a list. `import`
+    gets the indices ticked (in file order). A file holding a single Sound opens with
+    it ticked and no "Select all"; Import stays greyed while nothing is ticked. */
 std::unique_ptr<Os8Popup> importSound (const juce::String& fileName,
                                        const std::vector<se::WindowState>& sounds,
                                        std::function<void (std::vector<size_t>)> doImport);

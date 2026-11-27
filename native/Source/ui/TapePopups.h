@@ -1,18 +1,16 @@
-// TapePopups — the Magnetophon's Send to canvas popup (0.5.0 step 11.3), on the
-// Os8Popup frame. Not in the design (the spec asks for "a pop-up to choose what to
-// send"), so it is built from the popups around it: the radios and checkboxes of
-// Select Audio Source, the list of Import Sound.
+// TapePopups — "Send to Canvas" (1447:9158), on the Os8Popup frame.
 //
-//   Send the tape to the canvas:
-//   (•) The whole tape, as one Sound          01:12.40 s
-//   ( ) Takes, one Sound each:
-//       [x] Take 1                           0:12.40 s
-//       [ ] Take 2                    sent   0:03.10 s
-//   [x] Clean conversion (dithered)      checked at every opening
+//   Send:
+//   ( ) Whole tape (05:10:01 s)
+//   (•) Individual takes
+//   [ ] Select all
+//   | [ ] Take 1                       02:05:64 s |
+//   | [ ] Take 2               sent    01:02:29 s |
+//   [x] Clean conversion               checked at every opening
 //                                  Cancel  [ Send ]
 //
-// Ticking a take picks "Takes"; Send is greyed while Takes has none ticked. The
-// unsent takes start ticked (all of them when every take has been sent).
+// The takes start unticked, and the popup on the whole tape. Ticking a take picks
+// "Individual takes"; Send is greyed while that is picked with none ticked.
 
 #pragma once
 
@@ -35,7 +33,7 @@ struct SendChoice
 std::unique_ptr<Os8Popup> sendToCanvas (const se::Tape& tape,
                                         std::function<void (const SendChoice&)> send);
 
-/** "1:12.40 s" */
+/** "01:12:40 s": minutes, seconds, hundredths. */
 juce::String durationText (size_t frames, double rate);
 
 } // namespace tapepopups

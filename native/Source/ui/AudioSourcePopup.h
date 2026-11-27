@@ -1,19 +1,20 @@
-// AudioSourcePopup — "Select Audio Source" (Figma 543:9503, the three variants
-// Source=Canvas / External / Daw), on the Os8Popup frame.
+// AudioSourcePopup — "Select Audio Source" (1447:9161), on the Os8Popup frame.
 //
-// Rows, as drawn: [ ] Monitor  Gain: [volume slider] [100] %  — then "Select Audio
-// source:" and a dropdown pair (the kind: External / Canvas / DAW, then the choice
-// within it) — External adds an "Audio/Midi Settings" button under the pair — then
-// Cancel / Apply. DAW is offered only where there is a host (the plug-in).
+// Rows, as drawn: [ ] Monitor  [volume slider] [100] %  — then "Select Audio source:"
+// and a dropdown pair (the kind: External / Canvas / DAW, then the choice within
+// it) — External adds an "Audio/Midi Setup" button under the pair (standalone only)
+// — then "Clean conversion" and Cancel / Apply. DAW is offered only where there is a
+// host (the plug-in). The Magnetophon's popup has no Clean conversion: the tape
+// converts nothing until it is sent.
 //
-// Not in the design, added at the author's decision (PLAN.md, "Recording conversion"):
-// a "Clean conversion" checkbox. It sits under the source rows. Every time the popup is
-// opened for a Sound it starts checked (0.6.0: not remembered between openings); the
-// Magnetophon's popup has none, since the tape converts nothing until it is sent.
+// The slider's trough is a live stereo VU of the source as picked, after the slider's
+// own gain, as the Mixer strips show theirs, whether or not anything is recording
+// (Engine::probeStart).
 //
 // The popup edits a COPY of the Window's SourceChoice; Apply hands it back. Changing
 // the kind rebuilds the popup (it has a different shape per kind), which is what
-// `reopen` is for: it receives the choice as it stood.
+// `reopen` is for: it receives the choice as it stood. Clean starts checked every time
+// the popup is opened for a Sound.
 
 #pragma once
 
@@ -56,6 +57,9 @@ struct Context
     int numInputChannels = 0;
     bool dawAvailable = false;           // a plug-in under a host
     bool offersClean = true;             // false for the tape, which converts when sent
+    /** Whose engine `engine` is: the popup's VU leaves the engine alone once this has
+        gone (a plug-in window closed under an open popup). */
+    juce::Component* owner = nullptr;
     std::function<void()> openAudioSettings;   // standalone only; the button is hidden when null
 };
 

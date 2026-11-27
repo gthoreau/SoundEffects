@@ -2968,6 +2968,82 @@ static void leaveSilenceEndTests()
     }
 }
 
+/** The source meter (0.6.0 step 5.4): Select Audio Source's VU, with nothing
+    recording. It reads what a capture would, after its own gain, and changes nothing. */
+static void sourceProbeTests()
+{
+    se::Engine engine;
+    engine.prepare (kRate, kBlock); engine.setDeclickMs (0.0);
+    const uint64_t a = engine.addWindow (dcDocument (20, "a"));
+    const uint64_t b = engine.addWindow (dcDocument (40, "b"));
+    se::PlayOptions loop; loop.loop = true;
+    engine.play (a, loop);
+    engine.play (b, loop);
+    const float both = renderLevel (engine);
+
+    const auto settle = [&engine] { renderBlocks (engine, 200); };
+    const float tol = 1.0e-3f;
+    const auto meters = [&engine, tol] (float l, float r, const char* what)
+    {
+        check (std::abs (engine.probeMeterLeft() - l) < tol && std::abs (engine.probeMeterRight() - r) < tol,
+               std::string ("source meter: ") + what);
+    };
+
+    meters (0.0f, 0.0f, "silent before it is started");
+
+    se::CaptureSetup main;
+    main.kind = se::AudioSourceKind::canvas;
+    engine.probeStart (main);
+    check (std::abs (renderLevel (engine) - both) < 1.0e-6f, "source meter: leaves the output alone");
+    settle();
+    meters (both, both, "the main mix");
+
+    main.excludeWindow = b;
+    engine.probeStart (main);
+    settle();
+    const float la = engine.probeMeterLeft();
+    check (la > 0.0f && la < both * 0.5f, "source meter: the main mix without the Window recorded into");
+    engine.setMasterGain (0.5f);
+    settle();
+    meters (la * 0.5f, la * 0.5f, "the main mix follows Main Level, the excluded share too");
+    engine.setMasterGain (1.0f);
+
+    se::CaptureSetup one;
+    one.kind = se::AudioSourceKind::canvas;
+    one.tapWindow = a;
+    engine.windowById (a)->muted = true;
+    engine.probeStart (one);
+    settle();
+    meters (la, la, "one Sound's own output, muted or not");
+    engine.setProbeGain (2.0f);
+    settle();
+    meters (la * 2.0f, la * 2.0f, "after its gain");
+
+    se::CaptureSetup in;
+    in.kind = se::AudioSourceKind::external;
+    in.firstChannel = 1;
+    in.stereo = true;
+    engine.setProbeGain (1.0f);
+    engine.probeStart (in);
+    std::vector<float> c0 ((size_t) kBlock, 0.9f), c1 ((size_t) kBlock, -0.25f), c2 ((size_t) kBlock, 0.5f);
+    const float* inputs[] = { c0.data(), c1.data(), c2.data() };
+    std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
+    engine.render (l.data(), r.data(), kBlock, inputs, 3);
+    meters (0.25f, 0.5f, "an input pair");
+    in.stereo = false;
+    in.firstChannel = 2;
+    engine.probeStart (in);
+    engine.render (l.data(), r.data(), kBlock, inputs, 3);
+    meters (0.5f, 0.5f, "one input channel on both sides");
+    engine.setProbeGain (4.0f);
+    engine.render (l.data(), r.data(), kBlock, inputs, 3);
+    meters (1.0f, 1.0f, "clipped at full scale");
+
+    engine.probeStop();
+    engine.render (l.data(), r.data(), kBlock, inputs, 3);
+    meters (0.0f, 0.0f, "silent once stopped");
+}
+
 static void scrollTargetTests()
 {
     std::printf ("scroll target\n");
@@ -3823,6 +3899,7 @@ int main()
     }
 
     leaveSilenceEndTests();
+    sourceProbeTests();
     scrollTargetTests();
     midiNoteTests();
     keyboardVoiceTests();

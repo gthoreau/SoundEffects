@@ -40,7 +40,10 @@
 #include "PluginEditor.h"
 #include "ui/AppCommands.h"
 #include "ui/AppMenuBar.h"
+#include "ui/AudioSourcePopup.h"
 #include "ui/EditPopups.h"
+#include "ui/FilePopups.h"
+#include "ui/TapePopups.h"
 #include "ui/MacWindowChrome.h"
 #include "ui/Os8Alert.h"
 #include "ui/Os8Gallery.h"
@@ -909,6 +912,44 @@ private:
                  juce::String::fromUTF8 ("All sounds on the canvas and the Magnetophon\xe2\x80\x99s tape will be "
                                          "thrown away.\nThis cannot be undone."),
                  "New canvas", "newCanvas" }, "alert-new");
+
+        // Select Audio Source, Import Sound and Send to Canvas, with the designs' kind
+        // of content.
+        const auto shootPopup = [&ok, &dir] (Os8Popup& p, const char* name)
+        {
+            ok = writePng (p.createComponentSnapshot (p.getLocalBounds(), true, 1.0f),
+                           dir.getChildFile (juce::String (name) + ".png")) && ok;
+        };
+        {
+            audiosource::Context ctx;
+            ctx.numInputChannels = 2;
+            ctx.openAudioSettings = [] {};
+            auto built = audiosource::build (ctx, {}, {}, {});
+            shootPopup (*built.popup, "popup-select-audio-source");
+        }
+        {
+            std::vector<se::WindowState> sounds (8);
+            const int tracks[] = { 6, 8, 12, 2, 4, 1, 9, 3 };
+            for (int i = 0; i < 8; ++i)
+            {
+                sounds[(size_t) i].name = ("Sound-name-000" + juce::String (i + 1)).toStdString();
+                sounds[(size_t) i].tracks.resize ((size_t) tracks[i]);
+                sounds[(size_t) i].rateHz = 44100.0;
+            }
+            auto p = filepopups::importSound ("[canvas-name].sefx", sounds, {});
+            shootPopup (*p, "popup-import-sound");
+        }
+        {
+            se::Tape tape;
+            for (double seconds : { 125.64, 62.29, 2.0, 32.23, 0.23, 0.23 })
+            {
+                tape.record (44100.0);
+                tape.recorded ((size_t) std::llround (seconds * 44100.0));
+            }
+            tape.stop();
+            auto p = tapepopups::sendToCanvas (tape, {});
+            shootPopup (*p, "popup-send-to-canvas");
+        }
         return ok;
     }
 

@@ -8,9 +8,9 @@ namespace audiosource {
 
 namespace {
 
-constexpr int kRowsHeightBase = 78;        // Figma's 78 (Canvas, DAW)
-constexpr int kCleanRow = 22;
+constexpr int kRowsHeightBase = 78;        // down to under the dropdown pair
 constexpr int kSettingsRow = 28;           // External's extra row
+constexpr int kCleanRow = 20;
 
 float percentToPos (double percent) noexcept
 {
@@ -32,6 +32,82 @@ const char* kindName (se::AudioSourceKind k)
         case se::AudioSourceKind::daw:      return "DAW";
     }
     return "";
+}
+
+/** The gain slider with the source's VU in its trough. It keeps the engine listening
+    to the source for as long as it lives. */
+class SourceSlider : public Os8Slider,
+                     private juce::Timer
+{
+public:
+    explicit SourceSlider (const Context& c)
+        : Os8Slider (os8::SliderKind::volume), engine (c.engine), owner (c.owner) {}
+
+    ~SourceSlider() override
+    {
+        if (auto* e = live()) e->probeStop();
+    }
+
+    void listenTo (const se::CaptureSetup& source, double gainPercent)
+    {
+        if (auto* e = live())
+        {
+            setGain (gainPercent);
+            e->probeStart (source);
+            startTimerHz (30);
+        }
+    }
+
+    void setGain (double percent)
+    {
+        if (auto* e = live()) e->setProbeGain ((float) (percent / 100.0));
+    }
+
+private:
+    se::Engine* live() const noexcept { return owner != nullptr ? engine : nullptr; }
+
+    void timerCallback() override
+    {
+        auto* e = live();
+        if (e == nullptr) { stopTimer(); return; }
+        // A Mixer strip's mapping: the bar ends where the fader would sit at that level.
+        const auto bar = [this] (float amp)
+        {
+            if (amp <= 0.001f) return 0.0f;
+            const float wdt = (float) std::max (1, getWidth());
+            const float half = (float) os8::kThumbWidth * 0.5f;
+            const float pos = MixerStrip::dbToPos (20.0f * std::log10 (amp));
+            return (half + pos * (wdt - 2.0f * half)) / wdt;
+        };
+        setLevels (bar (e->probeMeterLeft()), bar (e->probeMeterRight()));
+    }
+
+    se::Engine* engine;
+    juce::Component::SafePointer<juce::Component> owner;
+};
+
+/** What a capture of `choice` would take: the source the VU listens to. */
+se::CaptureSetup captureOf (const Context& ctx, const SourceChoice& choice)
+{
+    se::CaptureSetup s;
+    s.kind = choice.kind;
+    if (choice.kind == se::AudioSourceKind::canvas)
+    {
+        s.tapWindow = choice.canvasWindow;
+        s.excludeWindow = ctx.window;
+    }
+    else if (choice.kind == se::AudioSourceKind::external)
+    {
+        const auto list = externalSources (ctx.numInputChannels);
+        s.firstChannel = -1;        // no input: silence
+        if (! list.empty())
+        {
+            const auto& src = list[(size_t) std::clamp (choice.externalIndex, 0, (int) list.size() - 1)];
+            s.firstChannel = src.firstChannel;
+            s.stereo = src.stereo;
+        }
+    }
+    return s;
 }
 
 } // namespace
@@ -64,13 +140,14 @@ Built build (const Context& ctx, const SourceChoice& current,
 
     Built b;
     b.popup = std::make_unique<Os8Popup> ("Select Audio Source",
-                                          kRowsHeightBase + (ctx.offersClean ? kCleanRow : 0)
-                                              + (showSettings ? kSettingsRow : 0));
+                                          kRowsHeightBase + (showSettings ? kSettingsRow : 0)
+                                              + (ctx.offersClean ? kCleanRow : 0));
     auto& p = *b.popup;
 
-    // --- Monitor, Gain: [slider] [100] % (a 26 px row) ---
-    auto monitor = std::make_unique<Os8Toggle> ("Monitor", Os8Toggle::Shape::checkbox);
+    // --- Monitor [slider] [100] % ---
+    auto monitor = std::make_unique<Os8Toggle> ("Monitor", Os8Toggle::Shape::checkbox, os8::TextStyle::headline);
     monitor->setWantsKeyboardFocus (false);
+    monitor->setMouseClickGrabsKeyboardFocus (false);
     monitor->setToggleState (choice->monitor, juce::dontSendNotification);
     auto* mon = p.addContent (std::move (monitor), { 0, 7, 0, os8::kToggleSize });
     mon->setSize (mon->preferredWidth(), os8::kToggleSize);
@@ -79,34 +156,38 @@ Built build (const Context& ctx, const SourceChoice& current,
     mon->setEnabled (! canvas);
     if (canvas) mon->setToggleState (false, juce::dontSendNotification);
 
-    p.addLabel ("Gain:", 65.0f, 8.0f, os8::TextStyle::smallLabel);
-
-    auto slider = std::make_unique<Os8Slider> (os8::SliderKind::volume);
+    auto slider = std::make_unique<SourceSlider> (ctx);
     slider->setRange (0.0, 1.0);
     slider->setMarkerValue ((double) percentToPos (100.0));
     slider->setDoubleClickReturnValue (true, (double) percentToPos (100.0));
     slider->setValue ((double) percentToPos (choice->gainPercent), juce::dontSendNotification);
-    auto* sl = p.addContent (std::move (slider), { 96, 4, 90, os8::kSliderHeight });
+    slider->setWantsKeyboardFocus (false);
+    auto* sl = p.addContent (std::move (slider), { 98, 4, 90, os8::kSliderHeight });
 
     auto field = std::make_unique<Os8TextField> (os8::FieldSize::small);
     field->setNumeric (1.0, 0, 0.0, 200.0);
     field->setValue (choice->gainPercent);
-    auto* fl = p.addContent (std::move (field), { 190, 5, 41, 16 });
-    p.addLabel ("%", 235.0f, 8.0f, os8::TextStyle::smallLabel);
+    auto* fl = p.addContent (std::move (field), { 192, 5, 41, 16 });
+    p.addLabel ("%", 237.0f, 8.0f, os8::TextStyle::smallLabel);
 
     sl->onValueChange = [choice, sl, fl]
     {
         choice->gainPercent = std::round (posToPercent (sl->getValue()));
         fl->setValue (choice->gainPercent);
+        sl->setGain (choice->gainPercent);
     };
     fl->onCommit = [choice, sl, fl] (const juce::String&)
     {
         choice->gainPercent = std::clamp (fl->getValue(), 0.0, 200.0);
         sl->setValue ((double) percentToPos (choice->gainPercent), juce::dontSendNotification);
+        sl->setGain (choice->gainPercent);
     };
+    auto* answering = &p;
+    fl->onReturn = [answering] { answering->dismiss (1); };
+    fl->onEscape = [answering] { answering->dismiss (0); };
 
     // --- "Select Audio source:" and the dropdown pair (rows from y 34) ---
-    p.addLabel ("Select Audio source:", 0.0f, 38.0f, os8::TextStyle::smallLabel);
+    p.addLabel ("Select Audio source:", 0.0f, 38.0f);
 
     const auto kinds = offeredKinds (ctx.dawAvailable);
     auto kindMenu = std::make_unique<Os8Dropdown> (Os8Dropdown::Style::standard);
@@ -156,11 +237,12 @@ Built build (const Context& ctx, const SourceChoice& current,
         menu->setItems (names);
         menu->setSelectedIndex (selected);
         menu->setWantsKeyboardFocus (false);
-        auto* m = p.addContent (std::move (menu), { 84, 57, 166, os8::kDropdownHeight });
-        m->onChange = [choice, external, canvasIds] (int i)
+        auto* m = p.addContent (std::move (menu), { 84, 57, 168, os8::kDropdownHeight });
+        m->onChange = [choice, external, canvasIds, ctx, sl] (int i)
         {
             if (external) choice->externalIndex = i;
             else if (i >= 0 && i < (int) canvasIds.size()) choice->canvasWindow = canvasIds[(size_t) i];
+            sl->listenTo (captureOf (ctx, *choice), choice->gainPercent);
         };
     }
 
@@ -172,27 +254,31 @@ Built build (const Context& ctx, const SourceChoice& current,
         pop->dismiss (2);
     };
 
-    int y = 57 + os8::kDropdownHeight + 4;   // under the pair
+    int y = kRowsHeightBase;
     if (showSettings)
     {
-        auto button = std::make_unique<Os8Button> ("Audio/Midi Settings");
+        auto button = std::make_unique<Os8Button> ("Audio/Midi Setup");
         button->setWantsKeyboardFocus (false);
+        button->setMouseClickGrabsKeyboardFocus (false);
         auto open = ctx.openAudioSettings;
-        // Apply nothing: the settings dialog is the host's own, opened over the popup's window.
+        // Apply nothing: the setup dialog is the host's own, opened over this popup.
         button->onClick = [open] { open(); };
-        p.addContent (std::move (button), { 0, 82, 143, 20 });
+        p.addContent (std::move (button), { 0, 82, 126, 20 });
         y += kSettingsRow;
     }
 
     if (ctx.offersClean)
     {
-        auto clean = std::make_unique<Os8Toggle> ("Clean conversion (band-limited, dithered)", Os8Toggle::Shape::checkbox);
+        auto clean = std::make_unique<Os8Toggle> ("Clean conversion", Os8Toggle::Shape::checkbox, os8::TextStyle::headline);
         clean->setWantsKeyboardFocus (false);
+        clean->setMouseClickGrabsKeyboardFocus (false);
         clean->setToggleState (choice->clean, juce::dontSendNotification);
-        auto* cl = p.addContent (std::move (clean), { 0, y + 3, 0, os8::kToggleSize });
+        auto* cl = p.addContent (std::move (clean), { 0, y + 4, 0, os8::kToggleSize });
         cl->setSize (cl->preferredWidth(), os8::kToggleSize);
         cl->onClick = [choice, cl] { choice->clean = cl->getToggleState(); };
     }
+
+    sl->listenTo (captureOf (ctx, *choice), choice->gainPercent);
 
     p.setButtons ("Cancel", "Apply");
     p.onDismiss = [choice, apply, reopen] (int result)

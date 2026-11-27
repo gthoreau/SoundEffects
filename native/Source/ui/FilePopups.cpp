@@ -1,63 +1,21 @@
 #include "FilePopups.h"
 
+#include "Os8CheckList.h"
 #include "engine/SampleFormat.h"
 
 namespace filepopups {
 
 namespace {
 
-constexpr int kRowH = 20;
-constexpr int kMaxVisibleRows = 8;
-
-/** Fit `text` into `width` px at Small Label, ending in an ellipsis when it must be cut. */
-juce::String fitted (juce::String text, int width)
+/** Fit `text` into `width` px, ending in an ellipsis when it must be cut. */
+juce::String fitted (juce::String text, int width, os8::TextStyle style)
 {
-    if (os8::widthOf (text, os8::TextStyle::smallLabel) <= width) return text;
+    if (os8::widthOf (text, style) <= width) return text;
     while (text.length() > 1
-           && os8::widthOf (text + juce::String::fromUTF8 ("\xE2\x80\xA6"), os8::TextStyle::smallLabel) > width)
+           && os8::widthOf (text + juce::String::fromUTF8 ("\xE2\x80\xA6"), style) > width)
         text = text.dropLastCharacters (1);
     return text + juce::String::fromUTF8 ("\xE2\x80\xA6");
 }
-
-/** One Sound's row in the list: its checkbox (the name) and the facts, right-aligned. */
-class SoundRow : public juce::Component
-{
-public:
-    SoundRow (const se::WindowState& s, int width) : facts (shortSummary (s))
-    {
-        const int factsW = os8::widthOf (facts, os8::TextStyle::smallLabel);
-        toggle = std::make_unique<Os8Toggle> (fitted (juce::String (s.name), width - factsW - 40),
-                                              Os8Toggle::Shape::checkbox);
-        toggle->setWantsKeyboardFocus (false);
-        toggle->setMouseClickGrabsKeyboardFocus (false);
-        addAndMakeVisible (*toggle);
-        setSize (width, kRowH);
-    }
-
-    static juce::String shortSummary (const se::WindowState& s)
-    {
-        return juce::String (s.tracks.size()) + (s.tracks.size() == 1 ? " track  " : " tracks  ")
-             + juce::String (s.rateHz / 1000.0, 1) + " kHz";
-    }
-
-    void resized() override
-    {
-        toggle->setBounds (4, 4, toggle->preferredWidth(), os8::kToggleSize);
-    }
-
-    void paint (juce::Graphics& g) override
-    {
-        const int w = os8::widthOf (facts, os8::TextStyle::smallLabel);
-        g.setColour (juce::Colour (0xff666666));
-        os8::drawText (g, facts, os8::TextStyle::smallLabel,
-                       { (float) (getWidth() - w - 4), 5.0f, (float) w, 10.0f });
-    }
-
-    std::unique_ptr<Os8Toggle> toggle;
-
-private:
-    juce::String facts;
-};
 
 } // namespace
 
@@ -79,7 +37,7 @@ std::unique_ptr<Os8Popup> exportSound (const se::WindowState& sound)
     auto popup = std::make_unique<Os8Popup> ("Export Sound", 62);
     auto& p = *popup;
     p.addLabel ("Save this Sound as a .sefx file of its own:", 0.0f, 4.0f, os8::TextStyle::smallLabel);
-    p.addLabel (fitted (juce::String (sound.name), Os8Popup::kContentW), 0.0f, 22.0f, os8::TextStyle::smallLabel);
+    p.addLabel (fitted (juce::String (sound.name), Os8Popup::kContentW, os8::TextStyle::smallLabel), 0.0f, 22.0f, os8::TextStyle::smallLabel);
     p.addLabel (summaryOf (sound), 0.0f, 36.0f, os8::TextStyle::smallLabel);
     p.addLabel ("It opens like any canvas, audio included.", 0.0f, 50.0f, os8::TextStyle::smallLabel);
     p.setButtons ("Cancel", juce::String::fromUTF8 ("Export\xE2\x80\xA6"));
@@ -90,72 +48,62 @@ std::unique_ptr<Os8Popup> importSound (const juce::String& fileName,
                                        const std::vector<se::WindowState>& sounds,
                                        std::function<void (std::vector<size_t>)> doImport)
 {
-    const int rows = (int) sounds.size();
-    const int visible = std::min (rows, kMaxVisibleRows);
-    const int listH = visible * kRowH + 2;
-    const int multi = rows > 1 ? 1 : 0;
+    const int count = (int) sounds.size();
+    const bool several = count > 1;
 
-    auto popup = std::make_unique<Os8Popup> ("Import Sound", 20 + (multi ? kRowH : 0) + listH);
+    std::vector<Os8CheckList::Item> items;
+    for (const auto& s : sounds)
+        items.push_back ({ juce::String::fromUTF8 (s.name.c_str()),
+                           { juce::String (s.tracks.size()) + (s.tracks.size() == 1 ? " track" : " tracks"),
+                             juce::String (s.rateHz / 1000.0, 1) + " kHz" },
+                           ! several });
+
+    const int listTop = several ? 52 : 28;
+    const int listH = Os8CheckList::heightFor (count, 180);
+    constexpr int kContent = 322;
+
+    auto popup = std::make_unique<Os8Popup> ("Import Sound", listTop + listH + 4, kContent);
     auto& p = *popup;
-    p.addLabel (fitted ("Sounds in " + fileName + ":", Os8Popup::kContentW), 0.0f, 4.0f, os8::TextStyle::smallLabel);
+    // A long file name is cut in the middle of the sentence, which keeps its end.
+    const juce::String lead = "Select sound(s) from ", tail = ":";
+    const int room = kContent - os8::widthOf (lead + tail, os8::TextStyle::headline);
+    p.addLabel (lead + fitted (fileName, room, os8::TextStyle::headline) + tail, 0.0f, 4.0f);
 
     auto& go = p.setButtons ("Cancel", "Import");
 
-    // The list: a viewport over one column of rows once there are more than fit.
-    auto column = std::make_unique<juce::Component>();
-    std::vector<SoundRow*> rowPtrs;
-    const int contentW = Os8Popup::kContentW - (rows > visible ? 12 : 0);
-    for (int i = 0; i < rows; ++i)
+    Os8Toggle* all = nullptr;
+    if (several)
     {
-        auto row = std::make_unique<SoundRow> (sounds[(size_t) i], contentW);
-        row->setTopLeftPosition (0, i * kRowH);
-        rowPtrs.push_back (row.get());
-        column->addAndMakeVisible (row.release());
+        auto t = std::make_unique<Os8Toggle> ("Select all", Os8Toggle::Shape::checkbox, os8::TextStyle::headline);
+        t->setWantsKeyboardFocus (false);
+        t->setMouseClickGrabsKeyboardFocus (false);
+        all = p.addContent (std::move (t), { 5, 32, 0, os8::kToggleSize });
+        all->setSize (all->preferredWidth(), os8::kToggleSize);
     }
-    column->setSize (contentW, rows * kRowH);
 
-    auto view = std::make_unique<juce::Viewport>();
-    view->setViewedComponent (column.release(), true);
-    view->setScrollBarsShown (rows > visible, false);
-    view->setScrollBarThickness (10);
-    view->setWantsKeyboardFocus (false);
-    p.addContent (std::move (view), { 0, 20 + (multi ? kRowH : 0), Os8Popup::kContentW, listH });
+    auto* list = p.addContent (std::make_unique<Os8CheckList> (std::move (items), std::vector<int> { 235, 308 }),
+                               { 0, listTop, kContent, listH });
 
     auto* goButton = &go;
-    auto update = [rowPtrs, goButton]
+    auto update = [list, all, goButton]
     {
-        bool any = false;
-        for (auto* r : rowPtrs) any = any || r->toggle->getToggleState();
-        goButton->setEnabled (any);
+        if (all != nullptr) all->setToggleState (list->numTicked() == list->size(), juce::dontSendNotification);
+        goButton->setEnabled (list->numTicked() > 0);
     };
-    for (auto* r : rowPtrs)
-        r->toggle->onClick = update;
-
-    if (multi)
-    {
-        auto all = std::make_unique<Os8Toggle> ("Select all", Os8Toggle::Shape::checkbox);
-        all->setWantsKeyboardFocus (false);
-        all->setMouseClickGrabsKeyboardFocus (false);
-        auto* allPtr = p.addContent (std::move (all), { 4, 24, 0, os8::kToggleSize });
-        allPtr->setSize (allPtr->preferredWidth(), os8::kToggleSize);
-        allPtr->onClick = [rowPtrs, allPtr, update]
+    list->onChange = update;
+    if (all != nullptr)
+        all->onClick = [list, all, update]
         {
-            for (auto* r : rowPtrs) r->toggle->setToggleState (allPtr->getToggleState(), juce::dontSendNotification);
+            list->setAllTicked (all->getToggleState());
             update();
         };
-    }
-    else
-    {
-        rowPtrs[0]->toggle->setToggleState (true, juce::dontSendNotification);
-    }
     update();
 
-    p.onDismiss = [rowPtrs, doImport] (int result)
+    p.onDismiss = [list, doImport] (int result)
     {
         if (result != 1 || ! doImport) return;
         std::vector<size_t> picked;
-        for (size_t i = 0; i < rowPtrs.size(); ++i)
-            if (rowPtrs[i]->toggle->getToggleState()) picked.push_back (i);
+        for (int i : list->ticked()) picked.push_back ((size_t) i);
         if (! picked.empty()) doImport (std::move (picked));
     };
     return popup;

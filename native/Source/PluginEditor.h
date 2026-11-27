@@ -11,6 +11,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include <map>
@@ -117,7 +119,9 @@ private:
     /** Is the Window's chosen source usable right now? */
     bool recordReadyFor (uint64_t window) const;
     /** Show Select Audio Source for a Window (`reshown`: again, when its kind changed). */
-    void openSourcePopup (uint64_t window, bool reshown = false);
+    /** `pending`: the choice picked so far, when the popup is shown again for
+        another kind; nothing is kept until Apply. */
+    void openSourcePopup (uint64_t window, std::optional<audiosource::SourceChoice> pending = {});
     audiosource::SourceChoice& choiceFor (uint64_t window) { return sourceChoices[window]; }
     int numInputChannels() const;
     bool isPluginHost() const;
@@ -131,7 +135,7 @@ private:
         c.kind = se::AudioSourceKind::canvas;   // Main
         return c;
     }();
-    void openTapeSourcePopup();
+    void openTapeSourcePopup (std::optional<audiosource::SourceChoice> pending = {});
     /** Hand tapeChoice to the deck and the engine (gain, monitor). */
     bool applyTapeSource();
     juce::String tapeSourceName() const;

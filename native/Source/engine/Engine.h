@@ -286,6 +286,16 @@ public:
     bool captureRunning() const noexcept { return capRunning.load (std::memory_order_acquire); }
     CaptureRing& captureRing() noexcept { return ring; }
 
+    // --- the source meter (0.6.0): Select Audio Source's live VU ---------------
+    // Listens to a source without capturing it: the peaks, after the popup's gain,
+    // of what a capture from `source` would take, whether or not anything records.
+    // It touches neither captures nor the output.
+    bool probeStart (const CaptureSetup& source);
+    bool probeStop();
+    void setProbeGain (float g) noexcept { probeGainValue.store (g, std::memory_order_relaxed); }
+    float probeMeterLeft() const noexcept  { return probeMeterL.load (std::memory_order_relaxed); }
+    float probeMeterRight() const noexcept { return probeMeterR.load (std::memory_order_relaxed); }
+
     // --- Magnetophon (0.5.0): the tape's own capture and playback --------------
     // A second capture path, independent of the Recorder's: its own source, gain,
     // monitor and ring, so the tape can run while a Sound records. The Main source is
@@ -397,7 +407,7 @@ private:
         enum class Kind : uint8_t { AddWindow, RemoveWindow, Transport, SwapDoc, SetMeta,
                                     CaptureStart, CaptureStop,
                                     TapeCaptureStart, TapeCaptureStop, TapePlay, TapeStop,
-                                    TapeScrub, TapeScrubEnd } kind {};
+                                    TapeScrub, TapeScrubEnd, ProbeStart, ProbeStop } kind {};
         enum class Tx   : uint8_t { Play, Stop, Pause, Advance, NormalSpeed, Seek,
                                     RateScale, Direction, RecordStart, RecordPause,
                                     RecordResume, RecordStop, RecordJoin, RecordEnd, RecordRelease } tx {};
@@ -463,6 +473,13 @@ private:
     std::atomic<bool>  capRunning { false };
     std::atomic<uint32_t> capStartGen { 0 };
     std::atomic<size_t>   capStartFrame { 0 };
+
+    // --- the source meter -----------------------------------------------------
+    CaptureSetup probe {};          // audio thread
+    bool probeActive = false;       // audio thread
+    std::vector<float> pexL, pexR;  // audio thread: the Window left out of the main mix
+    std::atomic<float> probeGainValue { 1.0f };
+    std::atomic<float> probeMeterL { 0.0f }, probeMeterR { 0.0f };
 
     // --- Magnetophon ----------------------------------------------------------
     TapeStore tape;
