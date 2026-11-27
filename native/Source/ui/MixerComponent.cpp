@@ -401,7 +401,8 @@ void MixerStrip::mouseDown (const juce::MouseEvent& e)
     auto* w = window();
     if (w == nullptr) return;
 
-    // ⌘-click on a lit box clears that box on every Window.
+    // ⌘-click on a lit box clears that box on every Window; on an unlit S it swaps
+    // the solo to this channel.
     const bool clearAll = e.mods.isCommandDown();
     if (muteBox().expanded (2).contains (e.getPosition()))
     {
@@ -412,8 +413,7 @@ void MixerStrip::mouseDown (const juce::MouseEvent& e)
     }
     if (soloBox().expanded (2).contains (e.getPosition()))
     {
-        if (clearAll && w->soloed.load (std::memory_order_relaxed)) engine.clearAllSolos();
-        else w->soloed.store (! w->soloed.load (std::memory_order_relaxed), std::memory_order_relaxed);
+        engine.clickSolo (id, clearAll);
         refreshState (engine.anyWindowSoloed());   // the OTHER strips catch up on the next tick
         return;
     }

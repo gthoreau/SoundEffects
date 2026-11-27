@@ -3533,6 +3533,25 @@ int main()
     wa->soloed = false;
     checkClose (renderLevel (engine), la + lb + lc, tol, "after clearing: all three back");
 
+    // --- the S box: plain click, and the ⌘ solo swap (0.6.0 step 1.3) --------
+    engine.clickSolo (a, false);
+    engine.clickSolo (b, false);
+    checkClose (renderLevel (engine), la + lb, tol, "plain clicks add solos");
+    engine.clickSolo (c, true);
+    check (! wa->soloed && ! wb->soloed && wc->soloed, "cmd on an unlit S: only that one soloed");
+    checkClose (renderLevel (engine), lc, tol, "solo swap: only c sounds");
+    check (wb->muted == false, "solo swap: mutes untouched");
+    engine.clickSolo (a, false);
+    engine.clickSolo (a, true);
+    check (! engine.anyWindowSoloed(), "cmd on a lit S: every solo cleared");
+    engine.clickSolo (b, true);
+    check (! wa->soloed && wb->soloed && ! wc->soloed, "cmd with nothing soloed: solos that one");
+    engine.clickSolo (b, false);
+    check (! engine.anyWindowSoloed(), "plain click on a lit S: off");
+    engine.clickSolo (987654, true);
+    check (! engine.anyWindowSoloed(), "unknown id: nothing happens");
+    checkClose (renderLevel (engine), la + lb + lc, tol, "after the clicks: all three back");
+
     // --- gain --------------------------------------------------------------
     wa->gain = 0.5f;
     checkClose (renderLevel (engine), la * 0.5f + lb + lc, tol, "gain 0.5 halves that channel");

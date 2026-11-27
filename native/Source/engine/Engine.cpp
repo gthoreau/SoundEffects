@@ -172,6 +172,22 @@ void Engine::clearAllSolos() noexcept
     for (const auto& kv : registry) kv.second->soloed.store (false, std::memory_order_relaxed);
 }
 
+void Engine::clickSolo (uint64_t id, bool command) noexcept
+{
+    auto* w = windowById (id);
+    if (w == nullptr) return;
+    const bool lit = w->soloed.load (std::memory_order_relaxed);
+
+    if (! command) { w->soloed.store (! lit, std::memory_order_relaxed); return; }
+    if (lit)       { clearAllSolos(); return; }
+
+    // The new solo goes on BEFORE the others go off, so no audio block can see the
+    // filter off and let every Window through.
+    w->soloed.store (true, std::memory_order_relaxed);
+    for (const auto& kv : registry)
+        if (kv.second != w) kv.second->soloed.store (false, std::memory_order_relaxed);
+}
+
 Window* Engine::windowById (uint64_t id) noexcept
 {
     auto it = registry.find (id);

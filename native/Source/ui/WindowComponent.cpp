@@ -1465,13 +1465,14 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
     {
         if (auto* w = engineWindow())
         {
-            const bool onMute = muteBox().expanded (1).contains (p);
-            auto& flag = onMute ? w->muted : w->soloed;
-            // ⌘-click on a lit box clears that box on every Window.
-            if (e.mods.isCommandDown() && flag.load (std::memory_order_relaxed))
-                onMute ? engine.unmuteAll() : engine.clearAllSolos();
+            // ⌘-click on a lit box clears that box on every Window; on an unlit S
+            // it swaps the solo to this one.
+            if (! muteBox().expanded (1).contains (p))
+                engine.clickSolo (id, e.mods.isCommandDown());
+            else if (e.mods.isCommandDown() && w->muted.load (std::memory_order_relaxed))
+                engine.unmuteAll();
             else
-                flag.store (! flag.load (std::memory_order_relaxed), std::memory_order_relaxed);
+                w->muted.store (! w->muted.load (std::memory_order_relaxed), std::memory_order_relaxed);
         }
         repaint();
         return;

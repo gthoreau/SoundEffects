@@ -162,9 +162,13 @@ public:
         render() asks before it mixes; the mixer asks it to grey the channels solo
         is silencing. */
     bool     anyWindowSoloed() const noexcept;
-    /** ⌘-click on a lit M or S: unmute every Window, or clear every solo. */
+    /** ⌘-click on a lit M: unmute every Window. ⌘-click on a lit S: clear every solo. */
     void     unmuteAll() noexcept;
     void     clearAllSolos() noexcept;
+    /** A click on a Window's S box (Mixer strip, title bar). Plain: toggle it. With ⌘
+        on a lit box: clear every solo. With ⌘ on an unlit box: the solo swap, which
+        leaves that Window as the only one soloed. */
+    void     clickSolo (uint64_t id, bool command) noexcept;
     const std::vector<uint64_t>& windowIds() const noexcept { return order; }
 
     /** The canvas's asset-id counter: the id the next new Window gets. Saved in the
