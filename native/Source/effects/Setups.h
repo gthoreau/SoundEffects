@@ -113,6 +113,22 @@ inline bool setupMatches (const Setup& setup, const Settings& working, const Set
     return ! setup.values.empty();
 }
 
+/** Manage Setup's Save: setup `index` takes `name`, and another setup that already
+    had it is replaced (removed). Returns where the renamed one now sits, or -1 for a
+    bad index or an empty name, with nothing changed. */
+inline int renameSetup (std::vector<Setup>& setups, int index, const std::string& name)
+{
+    if (index < 0 || index >= (int) setups.size() || name.empty()) return -1;
+    for (int i = (int) setups.size(); --i >= 0;)
+        if (i != index && setups[(size_t) i].name == name)
+        {
+            setups.erase (setups.begin() + i);
+            if (i < index) --index;
+        }
+    setups[(size_t) index].name = name;
+    return index;
+}
+
 /** The setups 0.9.2 shipped inside three module files, in their resource-map order
     (disassembly/Setups.md). Empty for every other module. */
 inline std::vector<Setup> factorySetups (const std::string& moduleName)

@@ -2,7 +2,6 @@
 #include "ScrollTarget.h"
 
 #include "EffectLayouts.h"
-#include "Os8Popup.h"
 #include "effects/Units.h"
 
 #include <algorithm>
@@ -509,6 +508,12 @@ void EffectsPanelComponent::layoutAll()
     }
 
     placeTray();
+    if (sheet != nullptr)
+    {
+        sheet->layOver (content->trayRect);
+        sheet->toFront (false);
+        y = std::max (y, sheet->getBottom());      // a short tray is shorter than the sheet
+    }
     content->setSize (viewport.getMaximumVisibleWidth(), std::max (y, viewport.getHeight()));
     openGroupY = openGroupTop;
 }
@@ -703,6 +708,7 @@ void EffectsPanelComponent::closeTray()
 {
     if (openModule != nullptr) remembered[openModule->name] = { working, touchedKeys, fmtRate, fmtBps };
     clearTray();
+    sheet.reset();
     openModule = nullptr;
     applyButton.reset();
     cancelButton.reset();
@@ -733,6 +739,9 @@ void EffectsPanelComponent::applyOpen()
 
 bool EffectsPanelComponent::applyFromKeyboard()
 {
+    // With a sheet over the tray, Apply is under its veil: Return saves instead.
+    if (sheet != nullptr) { sheet->pressSave(); return true; }
+
     if (openModule == nullptr || openApplicability != se::Applicability::Ok)
         return false;
 
@@ -1362,8 +1371,8 @@ void EffectsPanelComponent::refreshSetupMenu (Os8Dropdown& dd)
 
     items.add ("Save setup as...");
     setupMenuItems.push_back (kSetupSave);
-    items.add ("Delete setup...");
-    setupMenuItems.push_back (kSetupDelete);
+    items.add ("Manage setup...");
+    setupMenuItems.push_back (kSetupManage);
     if (current == kSetupCustom) disabled.add (items.size() - 1);
 
     dd.setItems (items);
@@ -1385,7 +1394,7 @@ void EffectsPanelComponent::setupMenuPicked (int item)
     if (action == kSetupCustom)       resetToDefaults();
     else if (action >= 0)             chooseSetup (action);
     else if (action == kSetupSave)    saveSetupAs();
-    else if (action == kSetupDelete)  deleteSetup (currentSetup());
+    else if (action == kSetupManage)  manageSetup (currentSetup());
 
     // The popup goes back to saying what the values are (an action item is never kept).
     refreshTray();
@@ -1411,78 +1420,67 @@ void EffectsPanelComponent::saveSetupAs()
     const auto [rate, bps] = targetFormat();
     se::Setup setup;
     setup.values = se::captureSetup (working, setupKeys, rate, bps);
-    const auto* module = openModule;
 
-    Os8TextField* field = nullptr;
-    auto* popup = makeSavePopup (field).release();
-
-    popup->onDismiss = [safe = juce::Component::SafePointer<EffectsPanelComponent> (this), field, module, setup] (int result) mutable
+    auto s = std::make_unique<SetupSheet> (SetupSheet::Kind::saveAs, juce::String(),
+                                           [this] (const juce::String& n) { return setupNamed (n) >= 0; });
+    // The sheet lives no longer than the tray it covers, so it is still this module's.
+    s->onSave = [this, setup] (const juce::String& name) mutable
     {
-        if (safe == nullptr || result != 1 || safe->openModule != module) return;
-        const auto name = field->getText().trim();
-        if (name.isEmpty()) return;
         setup.name = name.toStdString();
-
-        const int same = safe->setupNamed (name);
-        if (same >= 0) safe->openSetups[(size_t) same] = std::move (setup);
-        else           safe->openSetups.push_back (std::move (setup));
-        safe->preferredSetup = same >= 0 ? same : (int) safe->openSetups.size() - 1;
-        safe->storeSetups();
-        safe->refreshTray();
+        const int same = setupNamed (name);
+        if (same >= 0) openSetups[(size_t) same] = setup;
+        else           openSetups.push_back (setup);
+        preferredSetup = same >= 0 ? same : (int) openSetups.size() - 1;
+        storeSetups();
+        refreshTray();
     };
-
-    // Over the tray, its top just under the Setup row, so the popup still says which
-    // effect it is saving and the panel's column is covered exactly.
-    popup->showOver (*content, setupPopupOrigin());
-    field->grabFocus();
+    showSheet (std::move (s));
 }
 
-void EffectsPanelComponent::deleteSetup (int index)
+void EffectsPanelComponent::manageSetup (int index)
 {
     if (openModule == nullptr || ! juce::isPositiveAndBelow (index, (int) openSetups.size())) return;
-    const auto* module = openModule;
     const auto name = openSetups[(size_t) index].name;
+    // The list may be replaced from outside while the sheet is out: act by name.
+    const auto find = [this, name] { return setupNamed (juce::String::fromUTF8 (name.c_str())); };
 
-    auto* popup = makeDeletePopup (name).release();
-
-    popup->onDismiss = [safe = juce::Component::SafePointer<EffectsPanelComponent> (this), module, index, name] (int result)
+    auto s = std::make_unique<SetupSheet> (SetupSheet::Kind::manage, juce::String::fromUTF8 (name.c_str()),
+                                           [this, find] (const juce::String& n)
+                                           {
+                                               const int other = setupNamed (n);
+                                               return other >= 0 && other != find();
+                                           });
+    s->onSave = [this, find] (const juce::String& newName)
     {
-        // 0 is the secondary button: Delete.
-        if (safe == nullptr || result != 0 || safe->openModule != module) return;
-        if (! juce::isPositiveAndBelow (index, (int) safe->openSetups.size())
-            || safe->openSetups[(size_t) index].name != name) return;
-        safe->openSetups.erase (safe->openSetups.begin() + index);
-        safe->preferredSetup = -1;
-        safe->storeSetups();
-        safe->refreshTray();
+        const int renamed = se::renameSetup (openSetups, find(), newName.toStdString());
+        if (renamed < 0) return;
+        preferredSetup = renamed;
+        storeSetups();
+        refreshTray();
     };
-    popup->showOver (*content, setupPopupOrigin());
-    popup->grabKeyboardFocus();
+    s->onDelete = [this, find]
+    {
+        const int at = find();
+        if (at < 0) return;
+        openSetups.erase (openSetups.begin() + at);
+        preferredSetup = -1;
+        storeSetups();
+        refreshTray();
+    };
+    showSheet (std::move (s));
 }
 
-std::unique_ptr<Os8Popup> EffectsPanelComponent::makeSavePopup (Os8TextField*& field)
+void EffectsPanelComponent::showSheet (std::unique_ptr<SetupSheet> s)
 {
-    // 0.9.2's DLOG 155 in the popup frame: its sentence, a name field the width of the
-    // box, Cancel and Save. Unlike 0.9.2, an empty name cannot be saved, and a name that
-    // is already taken replaces that setup instead of adding a second one.
-    auto popup = std::make_unique<Os8Popup> ("Save Setup", 43);
-    popup->addLabel (juce::String::fromUTF8 ("Save the new setting as\xe2\x80\xa6"), 0.0f, 4.0f, os8::TextStyle::smallLabel);
-    field = popup->addContent (std::make_unique<Os8TextField> (os8::FieldSize::small),
-                               { 0, 18 + 4, Os8Popup::kContentW, os8::metricsOf (os8::FieldSize::small).height });
-    popup->setButtons ("Cancel", "Save");
-
-    auto* p = popup.get();
-    auto* f = field;
-    f->onTextChange = [safe = juce::Component::SafePointer<EffectsPanelComponent> (this), p, f]
-    {
-        const auto name = f->getText().trim();
-        p->primaryButton()->setEnabled (name.isNotEmpty());
-        p->setPrimaryText (safe != nullptr && safe->setupNamed (name) >= 0 ? "Replace" : "Save");
-    };
-    f->onReturn = [p] { if (p->primaryButton()->isEnabled()) p->dismiss (1); };
-    f->onEscape = [p] { p->dismiss (0); };
-    f->onTextChange();
-    return popup;
+    sheet = std::move (s);
+    sheet->onGone = [this] { sheet.reset(); };
+    content->addAndMakeVisible (*sheet);
+    layoutAll();
+    // A tray scrolled partly out of view comes back down to where the sheet starts.
+    if (viewport.getViewPositionY() > content->trayRect.getY())
+        viewport.setViewPosition (0, content->trayRect.getY());
+    sheet->slideDown();
+    if (sheet->isShowing()) sheet->field().grabFocus();
 }
 
 int EffectsPanelComponent::setupNamed (const juce::String& name) const
@@ -1492,59 +1490,27 @@ int EffectsPanelComponent::setupNamed (const juce::String& name) const
     return -1;
 }
 
-std::unique_ptr<Os8Popup> EffectsPanelComponent::makeDeletePopup (const std::string& name)
+juce::Rectangle<int> EffectsPanelComponent::snapshotSetupSheet (bool managing, const juce::String& text)
 {
-    // ALRT 154's question, word-wrapped to the box. Cancel is the primary button, as it
-    // was the default one in 0.9.2: Return keeps the setup.
-    juce::StringArray lines;
+    // For --effects-snapshot: the sheet as the app shows it, without the slide.
+    if (managing) manageSetup (setupNamed (text));
+    else
     {
-        const auto sentence = juce::String::fromUTF8 (("Are you sure you want to delete the setup \xe2\x80\x9c" + name + "\xe2\x80\x9d?").c_str());
-        juce::String line;
-        for (const auto& word : juce::StringArray::fromTokens (sentence, " ", ""))
+        saveSetupAs();
+        if (sheet != nullptr)
         {
-            const auto next = line.isEmpty() ? word : line + " " + word;
-            if (line.isNotEmpty() && os8::widthOf (next, os8::TextStyle::smallLabel) > Os8Popup::kContentW)
-            {
-                lines.add (line);
-                line = word;
-            }
-            else line = next;
+            sheet->field().setText (text);
+            sheet->field().onTextChange();
         }
-        if (line.isNotEmpty()) lines.add (line);
     }
-
-    auto popup = std::make_unique<Os8Popup> ("Delete Setup", 4 + 14 * lines.size());
-    for (int i = 0; i < lines.size(); ++i) popup->addLabel (lines[i], 0.0f, 4.0f + 14.0f * (float) i, os8::TextStyle::smallLabel);
-    popup->setButtons ("Delete", "Cancel", 1);
-    return popup;
+    if (sheet == nullptr) return {};
+    sheet->showAtOnce();
+    return toPanel (sheet->getBounds());
 }
 
-juce::Rectangle<int> EffectsPanelComponent::snapshotSetupPopup (bool deleting, const juce::String& text)
+void EffectsPanelComponent::clearSnapshotSheet()
 {
-    // For --effects-snapshot: the popup as the app shows it, placed but not modal.
-    Os8TextField* field = nullptr;
-    auto popup = deleting ? makeDeletePopup (text.toStdString()) : makeSavePopup (field);
-    if (field != nullptr)
-    {
-        field->setText (text);
-        field->onTextChange();
-    }
-    popup->setTopLeftPosition (setupPopupOrigin());
-    const auto r = popup->getBounds();
-    content->addAndMakeVisible (popup.release());
-    return toPanel (r);
-}
-
-void EffectsPanelComponent::clearSnapshotPopups()
-{
-    for (int i = content->getNumChildComponents(); --i >= 0;)
-        if (auto* p = dynamic_cast<Os8Popup*> (content->getChildComponent (i))) delete p;
-}
-
-juce::Point<int> EffectsPanelComponent::setupPopupOrigin() const
-{
-    const int setupRowH = openLayout.rows.empty() ? 0 : openLayout.rows.front().h;
-    return content->trayRect.getPosition() + juce::Point<int> (0, kTrayInset + fxlayout::kTitleH + setupRowH);
+    sheet.reset();
 }
 
 // ============================================================================

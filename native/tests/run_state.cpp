@@ -675,6 +675,37 @@ int main()
                    && se::factorySetups ("High Pass IIR")[2].values.at ("b").asDouble() == 0.7,
                "setup: the IIR filters ship Medium / Low / Lower");
         check (se::factorySetups ("Echo").empty(), "setup: the other modules ship none");
+
+        // Manage Setup's rename (0.6.0 step 5.3).
+        const auto named = [] (std::initializer_list<const char*> names)
+        {
+            std::vector<se::Setup> v;
+            int n = 0;
+            for (const char* name : names) v.push_back ({ name, { { "n", se::Value ((int64_t) n++) } } });
+            return v;
+        };
+        const auto reads = [] (const std::vector<se::Setup>& v, std::initializer_list<std::pair<const char*, int>> want)
+        {
+            if (v.size() != want.size()) return false;
+            size_t i = 0;
+            for (const auto& [name, n] : want)
+            {
+                if (v[i].name != name || v[i].values.at ("n").asInt() != n) return false;
+                ++i;
+            }
+            return true;
+        };
+        auto list = named ({ "a", "b", "c" });
+        check (se::renameSetup (list, 1, "d") == 1 && reads (list, { { "a", 0 }, { "d", 1 }, { "c", 2 } }),
+               "setup: rename keeps its place and values");
+        check (se::renameSetup (list, 2, "a") == 1 && reads (list, { { "d", 1 }, { "a", 2 } }),
+               "setup: rename onto an earlier name replaces it");
+        check (se::renameSetup (list, 0, "a") == 0 && reads (list, { { "a", 1 } }),
+               "setup: rename onto a later name replaces it");
+        check (se::renameSetup (list, 0, "a") == 0 && list.size() == 1, "setup: renaming to itself changes nothing");
+        check (se::renameSetup (list, 0, "") == -1 && se::renameSetup (list, 3, "x") == -1
+                   && reads (list, { { "a", 1 } }),
+               "setup: an empty name or a bad index changes nothing");
     }
 
     std::printf ("\n%s\n", failures == 0 ? "state: all checks passed"

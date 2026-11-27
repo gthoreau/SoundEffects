@@ -833,16 +833,16 @@ private:
         // The Setup popups (6.3), over the Flanger tray they belong to, shadow included.
         {
             const auto tray = panel.openEffectNamed ("Flanger");
-            const struct { bool del; const char* text; const char* file; } popups[] = {
+            const struct { bool manage; const char* text; const char* file; } popups[] = {
                 { false, "", "popup-save-empty" }, { false, "My flange", "popup-save" },
-                { false, "Soft Flange", "popup-save-replace" }, { true, "Plain Flange - Slowest", "popup-delete" },
+                { false, "Soft Flange", "popup-save-replace" }, { true, "Plain Flange - Slowest", "popup-manage" },
             };
             for (const auto& p : popups)
             {
-                const auto r = panel.snapshotSetupPopup (p.del, juce::String::fromUTF8 (p.text));
+                const auto r = panel.snapshotSetupSheet (p.manage, juce::String::fromUTF8 (p.text));
                 shoot (r, p.file);
                 shoot (tray.getUnion (r).expanded (0, 2).withX (0).withWidth (panel.getWidth()), juce::String (p.file) + "-in-tray");
-                panel.clearSnapshotPopups();
+                panel.clearSnapshotSheet();
             }
         }
 

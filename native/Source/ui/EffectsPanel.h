@@ -29,7 +29,7 @@
 #include "AppPrefs.h"
 #include "EffectLayouts.h"
 #include "Os8.h"
-#include "Os8Popup.h"
+#include "SetupSheet.h"
 #include "Os8Widgets.h"
 #include "effects/EffectRunner.h"
 #include "effects/Module.h"
@@ -57,11 +57,11 @@ public:
         dragged, its audio edited). Driven by the editor's timer. */
     void refresh();
 
-    /** For the snapshot tool: show the Save Setup popup with `text` typed (or the
-        Delete Setup popup for the setup named `text`) over the open tray, not modally,
-        and say where. clearSnapshotPopups() takes them away again. */
-    juce::Rectangle<int> snapshotSetupPopup (bool deleting, const juce::String& text);
-    void clearSnapshotPopups();
+    /** For the snapshot tool: show Save setup as with `text` typed (or Manage Setup
+        for the setup named `text`) over the open tray, fully out, and say where.
+        clearSnapshotSheet() takes it away again. */
+    juce::Rectangle<int> snapshotSetupSheet (bool managing, const juce::String& text);
+    void clearSnapshotSheet();
 
     /** Say what an effect run did, in the header's status line. Public because the
         Keyboard palette runs effects too and has nowhere to put an outcome. */
@@ -152,13 +152,11 @@ private:
     void setupMenuPicked (int item);
     void chooseSetup (int index);
     void saveSetupAs();
-    void deleteSetup (int index);
-    /** Where the Save / Delete popups go: over the tray, just under its Setup row. */
-    juce::Point<int> setupPopupOrigin() const;
-    std::unique_ptr<Os8Popup> makeSavePopup (Os8TextField*& field);
+    void manageSetup (int index);
+    /** Lay the sheet over the open tray, in view, and slide it down. */
+    void showSheet (std::unique_ptr<SetupSheet>);
     /** The saved setup called `name`, or -1. */
     int setupNamed (const juce::String& name) const;
-    std::unique_ptr<Os8Popup> makeDeletePopup (const std::string& name);
 
     const se::SoundDocument* targetDoc() const;
 
@@ -178,6 +176,7 @@ private:
     se::Settings working;            // the open module's live settings
     std::unique_ptr<Os8Button> applyButton, cancelButton;
     std::vector<TrayPart> trayParts;
+    std::unique_ptr<SetupSheet> sheet;       // Save setup as / Manage Setup, over the tray
     std::vector<std::function<void()>> trayRefreshers;
     se::SettingsSchema openSchema;
     fxlayout::Layout openLayout;             // where the open tray's controls sit
@@ -199,7 +198,7 @@ private:
     bool openHasSetups = false;              // the design gives this tray a Setup row
     int preferredSetup = -1;                 // the one last chosen or saved, should another match too
     std::vector<int> setupMenuItems;         // what each popup item does: a setup's index, or one of below
-    static constexpr int kSetupCustom = -1, kSetupSave = -2, kSetupDelete = -3;
+    static constexpr int kSetupCustom = -1, kSetupSave = -2, kSetupManage = -3;
     se::Applicability openApplicability = se::Applicability::NoWindow;
 
     // What the header's right half says: the scope Apply would eat, or — after a run —
