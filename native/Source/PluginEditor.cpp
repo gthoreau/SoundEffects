@@ -743,7 +743,7 @@ bool SoundEffectsAudioProcessorEditor::recordSetupFor (uint64_t window, se::Reco
     return true;
 }
 
-void SoundEffectsAudioProcessorEditor::openSourcePopup (uint64_t window)
+void SoundEffectsAudioProcessorEditor::openSourcePopup (uint64_t window, bool reshown)
 {
     auto* wc = canvas.windowComponentFor (window);
     if (wc == nullptr) return;
@@ -755,7 +755,12 @@ void SoundEffectsAudioProcessorEditor::openSourcePopup (uint64_t window)
     ctx.dawAvailable = isPluginHost();
     if (onShowAudioSettings) ctx.openAudioSettings = [this] { onShowAudioSettings(); };
 
-    auto built = audiosource::build (ctx, choiceFor (window),
+    // Clean conversion starts checked at every opening; Cancel leaves the Sound's mode
+    // as it was. A popup shown again for another kind keeps what was ticked.
+    auto shown = choiceFor (window);
+    if (! reshown) shown.clean = true;
+
+    auto built = audiosource::build (ctx, shown,
         [this, window] (const audiosource::SourceChoice& c) { choiceFor (window) = c; },
         [this, window] (const audiosource::SourceChoice& c)
         {
@@ -763,7 +768,7 @@ void SoundEffectsAudioProcessorEditor::openSourcePopup (uint64_t window)
             choiceFor (window) = c;
             juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this), window]
             {
-                if (safe != nullptr) safe->openSourcePopup (window);
+                if (safe != nullptr) safe->openSourcePopup (window, true);
             });
         });
     auto* popup = built.popup.release();
@@ -775,6 +780,7 @@ void SoundEffectsAudioProcessorEditor::openTapeSourcePopup()
     audiosource::Context ctx;
     ctx.engine = &processorRef.engine();
     ctx.window = 0;   // every Sound is a source for the tape
+    ctx.offersClean = false;
     ctx.numInputChannels = numInputChannels();
     ctx.dawAvailable = isPluginHost();
     if (onShowAudioSettings) ctx.openAudioSettings = [this] { onShowAudioSettings(); };
@@ -1094,7 +1100,7 @@ void SoundEffectsAudioProcessorEditor::openSendPopup()
     const auto& tape = processorRef.tapeDeck().tape();
     if (tape.empty() || tape.mode() == se::Tape::Mode::recording || processorRef.tapeDeck().finishing()) return;
 
-    auto popup = tapepopups::sendToCanvas (tape, tapeChoice.clean,
+    auto popup = tapepopups::sendToCanvas (tape,
         [safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this)] (const tapepopups::SendChoice& c)
         {
             if (safe != nullptr) safe->sendTape (c.whole, c.takes, c.clean);
@@ -1108,7 +1114,6 @@ void SoundEffectsAudioProcessorEditor::sendTape (bool whole, const std::vector<i
     auto& deck = processorRef.tapeDeck();
     auto& engine = processorRef.engine();
     auto& tape = deck.tape();
-    tapeChoice.clean = clean;   // remembered for the next send
     const auto mode = clean ? se::ConvertMode::clean : se::ConvertMode::raw;
 
     // Each Sound lands on the canvas like a new one (the canvas finds it a place);

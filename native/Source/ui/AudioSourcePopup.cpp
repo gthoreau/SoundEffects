@@ -8,7 +8,8 @@ namespace audiosource {
 
 namespace {
 
-constexpr int kRowsHeightBase = 78 + 22;   // Figma's 78 (Canvas, DAW) + the Clean row
+constexpr int kRowsHeightBase = 78;        // Figma's 78 (Canvas, DAW)
+constexpr int kCleanRow = 22;
 constexpr int kSettingsRow = 28;           // External's extra row
 
 float percentToPos (double percent) noexcept
@@ -63,7 +64,8 @@ Built build (const Context& ctx, const SourceChoice& current,
 
     Built b;
     b.popup = std::make_unique<Os8Popup> ("Select Audio Source",
-                                          kRowsHeightBase + (showSettings ? kSettingsRow : 0));
+                                          kRowsHeightBase + (ctx.offersClean ? kCleanRow : 0)
+                                              + (showSettings ? kSettingsRow : 0));
     auto& p = *b.popup;
 
     // --- Monitor, Gain: [slider] [100] % (a 26 px row) ---
@@ -182,12 +184,15 @@ Built build (const Context& ctx, const SourceChoice& current,
         y += kSettingsRow;
     }
 
-    auto clean = std::make_unique<Os8Toggle> ("Clean conversion (band-limited, dithered)", Os8Toggle::Shape::checkbox);
-    clean->setWantsKeyboardFocus (false);
-    clean->setToggleState (choice->clean, juce::dontSendNotification);
-    auto* cl = p.addContent (std::move (clean), { 0, y + 3, 0, os8::kToggleSize });
-    cl->setSize (cl->preferredWidth(), os8::kToggleSize);
-    cl->onClick = [choice, cl] { choice->clean = cl->getToggleState(); };
+    if (ctx.offersClean)
+    {
+        auto clean = std::make_unique<Os8Toggle> ("Clean conversion (band-limited, dithered)", Os8Toggle::Shape::checkbox);
+        clean->setWantsKeyboardFocus (false);
+        clean->setToggleState (choice->clean, juce::dontSendNotification);
+        auto* cl = p.addContent (std::move (clean), { 0, y + 3, 0, os8::kToggleSize });
+        cl->setSize (cl->preferredWidth(), os8::kToggleSize);
+        cl->onClick = [choice, cl] { choice->clean = cl->getToggleState(); };
+    }
 
     p.setButtons ("Cancel", "Apply");
     p.onDismiss = [choice, apply, reopen] (int result)

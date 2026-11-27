@@ -116,8 +116,8 @@ private:
     bool recordSetupFor (uint64_t window, se::RecordSetup& s);
     /** Is the Window's chosen source usable right now? */
     bool recordReadyFor (uint64_t window) const;
-    /** Show Select Audio Source for a Window (again, when its kind changed). */
-    void openSourcePopup (uint64_t window);
+    /** Show Select Audio Source for a Window (`reshown`: again, when its kind changed). */
+    void openSourcePopup (uint64_t window, bool reshown = false);
     audiosource::SourceChoice& choiceFor (uint64_t window) { return sourceChoices[window]; }
     int numInputChannels() const;
     bool isPluginHost() const;

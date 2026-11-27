@@ -46,7 +46,7 @@ juce::String durationText (size_t frames, double rate)
          + "." + juce::String (cs % 100).paddedLeft ('0', 2) + " s";
 }
 
-std::unique_ptr<Os8Popup> sendToCanvas (const se::Tape& tape, bool clean,
+std::unique_ptr<Os8Popup> sendToCanvas (const se::Tape& tape,
                                         std::function<void (const SendChoice&)> send)
 {
     const int rows = tape.numTakes();
@@ -102,7 +102,7 @@ std::unique_ptr<Os8Popup> sendToCanvas (const se::Tape& tape, bool clean,
 
     auto cleanBox = std::make_unique<Os8Toggle> ("Clean conversion (dithered)", Os8Toggle::Shape::checkbox);
     cleanBox->setWantsKeyboardFocus (false);
-    cleanBox->setToggleState (clean, juce::dontSendNotification);
+    cleanBox->setToggleState (true, juce::dontSendNotification);   // every opening
     auto* cl = p.addContent (std::move (cleanBox), { 4, cleanTop, 0, os8::kToggleSize });
     cl->setSize (cl->preferredWidth(), os8::kToggleSize);
 

@@ -8,7 +8,7 @@
 //   ( ) Takes, one Sound each:
 //       [x] Take 1                           0:12.40 s
 //       [ ] Take 2                    sent   0:03.10 s
-//   [ ] Clean conversion (dithered)
+//   [x] Clean conversion (dithered)      checked at every opening
 //                                  Cancel  [ Send ]
 //
 // Ticking a take picks "Takes"; Send is greyed while Takes has none ticked. The
@@ -29,10 +29,10 @@ struct SendChoice
 {
     bool whole = true;
     std::vector<int> takes;   // 0-based, in tape order (when not whole)
-    bool clean = false;
+    bool clean = true;
 };
 
-std::unique_ptr<Os8Popup> sendToCanvas (const se::Tape& tape, bool clean,
+std::unique_ptr<Os8Popup> sendToCanvas (const se::Tape& tape,
                                         std::function<void (const SendChoice&)> send);
 
 /** "1:12.40 s" */

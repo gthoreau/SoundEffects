@@ -7,7 +7,9 @@
 // Cancel / Apply. DAW is offered only where there is a host (the plug-in).
 //
 // Not in the design, added at the author's decision (PLAN.md, "Recording conversion"):
-// a "Clean conversion" checkbox, Raw by default. It sits under the source rows.
+// a "Clean conversion" checkbox. It sits under the source rows. Every time the popup is
+// opened for a Sound it starts checked (0.6.0: not remembered between openings); the
+// Magnetophon's popup has none, since the tape converts nothing until it is sent.
 //
 // The popup edits a COPY of the Window's SourceChoice; Apply hands it back. Changing
 // the kind rebuilds the popup (it has a different shape per kind), which is what
@@ -32,7 +34,7 @@ struct SourceChoice
     uint64_t canvasWindow = 0;    // Canvas: 0 = the main mix, otherwise that Window's own output
     bool monitor = false;         // OFF by default, against feedback
     double gainPercent = 100.0;   // 0..200, 100 = unity
-    bool clean = false;           // Raw (false) or Clean conversion
+    bool clean = true;            // Clean conversion (true, the default) or Raw
 };
 
 /** One entry of the External list: a mono input channel, or a stereo pair. */
@@ -53,6 +55,7 @@ struct Context
     uint64_t window = 0;                 // the Window being recorded into
     int numInputChannels = 0;
     bool dawAvailable = false;           // a plug-in under a host
+    bool offersClean = true;             // false for the tape, which converts when sent
     std::function<void()> openAudioSettings;   // standalone only; the button is hidden when null
 };
 

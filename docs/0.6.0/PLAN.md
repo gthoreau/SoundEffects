@@ -101,7 +101,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 
 ### 1. Quick fixes
 - [x] 1.1 **Echo "Only N echoes"**: reproduce, find the cause against the 0.9.2 recovery, fix, fixture test (N = 1, 3, with and without tail extension)
-- [ ] 1.2 **Clean conversion** checked by default everywhere it appears
+- [x] 1.2 **Clean conversion** checked by default everywhere it appears
 - [ ] 1.3 **Solo swap**: ⌘-click on an un-soloed box (strip, title bar) clears all solos and solos it; engine test
 - [ ] 1.4 **Main Mute**: engine flag (ramped with Main Level), `M` box in the footer per `1083:14659`, not saved
 - [ ] 1.5 **New canvas** opens empty (no Sound); check every panel, menu and the plug-in with zero Sounds
@@ -166,3 +166,4 @@ One line per finished sub-step: date · sub-step · what was verified · commit.
 
 - 2026-11-27 · 0.1 · Read the Specs block `998:20646` ("To-do v.0.6.0"; the 0.5.0 menus block `1078:6637` is gone) and the 19 nodes it links to with `use_figma`; `specs_v0-6-0.md` snapshot; this plan. Decisions agreed with the author: new canvas empty, group look = active title bars, MIDI mapping on notes 12–23, hidden alerts never come back, every other proposed row confirmed. Branch `v0.6.0-dev` from `main` `024c65a`. No code change, so no build or tests. Next is 1. · (this commit)
 - 2026-11-27 · 1.1 · Cause: 0.9.2 only uses N to size the range of the recursive pass, which is clamped back to the selection end when the sound may not get longer, so the box did nothing there and N was never the count heard (layout keys were right). `[NATIVE]`: exactly N echoes of the selection (max 80), past-selection ones dropped without extension; SPEC §8 #9, TS reference and C++ changed together; fixtures add N = 1 and 3, with and without extension, over-100 % strength and the cap (214/214); npm 578, engine and state tests pass; Only 1 applied in the standalone. · (this commit)
+- 2026-11-27 · 1.2 · Select Audio Source (per Sound) and Send to Canvas open with Clean ticked every time; Cancel leaves the Sound's mode alone, a kind change keeps the tick as set. A Sound recorded without opening the popup now converts Clean too. The Magnetophon's source popup no longer shows the box (it only preset Send, which is no longer remembered); Import has none. Tests pass; both popups, reopen after unticking, drive-tested in the standalone. · (this commit)
