@@ -104,6 +104,13 @@ void MidiMapPanel::refresh()
         const bool on = router.isHeld (se::MidiMap::kLowNote + i)
                      || (seenStrikes[n] != 0 && time - flashFrom[n] < kFlashMs);
         if (on != lit[n]) { lit[n] = on; changed = true; }
+
+        // The coat of the Sound in the pad's slot: it changes with the slot's
+        // occupant, Sound ▸ Color and Hide Color Theme.
+        const auto* w = shown[n].slot != se::MapPad::kNoSlot
+                            ? engine.windowById (engine.windowInSlot (shown[n].slot)) : nullptr;
+        const auto face = w != nullptr ? os8::themeColourFor (w) : os8::colour::macos8Gray;
+        if (face != faces[n]) { faces[n] = face; changed = true; }
     }
     if (mapChanged) showSelected();   // a loaded canvas, a renamed or moved Sound
     if (changed) repaint();
@@ -134,7 +141,7 @@ void MidiMapPanel::paint (juce::Graphics& g)
         juce::Path face;
         face.addRoundedRectangle (r.toFloat(), 3.0f);
         if (! pressed) os8::dropShadow (g, face, 1.0f, 1.0f, black.withAlpha (0.25f));
-        g.setColour (on ? juce::Colour (0xff333333) : assigned ? juce::Colour (0xffdddddd) : juce::Colour (0xffeeeeee));
+        g.setColour (on ? juce::Colour (0xff333333) : assigned ? faces[n] : juce::Colour (0xffeeeeee));
         g.fillPath (face);
         if (pressed)
         {

@@ -7,6 +7,7 @@
 // asserted directly. JUCE-free, like everything else under Source/engine/.
 
 #include "engine/Edit.h"
+#include "engine/KeyboardAim.h"
 #include "engine/KeyboardVoice.h"
 #include "engine/MidiMap.h"
 #include "engine/MidiMapRouter.h"
@@ -4341,6 +4342,30 @@ static void midiMapRouterTests()
     check (pressed.size() == 3, "route: a Sound closed under a held note gets nothing more");
 }
 
+// --- the Keyboard stays off a Sound that records -----------------------------
+
+static void keyboardAimTests()
+{
+    using Ids = std::vector<uint64_t>;
+    se::KeyboardAim aim;
+    Ids recording;
+    const auto free = [&recording] (uint64_t id) { return std::find (recording.begin(), recording.end(), id) == recording.end(); };
+
+    check (aim.choose ({ 1 }, free) == Ids { 1 }, "aim: the keys follow the selection");
+    recording = { 2 };
+    check (aim.choose ({ 2 }, free) == Ids { 1 }, "aim: selecting a recording Sound leaves them where they were");
+    recording.clear();
+    check (aim.choose ({ 2 }, free) == Ids { 2 }, "aim: once it has recorded they follow again");
+    recording = { 2 };
+    check (aim.choose ({ 2 }, free) == Ids { 1 }, "aim: armed after being played, back to the one before");
+    check (aim.choose ({ 2, 3, 4 }, free) == (Ids { 3, 4 }), "aim: a group plays without its recording member");
+    recording = { 2, 3 };
+    check (aim.choose ({ 2 }, free) == Ids { 4 }, "aim: the latest earlier choice still free");
+    recording = { 1, 2, 3, 4 };
+    check (aim.choose ({ 2 }, free).empty(), "aim: nothing free, silence");
+    check (aim.choose ({}, free).empty(), "aim: nothing selected, nothing played");
+}
+
 int main()
 {
     se::Engine engine;
@@ -4609,6 +4634,7 @@ int main()
     keyboardGroupTests();
     midiMapTests();
     midiMapRouterTests();
+    keyboardAimTests();
     transportButtonsTests();
     masterLevelTests();
     mainMuteTests();

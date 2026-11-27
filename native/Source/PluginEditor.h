@@ -18,6 +18,7 @@
 #include <map>
 
 #include "PluginProcessor.h"
+#include "engine/KeyboardAim.h"
 #include "ui/AppMenuBar.h"
 #include "ui/AudioSourcePopup.h"
 #include "ui/CanvasComponent.h"
@@ -163,6 +164,11 @@ private:
     void layoutPalettes (juce::Rectangle<int> area, juce::Rectangle<int> floating);
     /** Show or hide the Keyboard palette, and re-lay the floating stack. */
     void setKeyboardShown (bool shown);
+    /** Aim the Keyboard from the selection (se::KeyboardAim: never at a Sound that is
+        recording). Waits while a mouse button is down: a click on a Sound's Record
+        selects it before it arms it, and the keys must not visit it in between. */
+    void aimKeyboard();
+    se::KeyboardAim keyboardAim;
 
     SoundEffectsAudioProcessor& processorRef;
 

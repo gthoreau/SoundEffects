@@ -82,7 +82,7 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     {
         effects.setTargetWindow (canvas.selectedWindowId());
         mixer.setSelectedWindows (canvas.soundSelection().members());
-        keyboard.setTargets (canvas.shareTargets (canvas.selectedWindowId()));   // every member plays
+        aimKeyboard();   // every member plays
     };
     canvas.onSelectionChanged();
 
@@ -881,7 +881,18 @@ void SoundEffectsAudioProcessorEditor::timerCallback()
     magnetophon.setSourceName (tapeSourceName());
     if (magnetophonPanel.isVisible() && ! magnetophonPanel.isCollapsed()) magnetophon.refresh();
     if (midiMappingPanel.isVisible() && ! midiMappingPanel.isCollapsed()) midiMapping.refresh();
+    aimKeyboard();   // a Record armed or let go changes where the keys may play
     if (keyboard.isVisible()) keyboard.refresh();
+}
+
+void SoundEffectsAudioProcessorEditor::aimKeyboard()
+{
+    if (juce::Component::isMouseButtonDownAnywhere()) return;   // the next tick, once released
+    keyboard.setTargets (keyboardAim.choose (canvas.shareTargets (canvas.selectedWindowId()), [this] (uint64_t id)
+    {
+        auto* wc = canvas.windowComponentFor (id);
+        return wc != nullptr && ! wc->isArmed() && ! wc->isRecording();
+    }));
 }
 
 void SoundEffectsAudioProcessorEditor::setKeyboardShown (bool shown)

@@ -7,6 +7,8 @@
 #include "Os8Icons.h"
 
 #include <cmath>
+#include <map>
+#include <utility>
 
 namespace os8 {
 
@@ -30,6 +32,10 @@ struct TypefaceHolder : juce::DeletedAtShutdown
 {
     juce::Typeface::Ptr chicago = juce::Typeface::createSystemTypefaceFor (
         BinaryData::ClassicChicago_ttf, (size_t) BinaryData::ClassicChicago_ttfSize);
+
+    /** A line of text already shaped, its origin at (0, 0) on the baseline. */
+    struct Line { juce::GlyphArrangement glyphs; float width = 0.0f; };
+    std::map<std::pair<int, juce::String>, Line> lines;   // message thread only
     ~TypefaceHolder() override { clearSingletonInstance(); }
     JUCE_DECLARE_SINGLETON_INLINE (TypefaceHolder, true)
 };
@@ -65,16 +71,36 @@ float baselineOf (TextStyle s) noexcept
     return (lineHeightOf (s) - size * kContentEm) * 0.5f + size;
 }
 
+namespace {
+// Shaping a string costs far more than drawing it, and the same labels are measured
+// and drawn on every repaint: a Magnetophon taking, or a Sound recording, spent most
+// of the message thread there, and MIDI notes, handled on it, came in late. So each
+// (text, style) is shaped once. Emptied when it has grown past what a canvas shows
+// (counters and readouts never repeat for long).
+const TypefaceHolder::Line& shaped (const juce::String& text, TextStyle s)
+{
+    auto& lines = TypefaceHolder::getInstance()->lines;
+    const std::pair<int, juce::String> key { static_cast<int> (s), text };
+    if (const auto it = lines.find (key); it != lines.end()) return it->second;
+    if (lines.size() >= 2048) lines.clear();
+    auto& line = lines[key];
+    const auto f = font (s);
+    line.width = juce::GlyphArrangement::getStringWidth (f, text);
+    line.glyphs.addLineOfText (f, text, 0.0f, 0.0f);
+    return line;
+}
+} // namespace
+
 int widthOf (const juce::String& text, TextStyle s)
 {
-    return (int) std::ceil (juce::GlyphArrangement::getStringWidth (font (s), text) - 0.01f);
+    return (int) std::ceil (shaped (text, s).width - 0.01f);
 }
 
 void drawText (juce::Graphics& g, const juce::String& text, TextStyle s,
                juce::Rectangle<float> box, juce::Justification just)
 {
-    const auto f = font (s);
-    const float w = juce::GlyphArrangement::getStringWidth (f, text);
+    const auto& line = shaped (text, s);
+    const float w = line.width;
 
     float x = box.getX();
     if (just.testFlags (juce::Justification::horizontallyCentred)) x = box.getCentreX() - w * 0.5f;
@@ -84,9 +110,7 @@ void drawText (juce::Graphics& g, const juce::String& text, TextStyle s,
     // labels only line up with a rounded baseline (12 pt at integer y is perfectly
     // crisp; 10.5 unrounded would smear every row). So do the same, which is also
     // what keeps a pixel face from blurring between two rows.
-    juce::GlyphArrangement glyphs;
-    glyphs.addLineOfText (f, text, x, std::round (box.getY() + baselineOf (s)));
-    glyphs.draw (g);
+    line.glyphs.draw (g, juce::AffineTransform::translation (x, std::round (box.getY() + baselineOf (s))));
 }
 
 void paintSlotBox (juce::Graphics& g, juce::Point<int> topLeft, const juce::String& text)
