@@ -8,6 +8,7 @@
 
 #include "engine/Edit.h"
 #include "engine/KeyboardVoice.h"
+#include "engine/MidiMap.h"
 #include "engine/MidiNotes.h"
 #include "engine/Engine.h"
 #include "engine/RecordConvert.h"
@@ -4199,6 +4200,88 @@ static void keyboardGroupTests()
     check (! on (a), "group keys: all notes off");
 }
 
+// --- MIDI mapping (0.6.0 step 8.1): the model -------------------------------
+
+static void midiMapTests()
+{
+    using A = se::MapAction;
+    using C = se::MapCommand;
+    se::MidiMap m;
+    check (m.empty() && m.pad (0).slot == se::MapPad::kNoSlot && m.pad (0).start == A::play && m.pad (0).end == A::stop,
+           "map: empty pads start on Play and end on Stop");
+    check (se::MidiMap::takes (12) && se::MidiMap::takes (23) && ! se::MidiMap::takes (11) && ! se::MidiMap::takes (24),
+           "map: notes 12 to 23 only");
+
+    m.setStart (0, A::stop);
+    check (m.pad (0).end == A::play, "map: starting on Stop forces the end to Play");
+    m.setEnd (0, A::pause);
+    check (m.pad (0).end == A::play, "map: and it stays Play");
+    m.setStart (0, A::pause);
+    check (m.pad (0).end == A::play, "map: so does Pause");
+    m.setStart (0, A::play);
+    check (m.pad (0).end == A::stop, "map: back to Play, the end is Stop");
+    m.setEnd (0, A::pause);
+    check (m.pad (0).end == A::pause, "map: Play may end on Pause");
+    m.setEnd (0, A::play);
+    check (m.pad (0).end == A::pause, "map: but not on Play");
+    m.setPad (1, { -7, A::stop, A::stop });
+    check (m.pad (1).slot == se::MapPad::kNoSlot && m.pad (1).end == A::play, "map: a loaded pad is made legal");
+
+    // C0 and C#0 on one Sound (slot 0), D0 on another, D#0 on an empty slot.
+    m.clear();
+    m.setSlot (0, 0);
+    m.setPad (1, { 0, A::pause, A::play });
+    m.setSlot (2, 1);
+    m.setSlot (3, 9);
+    std::vector<uint64_t> strips { 101, 102 };
+    const auto in = [&strips] (int slot) { return slot < (int) strips.size() ? strips[(size_t) slot] : uint64_t (0); };
+    se::MidiMapPlayer p;
+    C c;
+
+    check (p.noteOn (12, m, in, c) && c == C { 101, A::play, true }, "map: a note starts its slot's Sound");
+    check (p.noteOff (12, c) && c == C { 101, A::stop, false }, "map: and ends it");
+    check (! p.noteOff (12, c), "map: an end with no start does nothing");
+    check (! p.noteOn (15, m, in, c) && ! p.noteOff (15, c), "map: an empty slot does nothing");
+    check (! p.noteOn (16, m, in, c) && ! p.noteOn (60, m, in, c), "map: an empty pad and a keyboard note do nothing");
+
+    p.noteOn (12, m, in, c);
+    check (p.noteOn (13, m, in, c) && c == C { 101, A::pause, true }, "map: a second note on the Sound acts");
+    check (! p.noteOff (12, c), "map: the earlier note's end does not cut the later one off");
+    check (p.noteOff (13, c) && c == C { 101, A::play, false }, "map: the latest note's end acts");
+
+    p.noteOn (12, m, in, c);
+    p.noteOn (13, m, in, c);
+    check (p.noteOff (13, c) && c.action == A::play, "map: the later note ends first, and acts");
+    check (p.noteOff (12, c) && c == C { 101, A::stop, false }, "map: then the earlier one is the latest again");
+
+    p.noteOn (12, m, in, c);
+    p.noteOn (14, m, in, c);
+    check (c.sound == 102 && p.noteOff (12, c) && c.sound == 101, "map: other Sounds are independent");
+    p.noteOff (14, c);
+
+    p.noteOn (12, m, in, c);
+    p.noteOn (13, m, in, c);
+    check (p.noteOn (12, m, in, c) && c == C { 101, A::play, true } && ! p.noteOff (13, c),
+           "map: a repeated start makes its note the latest");
+    check (p.noteOff (12, c), "map: and its one end acts");
+
+    p.noteOn (12, m, in, c);
+    std::swap (strips[0], strips[1]);
+    m.setEnd (0, A::pause);
+    check (p.noteOff (12, c) && c == C { 101, A::stop, false },
+           "map: a held note ends the Sound it started, as its pad then said");
+    check (p.noteOn (12, m, in, c) && c.sound == 102, "map: reordered strips change the next note's Sound");
+    p.reset();
+    check (! p.noteOff (12, c), "map: reset forgets");
+
+    std::swap (strips[0], strips[1]);
+    p.noteOn (12, m, in, c); p.noteOn (14, m, in, c); p.noteOn (13, m, in, c);
+    const auto ended = p.allOff();
+    check (ended.size() == 2 && ended[0] == C { 101, A::play, false } && ended[1] == C { 102, A::stop, false },
+           "map: all notes off ends each Sound once, as its latest note");
+    check (p.allOff().empty(), "map: and nothing is left held");
+}
+
 int main()
 {
     se::Engine engine;
@@ -4465,6 +4548,7 @@ int main()
     batchTests();
     batchConcurrencyTests();
     keyboardGroupTests();
+    midiMapTests();
     transportButtonsTests();
     masterLevelTests();
     mainMuteTests();
