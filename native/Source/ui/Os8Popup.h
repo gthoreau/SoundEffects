@@ -1,16 +1,19 @@
-// Os8Popup — "Frames / Popup" (289:2918) as a modal dialog.
+// Os8Popup — "popups" (1447:9163) as a modal dialog.
 //
-// The frame every popup of the design wears (Leave Silence 543:8056, Select Exactly,
-// ...): 270 px wide, white, a 1 px black stroke inside, a hard #808080 shadow one pixel
-// down and right, and two inner bevels (#d0d0d0 up-left, #e7e7e7 down-right). Its content
-// box is 252 px wide, 9 px in, and reads like an effect tray: a 19 px title row ruled in
-// grey, a 14 px spacer, the popup's own rows, an 8 px spacer and the 33 px buttons row,
-// a secondary button (Cancel) beside the primary one at the right.
+// The frame every popup of the 0.6.0 design wears: a Mac OS 8 movable modal window.
+// A #eeeeee body inside a 2 px black outline, a hard 25 % shadow two pixels down and
+// right, the active title bar with its title centred, and under it the content area
+// ruled in black 4 px in from the sides and the bottom. The popup's own rows start
+// 31 px down; 8 px under them comes the 33 px buttons row, a secondary button
+// (Cancel) beside the primary one at the right.
 //
 // The caller adds its controls with addContent(), in content-box coordinates measured
-// from the top of the rows (just under the 14 px spacer). Return presses the primary
-// button, Escape the secondary one, and the popup blocks the rest of the app until one
-// of them is pressed.
+// from the top of the rows. Most frames are 280 px wide; their rows sit 14 or 15 px
+// in (Leave Silence and the rest), which is why the inset is the caller's to name.
+//
+// Return presses the primary button, Escape the secondary one, and the popup blocks
+// the rest of the app until one of them is pressed. It is dragged by its title bar
+// and never leaves the app's window.
 
 #pragma once
 
@@ -23,7 +26,8 @@
 class Os8Popup : public juce::Component
 {
 public:
-    Os8Popup (const juce::String& title, int rowsHeight);
+    Os8Popup (const juce::String& title, int rowsHeight,
+              int contentWidth = kContentW, int inset = kInset);
     ~Os8Popup() override;
 
     /** The buttons row, right to left as the design lays it out: the primary button at
@@ -42,15 +46,23 @@ public:
     C* addContent (std::unique_ptr<C> comp, juce::Rectangle<int> area)
     {
         auto* raw = comp.get();
-        area.translate (kInset, kInset + kTitleH + kTopSpacer);
+        area.translate (kStroke + inset, kStroke + kRowsTop);
         raw->setBounds (area);
         addAndMakeVisible (*raw);
         parts.push_back (std::move (comp));
         return raw;
     }
 
-    /** A caption painted in the rows, Small Label 10 pt, its text box at (x, y). */
-    void addLabel (const juce::String& text, float x, float y);
+    /** A caption painted in the rows, its text box at (x, y). The design sets every
+        label in Headlines (12 pt). */
+    void addLabel (const juce::String& text, float x, float y,
+                   os8::TextStyle = os8::TextStyle::headline);
+
+    int contentWidth() const noexcept { return contentW; }
+
+    /** The frame the design draws, without its outline and shadow, in the popup's
+        own coordinates. */
+    juce::Rectangle<int> frameBounds() const noexcept;
 
     /** Which button closed it: 1 the primary, 0 the secondary. Called once, after the
         popup has left the screen; the popup deletes itself afterwards. */
@@ -66,19 +78,25 @@ public:
     void paint (juce::Graphics&) override;
     bool keyPressed (const juce::KeyPress&) override;
     void inputAttemptWhenModal() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void parentSizeChanged() override;
 
-    static constexpr int kWidth = 270, kInset = 9, kContentW = 252;
-    static constexpr int kTitleH = 19, kTopSpacer = 14, kBottomSpacer = 8, kButtonsH = 33;
-    static constexpr int kShadow = 1;    // the hard shadow, outside the frame
+    static constexpr int kContentW = 252, kInset = 14;       // a 280 px frame
+    static constexpr int kRowsTop = 31, kBottomSpacer = 8, kButtonsH = 33, kFoot = 4;
+    static constexpr int kStroke = 2, kShadow = 2;           // both outside the frame
 
 private:
     juce::String title;
-    int rowsHeight = 0;
+    int rowsHeight = 0, contentW = kContentW, inset = kInset;
     void layoutButtons();
+    void keepInside (juce::Point<int> wanted);
+    juce::Point<int> dragFrom;      // the popup's position when the title was pressed
+    bool dragging = false;
 
     std::unique_ptr<Os8Button> primary, secondary;
     std::vector<std::unique_ptr<juce::Component>> parts;
-    struct Label { juce::String text; float x, y; };
+    struct Label { juce::String text; float x, y; os8::TextStyle style; };
     std::vector<Label> labels;
     bool dismissed = false;
     int escapeAnswer = 0;

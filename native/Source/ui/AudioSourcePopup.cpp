@@ -79,7 +79,7 @@ Built build (const Context& ctx, const SourceChoice& current,
     mon->setEnabled (! canvas);
     if (canvas) mon->setToggleState (false, juce::dontSendNotification);
 
-    p.addLabel ("Gain:", 65.0f, 8.0f);
+    p.addLabel ("Gain:", 65.0f, 8.0f, os8::TextStyle::smallLabel);
 
     auto slider = std::make_unique<Os8Slider> (os8::SliderKind::volume);
     slider->setRange (0.0, 1.0);
@@ -92,7 +92,7 @@ Built build (const Context& ctx, const SourceChoice& current,
     field->setNumeric (1.0, 0, 0.0, 200.0);
     field->setValue (choice->gainPercent);
     auto* fl = p.addContent (std::move (field), { 190, 5, 41, 16 });
-    p.addLabel ("%", 235.0f, 8.0f);
+    p.addLabel ("%", 235.0f, 8.0f, os8::TextStyle::smallLabel);
 
     sl->onValueChange = [choice, sl, fl]
     {
@@ -106,7 +106,7 @@ Built build (const Context& ctx, const SourceChoice& current,
     };
 
     // --- "Select Audio source:" and the dropdown pair (rows from y 34) ---
-    p.addLabel ("Select Audio source:", 0.0f, 38.0f);
+    p.addLabel ("Select Audio source:", 0.0f, 38.0f, os8::TextStyle::smallLabel);
 
     const auto kinds = offeredKinds (ctx.dawAvailable);
     auto kindMenu = std::make_unique<Os8Dropdown> (Os8Dropdown::Style::standard);

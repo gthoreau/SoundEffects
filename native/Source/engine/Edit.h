@@ -140,8 +140,12 @@ bool shiftSound (SoundDocument& doc, size_t bytes, bool right);
 /** Edit ▸ Leave Silence… — make the selected tracks' leading silence exactly `bytes`.
     `wholeSound` selects every track first. Tracks silent end to end become `bytes` of
     silence; the others all move by the same amount, set by the SHORTEST lead-in among
-    them, so they stay aligned. The selection moves with the audio. */
-void leaveSilence (SoundDocument& doc, size_t bytes, bool wholeSound);
+    them, so they stay aligned. The selection moves with the audio.
+
+    [NATIVE] `atEnd` (0.6.0) is the mirror image on the tracks' ends: the shortest
+    trail of silence among the audible tracks sets how much every one of them gains or
+    loses there. No audio moves, and the selection is only kept within the tracks. */
+void leaveSilence (SoundDocument& doc, size_t bytes, bool wholeSound, bool atEnd = false);
 
 // --- Select Exactly… / Select Peak… / Select Silence — disassembled -----------------
 

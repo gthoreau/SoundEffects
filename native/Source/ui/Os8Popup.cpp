@@ -14,11 +14,14 @@ int buttonWidth (const juce::String& text, os8::ButtonKind kind)
 
 } // namespace
 
-Os8Popup::Os8Popup (const juce::String& t, int rows) : title (t), rowsHeight (rows)
+Os8Popup::Os8Popup (const juce::String& t, int rows, int width, int in)
+    : title (t), rowsHeight (rows), contentW (width), inset (in)
 {
-    const int h = 2 * kInset + kTitleH + kTopSpacer + rowsHeight + kBottomSpacer + kButtonsH;
-    setSize (kWidth + kShadow, h + kShadow);
+    const int h = kRowsTop + rowsHeight + kBottomSpacer + kButtonsH + kFoot;
+    setSize (contentW + 2 * inset + 2 * kStroke + kShadow, h + 2 * kStroke + kShadow);
     setWantsKeyboardFocus (true);
+    // A press on the title bar or between the controls leaves the caret where it is.
+    setMouseClickGrabsKeyboardFocus (false);
 }
 
 Os8Popup::~Os8Popup() = default;
@@ -50,30 +53,33 @@ void Os8Popup::setPrimaryText (const juce::String& text)
 
 void Os8Popup::layoutButtons()
 {
-    // As Leave Silence (543:8056) has them: the primary at the right edge, 4 px down
+    // As Leave Silence (1447:9159) has them: the primary at the right edge, 4 px down
     // its 33 px row; the secondary 10 px to its left, 6 px down.
-    const int rowY = getHeight() - kShadow - kInset - kButtonsH;
+    const int rowY = kStroke + kRowsTop + rowsHeight + kBottomSpacer;
     const int pw = buttonWidth (primary->getButtonText(), os8::ButtonKind::primary);
-    primary->setBounds (kInset + kContentW - pw, rowY + 4, pw, os8::buttonHeight (os8::ButtonKind::primary));
+    primary->setBounds (kStroke + inset + contentW - pw, rowY + 4, pw, os8::buttonHeight (os8::ButtonKind::primary));
     const int sw = buttonWidth (secondary->getButtonText(), os8::ButtonKind::secondary);
     secondary->setBounds (primary->getX() - 10 - sw, rowY + 6, sw, os8::buttonHeight (os8::ButtonKind::secondary));
 }
 
-void Os8Popup::addLabel (const juce::String& text, float x, float y)
+juce::Rectangle<int> Os8Popup::frameBounds() const noexcept
 {
-    labels.push_back ({ text, x, y });
+    return { kStroke, kStroke, getWidth() - 2 * kStroke - kShadow, getHeight() - 2 * kStroke - kShadow };
+}
+
+void Os8Popup::addLabel (const juce::String& text, float x, float y, os8::TextStyle style)
+{
+    labels.push_back ({ text, x, y, style });
     repaint();
 }
 
 void Os8Popup::showOver (juce::Component& over, juce::Point<int> topLeft)
 {
     auto* top = over.getTopLevelComponent();
-    auto at = top->getLocalPoint (&over, topLeft);
-    at.x = juce::jlimit (0, std::max (0, top->getWidth() - getWidth()), at.x);
-    at.y = juce::jlimit (0, std::max (0, top->getHeight() - getHeight()), at.y);
+    const auto at = top->getLocalPoint (&over, topLeft);
 
     top->addAndMakeVisible (this);
-    setTopLeftPosition (at);
+    keepInside (at);
     toFront (true);
     enterModalState (true, nullptr, false);
 }
@@ -94,31 +100,59 @@ void Os8Popup::dismiss (int result)
     });
 }
 
+void Os8Popup::keepInside (juce::Point<int> at)
+{
+    // A popup bigger than the window keeps its title bar and left edge in reach.
+    if (auto* parent = getParentComponent())
+    {
+        at.x = juce::jlimit (0, std::max (0, parent->getWidth() - getWidth()), at.x);
+        at.y = juce::jlimit (0, std::max (0, parent->getHeight() - getHeight()), at.y);
+    }
+    setTopLeftPosition (at);
+}
+
+void Os8Popup::mouseDown (const juce::MouseEvent& e)
+{
+    dragging = e.mods.isLeftButtonDown()
+               && frameBounds().withHeight (os8::kTitleBarHeight).expanded (kStroke).contains (e.getPosition());
+    dragFrom = getPosition();
+}
+
+void Os8Popup::mouseDrag (const juce::MouseEvent& e)
+{
+    // From the screen positions: the popup moves under the pointer as it is dragged.
+    if (dragging)
+        keepInside (dragFrom + (e.getScreenPosition() - e.getMouseDownScreenPosition()));
+}
+
+void Os8Popup::parentSizeChanged()
+{
+    keepInside (getPosition());
+}
+
 void Os8Popup::paint (juce::Graphics& g)
 {
-    const juce::Rectangle<int> frame (0, 0, kWidth, getHeight() - kShadow);
-    juce::Path shape;
-    shape.addRectangle (frame.toFloat());
+    const auto frame = frameBounds();
+    const auto outline = frame.expanded (kStroke);
 
-    os8::dropShadow (g, shape, 1.0f, 1.0f, juce::Colour (0xff808080));
-    g.setColour (colour::white);
+    g.setColour (colour::black.withAlpha (0.25f));
+    g.fillRect (outline.translated (kShadow, kShadow));
+    g.setColour (colour::black);
+    g.fillRect (outline);
+    g.setColour (colour::gray000);
     g.fillRect (frame);
-    os8::innerShadow (g, shape, -2.0f, -2.0f, 0, juce::Colour (0xffd0d0d0));
-    os8::innerShadow (g, shape, 2.0f, 2.0f, 0, juce::Colour (0xffe7e7e7));
-    g.setColour (colour::black);
-    g.drawRect (frame, 1);
 
-    // The title row, ruled in grey beneath, as a tray's.
-    g.setColour (colour::black);
-    os8::drawText (g, title, os8::TextStyle::smallLabel, { (float) kInset, (float) kInset + 4.0f, (float) kContentW, 10.0f });
-    g.setColour (colour::gray400);
-    g.fillRect (kInset, kInset + kTitleH - 1, kContentW, 1);
+    os8::paintTitleBar (g, frame.withHeight (os8::kTitleBarHeight), title, true, 6, 6);
 
+    // The content area's 1 px rule, outside a box 4 px in from the sides and foot.
     g.setColour (colour::black);
-    const float rowsTop = (float) (kInset + kTitleH + kTopSpacer);
+    g.drawRect (frame.withTrimmedTop (os8::kTitleBarHeight).reduced (4, 0)
+                     .withTrimmedBottom (kFoot).expanded (1), 1);
+
+    const float left = (float) (kStroke + inset), rowsTop = (float) (kStroke + kRowsTop);
     for (const auto& l : labels)
-        os8::drawText (g, l.text, os8::TextStyle::smallLabel,
-                       { (float) kInset + l.x, rowsTop + l.y, (float) kContentW - l.x, 10.0f });
+        os8::drawText (g, l.text, l.style,
+                       { left + l.x, rowsTop + l.y, (float) contentW - l.x, os8::sizeOf (l.style) });
 }
 
 bool Os8Popup::keyPressed (const juce::KeyPress& k)

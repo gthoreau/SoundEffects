@@ -1,6 +1,6 @@
 // EditPopups — the Edit and Selection menus' dialogs, on the Os8Popup frame
-// ("Popups-settings" 543:7841: Leave Silence 543:8056, Shift Sound 543:9335, Select
-// Exactly 543:8171, Select Peak 543:9266).
+// ("popups" 1447:9163: Leave Silence 1447:9159, Shift Sound 1447:9157, Select Peak
+// 1447:9155, Select Exactly 1447:9156).
 //
 // Each builder lays out its Figma variant in the popup's rows, opens with the values
 // 0.9.2's dialog would (disassembly/Edit-Selection-Commands.md) and, when the primary
@@ -28,10 +28,10 @@ struct Built
     Os8TextField* field = nullptr;   // to focus once the popup is on screen
 };
 
-/** "Leave [N units] of silence at the beginning of (• the sound / • the selected
-    channel(s))". With every track selected, the second choice is greyed and the first
-    one picked, as 0.9.2 did. */
-Built leaveSilence (const se::SoundDocument&, std::function<void (size_t bytes, bool wholeSound)> apply);
+/** "Leave [N units] of silence at the [Beginning / End] (• of the sound / • of the
+    selected channel(s))". With every track selected, the second choice is greyed and
+    the first one picked, as 0.9.2 did. It opens on Beginning every time. */
+Built leaveSilence (const se::SoundDocument&, std::function<void (size_t bytes, bool wholeSound, bool atEnd)> apply);
 
 /** "Shift [the scope] by: [N units] (• Shift Right / • Shift Left)"; the scope is the
     one se::shiftScope reads from the selection. Shift Right is picked. */
@@ -41,8 +41,8 @@ Built shiftSound (const se::SoundDocument&, std::function<void (size_t bytes, bo
     insertion point."; After is picked. `anchor` is se::ExactlyAnchor's 1..3. */
 Built selectExactly (const se::SoundDocument&, std::function<void (size_t bytes, int anchor)> apply);
 
-/** "Select the peak of (• the selection / • the sound) leaving [0 units] of margin at
-    the left and the right of the peak."; the radio opens as se::peakScopeIsSound says,
+/** "Select the peak of (• the selection / • the sound) leaving [0 units] of margin
+    around the peak."; the radio opens as se::peakScopeIsSound says,
     the margin at 0 every time (as 0.9.2), its units remembered on their own. */
 Built selectPeak (const se::SoundDocument&, std::function<void (size_t marginBytes, bool wholeSound)> apply);
 

@@ -1466,7 +1466,7 @@ std::unique_ptr<Os8Popup> EffectsPanelComponent::makeSavePopup (Os8TextField*& f
     // box, Cancel and Save. Unlike 0.9.2, an empty name cannot be saved, and a name that
     // is already taken replaces that setup instead of adding a second one.
     auto popup = std::make_unique<Os8Popup> ("Save Setup", 43);
-    popup->addLabel (juce::String::fromUTF8 ("Save the new setting as\xe2\x80\xa6"), 0.0f, 4.0f);
+    popup->addLabel (juce::String::fromUTF8 ("Save the new setting as\xe2\x80\xa6"), 0.0f, 4.0f, os8::TextStyle::smallLabel);
     field = popup->addContent (std::make_unique<Os8TextField> (os8::FieldSize::small),
                                { 0, 18 + 4, Os8Popup::kContentW, os8::metricsOf (os8::FieldSize::small).height });
     popup->setButtons ("Cancel", "Save");
@@ -1514,7 +1514,7 @@ std::unique_ptr<Os8Popup> EffectsPanelComponent::makeDeletePopup (const std::str
     }
 
     auto popup = std::make_unique<Os8Popup> ("Delete Setup", 4 + 14 * lines.size());
-    for (int i = 0; i < lines.size(); ++i) popup->addLabel (lines[i], 0.0f, 4.0f + 14.0f * (float) i);
+    for (int i = 0; i < lines.size(); ++i) popup->addLabel (lines[i], 0.0f, 4.0f + 14.0f * (float) i, os8::TextStyle::smallLabel);
     popup->setButtons ("Delete", "Cancel", 1);
     return popup;
 }

@@ -204,7 +204,7 @@ space = play/pause toggle · F1–Fn = solo-play channel n · option-Fn = mute c
 - **Cut/Copy** put actual sound (with its rate/bps) on the clipboard. **Play Clipboard** plays it in its own window.
 - **Paste** into a document with different bps/rate prompts: *"You are trying to paste a sound sampled at ^1 bits into a sound sampled at ^2 bits. Do you want me to resample the sound you are inserting at ^3 bits?"* (same for kHz) — Resample / Cancel `[RES: ALRT 152/166]`.
 - **Clear/delete** removes the selected range from the selected channels only — since channels are independent buffers, this shortens *only those channels*, letting tracks drift out of alignment. This is a core weirdness. (Exact whole-channel vs range behavior of shipped code `[ASM]`, model per §2.)
-- **Leave Silence…**: "Leave [N units] of silence at the beginning of (• the Sound / • the Selected Channels)" — trims everything else `[RES: DITL 142]`.
+- **Leave Silence…**: "Leave [N units] of silence at the beginning of (• the Sound / • the Selected Channels)" — trims everything else `[RES: DITL 142]`. `[NATIVE]` (0.6.0): a Beginning / End menu; End is the mirror image on the tracks' ends (the shortest trailing silence sets what every selected track gains or loses there; no audio moves).
 - **Shift Sound…**: "Shift {the whole sound / channel N / channels N to M / the selection} by [N units], • Shift Left / • Shift Right" `[RES: DITL 139 + STR# 139]`.
 - **Crop**: keep selection, discard the rest.
 - **Select Exactly…**: "Select exactly [N units] of sound • Before / • Centered on / • After {the selection | the insertion point}" `[RES: DITL 140]`.

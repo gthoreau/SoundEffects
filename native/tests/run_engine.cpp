@@ -2918,6 +2918,56 @@ void mainMuteTests()
 
 
 // 10.2: where the Effects column scrolls to when a tray opens.
+/** Leave Silence at the end (0.6.0 step 5.1): the mirror of the beginning. */
+static void leaveSilenceEndTests()
+{
+    for (const int bps : { 8, 16 })
+    {
+        se::DocumentInit init;
+        init.numTracks = 3;
+        init.bps = bps;
+        init.sizeBytes = 0;
+        se::SoundDocument doc (init);
+        const size_t fs = (size_t) doc.frameSize();
+        const uint8_t quiet = bps == 8 ? 0x80 : 0x00;
+        // Track 1: 4 frames of audio, 3 of trail. Track 2: 2 of audio, 5 of trail,
+        // so both end together. Track 3: silent throughout.
+        const auto make = [&] (size_t audio, size_t trail)
+        {
+            std::vector<uint8_t> d (audio * fs, 0x11);
+            d.resize ((audio + trail) * fs, quiet);
+            return d;
+        };
+        const auto reset = [&]
+        {
+            doc.tracks[0].data = make (4, 3);
+            doc.tracks[1].data = make (2, 5);
+            doc.tracks[2].data = make (0, 4);
+            doc.firstSelTrack = 1; doc.lastSelTrack = 1;
+            doc.selSt = 1 * fs; doc.selEnd = 7 * fs;
+        };
+        const std::string tag = "leave silence at the end, " + std::to_string (bps) + "-bit: ";
+
+        reset();
+        se::leaveSilence (doc, 5 * fs, true, true);
+        check (doc.tracks[0].data == make (4, 5) && doc.tracks[1].data == make (2, 7),
+               tag + "pads every track by the shortest trail's shortfall");
+        check (doc.tracks[2].data == make (0, 5), tag + "a silent track becomes that much silence");
+        check (doc.selSt == fs && doc.selEnd == 7 * fs, tag + "padding leaves the selection");
+
+        reset();
+        se::leaveSilence (doc, 1 * fs, true, true);
+        check (doc.tracks[0].data == make (4, 1) && doc.tracks[1].data == make (2, 3),
+               tag + "trims, the audio unmoved");
+        check (doc.selSt == fs && doc.selEnd == 5 * fs, tag + "the selection stays within the tracks");
+
+        reset();
+        se::leaveSilence (doc, 0, false, true);
+        check (doc.tracks[0].data == make (4, 0) && doc.tracks[1].data == make (2, 5),
+               tag + "selected channels only, down to none");
+    }
+}
+
 static void scrollTargetTests()
 {
     std::printf ("scroll target\n");
@@ -3772,6 +3822,7 @@ int main()
                "select loop: the loop region, every track");
     }
 
+    leaveSilenceEndTests();
     scrollTargetTests();
     midiNoteTests();
     keyboardVoiceTests();

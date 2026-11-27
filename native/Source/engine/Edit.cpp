@@ -330,6 +330,14 @@ size_t leadingSilence (const std::vector<uint8_t>& data, size_t frameSize)
     return run;
 }
 
+size_t trailingSilence (const std::vector<uint8_t>& data, size_t frameSize)
+{
+    const uint8_t silent = frameSize == 1 ? 0x80 : 0x00;
+    size_t run = 0;
+    while (run < data.size() && data[data.size() - 1 - run] == silent) ++run;
+    return run - run % frameSize;
+}
+
 void prependSilence (std::vector<uint8_t>& data, size_t n, uint8_t silent)
 {
     data.insert (data.begin(), n, silent);
@@ -436,7 +444,37 @@ bool shiftSound (SoundDocument& doc, size_t bytes, bool right)
     return true;
 }
 
-void leaveSilence (SoundDocument& doc, size_t bytes, bool wholeSound)
+namespace {
+
+void leaveTrailingSilence (SoundDocument& doc, size_t want, size_t frameSize, uint8_t silent)
+{
+    size_t run = doc.maxTrackSize();
+    bool audible = false;
+    for (int i : doc.selectedTrackIndices())
+    {
+        auto& data = doc.tracks[static_cast<size_t> (i)].data;
+        const size_t tail = trailingSilence (data, frameSize);
+        if (tail == data.size())  data.clear();
+        else                      { run = std::min (run, tail); audible = true; }
+    }
+    if (! audible) { run = 0; doc.selSt = doc.selEnd = 0; }
+
+    for (int i : doc.selectedTrackIndices())
+    {
+        auto& data = doc.tracks[static_cast<size_t> (i)].data;
+        if (data.empty())     data.assign (want, silent);
+        else if (run < want)  data.resize (data.size() + (want - run), silent);
+        else if (run > want)  data.resize (data.size() - (run - want));
+    }
+
+    const size_t limit = doc.maxSelectedTrackSize();
+    doc.selSt = std::min (doc.selSt, limit);
+    doc.selEnd = std::min (doc.selEnd, limit);
+}
+
+} // namespace
+
+void leaveSilence (SoundDocument& doc, size_t bytes, bool wholeSound, bool atEnd)
 {
     const size_t frameSize = static_cast<size_t> (doc.frameSize());
     const size_t want = bytes - (bytes % frameSize);
@@ -446,6 +484,7 @@ void leaveSilence (SoundDocument& doc, size_t bytes, bool wholeSound)
         doc.firstSelTrack = 1;
         doc.lastSelTrack = doc.numTracks();
     }
+    if (atEnd) { leaveTrailingSilence (doc, want, frameSize, silent); return; }
 
     // The shortest lead-in among the audible tracks; silent ones are emptied.
     size_t run = doc.maxTrackSize();

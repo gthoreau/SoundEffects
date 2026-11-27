@@ -57,7 +57,7 @@ std::unique_ptr<Os8Popup> sendToCanvas (const se::Tape& tape,
 
     auto popup = std::make_unique<Os8Popup> ("Send to Canvas", cleanTop + os8::kToggleSize + 4);
     auto& p = *popup;
-    p.addLabel ("Send the tape to the canvas:", 0.0f, 4.0f);
+    p.addLabel ("Send the tape to the canvas:", 0.0f, 4.0f, os8::TextStyle::smallLabel);
     auto& go = p.setButtons ("Cancel", "Send");
 
     const double rate = tape.rate();
@@ -74,7 +74,7 @@ std::unique_ptr<Os8Popup> sendToCanvas (const se::Tape& tape,
     };
     auto* whole = addRadio ("The whole tape, as one Sound", 24);
     p.addLabel (durationText (tape.length(), rate),
-                (float) (Os8Popup::kContentW - os8::widthOf (durationText (tape.length(), rate), os8::TextStyle::smallLabel) - 4), 25.0f);
+                (float) (Os8Popup::kContentW - os8::widthOf (durationText (tape.length(), rate), os8::TextStyle::smallLabel) - 4), 25.0f, os8::TextStyle::smallLabel);
     auto* takes = addRadio (rows == 1 ? "Its take, as one Sound:" : "Takes, one Sound each:", 42);
 
     // The takes list: a viewport once there are more than fit.

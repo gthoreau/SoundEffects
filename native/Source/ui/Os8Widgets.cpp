@@ -65,7 +65,10 @@ void Os8Toggle::paintButton (juce::Graphics& g, bool, bool)
     {
         g.setColour (enabled ? os8::colour::black : os8::colour::gray400);
         os8::drawText (g, getButtonText(), style,
-                       { (float) (os8::kToggleSize + kLabelGap), top + 1.0f,
+                       // One pixel under the control's top in Small Label, level with it
+                       // in the popups' Headlines.
+                       { (float) (os8::kToggleSize + kLabelGap),
+                         top + std::round (((float) os8::kToggleSize - os8::lineHeightOf (style)) * 0.5f),
                          (float) getWidth(), os8::lineHeightOf (style) });
     }
 }

@@ -114,11 +114,17 @@ std::shared_ptr<DurationRow> addDurationRow (Os8Popup& popup, const se::SoundDoc
     return row;
 }
 
+/** The frame the Edit popups share: 280 px wide, the rows 15 px in. */
+std::unique_ptr<Os8Popup> makePopup (const char* title, int rowsHeight, int inset = 15)
+{
+    return std::make_unique<Os8Popup> (title, rowsHeight, 280 - 2 * inset, inset);
+}
+
 /** A radio with its label (Radiobutton 12 × 12, the text 4 px after it), at the
     design's x 16 in a 20 px row. */
 Os8Toggle* addRadio (Os8Popup& popup, const juce::String& text, int y)
 {
-    auto t = std::make_unique<Os8Toggle> (text, Os8Toggle::Shape::radio);
+    auto t = std::make_unique<Os8Toggle> (text, Os8Toggle::Shape::radio, os8::TextStyle::headline);
     t->setWantsKeyboardFocus (false);
     t->setMouseClickGrabsKeyboardFocus (false);
     auto* raw = popup.addContent (std::move (t), { 16, y, 0, os8::kToggleSize });
@@ -156,17 +162,27 @@ void resetMemory()
     peakUnit() = se::Unit::Samples;
 }
 
-Built leaveSilence (const se::SoundDocument& doc, std::function<void (size_t, bool)> apply)
+Built leaveSilence (const se::SoundDocument& doc, std::function<void (size_t, bool, bool)> apply)
 {
-    // 543:8056: rows from y 33 of the variant; everything below is relative to that.
+    // 1447:9159. Its rows alone sit 14 px in.
     Built b;
-    b.popup = std::make_unique<Os8Popup> ("Leave Silence", 83);
+    b.popup = makePopup ("Leave Silence", 90, 14);
     auto& p = *b.popup;
-    p.addLabel ("Leave", 0.0f, 8.0f);
-    auto row = addDurationRow (p, doc, 39, 4, memory().unit, memory().seconds);
-    p.addLabel ("of silence at the beginning of", 0.0f, 29.0f);
-    auto* sound = addRadio (p, "the sound", 47);
-    auto* chans = addRadio (p, "the selected channel(s)", 67);
+    p.addLabel ("Leave", 0.0f, 6.0f);
+    auto row = addDurationRow (p, doc, 44, 4, memory().unit, memory().seconds);
+    p.addLabel ("of silence at the", 0.0f, 31.0f);
+
+    // [NATIVE] 0.6.0: the end of the sound too, as the design's dropdown offers.
+    auto where = std::make_unique<Os8Dropdown> (Os8Dropdown::Style::standard);
+    where->setItems ({ "Beginning", "End" });
+    where->setSelectedIndex (0);
+    where->setWantsKeyboardFocus (false);
+    auto* ends = p.addContent (std::move (where), { 117, 29, 100, os8::kDropdownHeight });
+    auto* field = row->field;
+    ends->onChange = [field] (int) { field->grabFocus(); };
+
+    auto* sound = addRadio (p, "of the sound", 54);
+    auto* chans = addRadio (p, "of the selected channel(s)", 74);
     pairRadios (sound, chans);
 
     // DITL 142 as CODE 12 sets it up: with every track already selected, "the selected
@@ -178,26 +194,26 @@ Built leaveSilence (const se::SoundDocument& doc, std::function<void (size_t, bo
     p.setButtons ("Cancel", "Apply");
     wireField (p, *row->field);
     b.field = row->field;
-    p.onDismiss = [row, sound, apply] (int result)
+    p.onDismiss = [row, sound, ends, apply] (int result)
     {
         if (result != 1) return;
         row->field->commitNow();
         remember (*row);
-        if (apply) apply (row->bytes(), sound->getToggleState());
+        if (apply) apply (row->bytes(), sound->getToggleState(), ends->getSelectedIndex() == 1);
     };
     return b;
 }
 
 Built shiftSound (const se::SoundDocument& doc, std::function<void (size_t, bool)> apply)
 {
-    // 543:9335. The sentence names the scope (STR# 139), which the selection decides.
+    // 1447:9157. The sentence names the scope (STR# 139), which the selection decides.
     Built b;
-    b.popup = std::make_unique<Os8Popup> ("Shift Sound", 83);
+    b.popup = makePopup ("Shift Sound", 85);
     auto& p = *b.popup;
     p.addLabel (juce::String (se::shiftCaption (se::shiftScope (doc))), 0.0f, 4.0f);
-    auto row = addDurationRow (p, doc, 0, 22, memory().unit, memory().seconds);
-    auto* right = addRadio (p, "Shift Right", 47);
-    auto* left = addRadio (p, "Shift Left", 67);
+    auto row = addDurationRow (p, doc, 0, 24, memory().unit, memory().seconds);
+    auto* right = addRadio (p, "Shift Right", 49);
+    auto* left = addRadio (p, "Shift Left", 69);
     pairRadios (right, left);
     right->setToggleState (true, juce::dontSendNotification);
 
@@ -216,23 +232,23 @@ Built shiftSound (const se::SoundDocument& doc, std::function<void (size_t, bool
 
 Built selectExactly (const se::SoundDocument& doc, std::function<void (size_t, int)> apply)
 {
-    // 543:8171 — DITL 140: After is the default; the last line is STR# 142.
+    // 1447:9156 — DITL 140: After is the default; the last line is STR# 142.
     Built b;
-    b.popup = std::make_unique<Os8Popup> ("Select Exactly", 121);
+    b.popup = makePopup ("Select Exactly", 125);
     auto& p = *b.popup;
-    p.addLabel ("Select", 0.0f, 8.0f);
-    auto row = addDurationRow (p, doc, 39, 4, memory().unit, memory().seconds);
+    p.addLabel ("Select", 0.0f, 6.0f);
+    auto row = addDurationRow (p, doc, 44, 4, memory().unit, memory().seconds);
     p.addLabel ("of sound", 0.0f, 29.0f);
-    auto* after = addRadio (p, "After", 47);
-    auto* centred = addRadio (p, "Centered on", 67);
-    auto* before = addRadio (p, "Before", 87);
+    auto* after = addRadio (p, "After", 49);
+    auto* centred = addRadio (p, "Centered on", 69);
+    auto* before = addRadio (p, "Before", 89);
     for (auto* r : { after, centred, before })
         r->onClick = [r, after, centred, before]
         {
             for (auto* o : { after, centred, before }) o->setToggleState (o == r, juce::dontSendNotification);
         };
     after->setToggleState (true, juce::dontSendNotification);
-    p.addLabel (doc.selSt != doc.selEnd ? "the selection." : "the insertion point.", 0.0f, 107.0f);
+    p.addLabel (doc.selSt != doc.selEnd ? "the selection." : "the insertion point.", 0.0f, 109.0f);
 
     p.setButtons ("Cancel", "Apply");
     wireField (p, *row->field);
@@ -250,21 +266,18 @@ Built selectExactly (const se::SoundDocument& doc, std::function<void (size_t, i
 
 Built selectPeak (const se::SoundDocument& doc, std::function<void (size_t, bool)> apply)
 {
-    // 543:9266 — DITL 141, its two radios in the design's order.
+    // 1447:9155 — DITL 141, its two radios in the design's order.
     Built b;
-    b.popup = std::make_unique<Os8Popup> ("Select Peak", 102);
+    b.popup = makePopup ("Select Peak", 105);
     auto& p = *b.popup;
     p.addLabel ("Select the peak of", 0.0f, 4.0f);
-    auto* selection = addRadio (p, "the selection", 22);
-    auto* sound = addRadio (p, "the sound", 42);
+    auto* selection = addRadio (p, "the selection", 24);
+    auto* sound = addRadio (p, "the sound", 44);
     pairRadios (selection, sound);
     (se::peakScopeIsSound (doc) ? sound : selection)->setToggleState (true, juce::dontSendNotification);
-    p.addLabel ("leaving", 0.0f, 65.0f);
-    auto row = addDurationRow (p, doc, 48, 62, peakUnit(), 0.0);
-    // The sentence is wider than the box: Figma wraps "peak." onto a second line and
-    // centres both on the one-line text box, so they sit 5 px higher than a single line.
-    p.addLabel ("of margin at the left and the right of the", 0.0f, 82.0f);
-    p.addLabel ("peak.", 0.0f, 92.0f);
+    p.addLabel ("leaving", 0.0f, 66.0f);
+    auto row = addDurationRow (p, doc, 53, 64, peakUnit(), 0.0);
+    p.addLabel ("of margin around the peak.", 0.0f, 89.0f);
 
     p.setButtons ("Cancel", "Apply");
     wireField (p, *row->field);

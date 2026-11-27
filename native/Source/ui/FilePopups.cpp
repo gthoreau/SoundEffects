@@ -78,10 +78,10 @@ std::unique_ptr<Os8Popup> exportSound (const se::WindowState& sound)
 {
     auto popup = std::make_unique<Os8Popup> ("Export Sound", 62);
     auto& p = *popup;
-    p.addLabel ("Save this Sound as a .sefx file of its own:", 0.0f, 4.0f);
-    p.addLabel (fitted (juce::String (sound.name), Os8Popup::kContentW), 0.0f, 22.0f);
-    p.addLabel (summaryOf (sound), 0.0f, 36.0f);
-    p.addLabel ("It opens like any canvas, audio included.", 0.0f, 50.0f);
+    p.addLabel ("Save this Sound as a .sefx file of its own:", 0.0f, 4.0f, os8::TextStyle::smallLabel);
+    p.addLabel (fitted (juce::String (sound.name), Os8Popup::kContentW), 0.0f, 22.0f, os8::TextStyle::smallLabel);
+    p.addLabel (summaryOf (sound), 0.0f, 36.0f, os8::TextStyle::smallLabel);
+    p.addLabel ("It opens like any canvas, audio included.", 0.0f, 50.0f, os8::TextStyle::smallLabel);
     p.setButtons ("Cancel", juce::String::fromUTF8 ("Export\xE2\x80\xA6"));
     return popup;
 }
@@ -97,7 +97,7 @@ std::unique_ptr<Os8Popup> importSound (const juce::String& fileName,
 
     auto popup = std::make_unique<Os8Popup> ("Import Sound", 20 + (multi ? kRowH : 0) + listH);
     auto& p = *popup;
-    p.addLabel (fitted ("Sounds in " + fileName + ":", Os8Popup::kContentW), 0.0f, 4.0f);
+    p.addLabel (fitted ("Sounds in " + fileName + ":", Os8Popup::kContentW), 0.0f, 4.0f, os8::TextStyle::smallLabel);
 
     auto& go = p.setButtons ("Cancel", "Import");
 

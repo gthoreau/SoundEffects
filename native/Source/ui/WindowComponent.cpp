@@ -1973,10 +1973,10 @@ bool WindowComponent::perform (Action a)
             return true;
 
         case Action::leaveSilence:
-            openPopup (editpopups::leaveSilence (*d, [safe = SafePointer<WindowComponent> (this)] (size_t bytes, bool wholeSound)
+            openPopup (editpopups::leaveSilence (*d, [safe = SafePointer<WindowComponent> (this)] (size_t bytes, bool wholeSound, bool atEnd)
             {
                 if (safe == nullptr || safe->doc() == nullptr) return;
-                se::leaveSilence (*safe->doc(), bytes, wholeSound);
+                se::leaveSilence (*safe->doc(), bytes, wholeSound, atEnd);
                 safe->commit();
                 safe->resizeToFit();
             }));
