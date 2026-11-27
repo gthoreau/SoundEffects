@@ -1,15 +1,16 @@
-// MagnetophonComponent — the Magnetophon panel's content ("Magnetophon" 1199:16274),
-// under the Mixer in the left column, inside a SidePanel that gives it its title bar
+// MagnetophonComponent — the Magnetophon panel's content ("Magnetophon" 1307:6817),
+// at the bottom of the left column, inside a SidePanel that gives it its title bar
 // and collapse box (layout 700:14314).
 //
 // From the top, in a 268 px column:
-//   - the deck (137 px): two reels whose tape packs grow and shrink with the tape's
-//     position, turning while the tape moves; the tape runs from the left pack under
-//     two guide rollers and the head to the right pack;
+//   - the deck (137 px): two reels, turning while the tape moves; the tape runs from
+//     each one round a pinch roller and under the head;
 //   - the strip (53 px): the tape's waveform scrolling under a fixed centre playhead,
-//     a "Take N" label at each take (it sticks to the left edge while its take runs
-//     off it); the take being recorded is red. Drag it to wind the tape by hand;
-//   - the status line (16 px, dark): "From: <source>", then rate, bits, position;
+//     black behind it and grey ahead, a "Take N" label at each take (it sticks to the
+//     left edge while its take runs off it, and shortens in a narrow one); the take
+//     being recorded is red. Drag it to wind the tape by hand;
+//   - the status line (16 px, dark): "From: <source>", the position centred on the
+//     playhead, then rate and bits;
 //   - the transport (44 px): Source, Record, Stop, Previous, Play, Next, Send.
 //
 // The panel draws and drives the processor's TapeDeck (which outlives it); the
@@ -56,7 +57,8 @@ public:
     static constexpr int kStripTop = kDeckHeight, kStripHeight = 53;
     static constexpr int kStatusTop = kStripTop + kStripHeight, kStatusHeight = 16;
     static constexpr int kTransportTop = kStatusTop + kStatusHeight + 1, kTransportHeight = 44;
-    /** The strip's playhead column (2 px wide from here) and its time scale. */
+    /** The strip's playhead (2 px, centred on this x: the first column of what is
+        still to come) and its time scale. */
     static constexpr int kPlayheadX = 134;
     static constexpr double kPixelsPerSecond = 24.0;
 
@@ -69,8 +71,8 @@ private:
     void paintStrip (juce::Graphics&) const;
     void paintStatus (juce::Graphics&) const;
     void paintTransport (juce::Graphics&) const;
-    /** The tape packs' radii for the current position. */
-    std::pair<float, float> packRadii() const noexcept;
+    /** Where `frame` is in the strip, with the tape where it is now. */
+    int xOfFrame (size_t frame) const noexcept;
 
     se::Engine& engine;
     se::TapeDeck& deck;
