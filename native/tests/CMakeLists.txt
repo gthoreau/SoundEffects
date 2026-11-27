@@ -71,6 +71,7 @@ target_include_directories(effect-fixtures PRIVATE ${ENGINE_DIR} ${CMAKE_CURRENT
 # effect fixtures, so it is its own binary — and JUCE-free for the same reason.
 add_executable(engine-tests
     run_engine.cpp
+    run_declick.cpp
     ${ENGINE_DIR}/engine/Engine.cpp
     ${ENGINE_DIR}/engine/KeyboardVoice.cpp
     ${ENGINE_DIR}/engine/Recorder.cpp

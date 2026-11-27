@@ -17,6 +17,7 @@
 #include "engine/SampleFormat.h"
 #include "engine/TransportButtons.h"
 #include "ui/ScrollTarget.h"
+#include "run_declick.h"
 
 #include <atomic>
 #include <chrono>
@@ -3798,6 +3799,7 @@ int main()
     tapeConcurrencyTests();
     tapeSendTests();
     tapeScrubTests();
+    failures += declickTests();
 
     std::printf ("\n%s\n", failures == 0 ? "engine: all checks passed"
                                          : (std::to_string (failures) + " FAILED").c_str());

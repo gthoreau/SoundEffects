@@ -1,0 +1,387 @@
+// Declicking (0.6.0 step 3): no playback event may jump the output.
+//
+// Every scenario renders a signal that makes a click obvious (a DC offset, a
+// full-scale sine caught on its peak) through one event, and reports the largest
+// difference between two neighbouring output samples from just before the event on.
+// The sine's own slope is 0.0131 per sample (100 Hz at 48 kHz), so anything far
+// above that is the event's doing.
+
+#include "run_declick.h"
+
+#include "engine/Engine.h"
+#include "engine/KeyboardVoice.h"
+#include "engine/SampleFormat.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace {
+
+constexpr double kRate = 48000.0;
+constexpr int    kBlock = 256;
+constexpr size_t kPeriod = 480;     // 100 Hz
+constexpr size_t kPeak = 120;       // the sine's top within a period
+constexpr int    kAfter = 4096;     // rendered past the event: many times any ramp
+
+enum class Signal { dc, sine };
+
+const char* nameOf (Signal s) { return s == Signal::dc ? "DC  " : "sine"; }
+
+/** 16-bit mono, document rate == device rate: one output frame per sound frame.
+    DC sits at half scale; the sine is full scale and starts at zero. */
+std::unique_ptr<se::SoundDocument> document (Signal s, std::initializer_list<size_t> trackFrames)
+{
+    se::DocumentInit init;
+    init.numTracks = (int) trackFrames.size();
+    init.bps = 16;
+    init.rateHz = kRate;
+    init.sizeBytes = 2;
+    auto doc = std::make_unique<se::SoundDocument> (init);
+    int t = 0;
+    for (size_t len : trackFrames)
+    {
+        auto& data = doc->tracks[(size_t) t].data;
+        data.assign (len * 2, 0);
+        for (size_t i = 0; i < len; ++i)
+            se::setSample (data.data(), i * 2,
+                           s == Signal::dc ? 16384
+                                           : (int) std::lround (32767.0 * std::sin (6.283185307179586 * (double) i / (double) kPeriod)),
+                           16);
+        doc->tracks[(size_t) t].outLeft = doc->tracks[(size_t) t].outRight = true;
+        ++t;
+    }
+    return doc;
+}
+
+struct Rig
+{
+    se::Engine engine;
+    std::vector<float> left, right;
+
+    Rig() { engine.prepare (kRate, kBlock); }
+
+    uint64_t add (std::unique_ptr<se::SoundDocument> d) { return engine.addWindow (std::move (d)); }
+
+    void run (int frames)
+    {
+        std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
+        while (frames > 0)
+        {
+            const int n = std::min (frames, kBlock);
+            engine.render (l.data(), r.data(), n);
+            left.insert (left.end(), l.begin(), l.begin() + n);
+            right.insert (right.end(), r.begin(), r.begin() + n);
+            frames -= n;
+        }
+    }
+
+    /** The largest step, either side, among the samples from `from` on. */
+    float jumpFrom (size_t from) const
+    {
+        float worst = 0.0f;
+        for (size_t i = std::max<size_t> (from, 1); i < left.size(); ++i)
+            worst = std::max ({ worst, std::fabs (left[i] - left[i - 1]), std::fabs (right[i] - right[i - 1]) });
+        return worst;
+    }
+
+    /** Render `before` frames, do `event`, render on: the jump from the join. */
+    float across (int before, const std::function<void()>& event, int after = kAfter)
+    {
+        run (before);
+        const size_t join = left.size();
+        event();
+        run (after);
+        return jumpFrom (join);
+    }
+};
+
+se::PlayOptions looping()
+{
+    se::PlayOptions o;
+    o.loop = true;
+    o.useLoopRegion = true;
+    return o;
+}
+
+// Frames rendered before an event, so the next sample due is the sine's peak.
+constexpr int kToPeak = (int) (3 * kPeriod + kPeak);
+// A sound that ends on its peak and starts at zero: the worst place to wrap.
+constexpr size_t kOffZero = 4 * kPeriod + kPeak + 1;
+
+// ---- the scenarios -------------------------------------------------------------
+
+float stopIt (Signal s)
+{
+    Rig r; const auto id = r.add (document (s, { 48000 }));
+    r.engine.play (id, looping());
+    return r.across (kToPeak, [&] { r.engine.stop (id); });
+}
+
+float pauseIt (Signal s)
+{
+    Rig r; const auto id = r.add (document (s, { 48000 }));
+    r.engine.play (id, looping());
+    return r.across (kToPeak, [&] { r.engine.pause (id); });
+}
+
+float resumeIt (Signal s)
+{
+    Rig r; const auto id = r.add (document (s, { 48000 }));
+    r.engine.play (id, looping());
+    r.run (kToPeak);
+    r.engine.pause (id);
+    return r.across (kAfter, [&] { r.engine.pause (id); });
+}
+
+float playFromCaret (Signal s)
+{
+    Rig r; auto d = document (s, { 48000 });
+    d->selSt = d->selEnd = kPeak * 2;
+    const auto id = r.add (std::move (d));
+    return r.across (kBlock, [&] { se::PlayOptions o; o.fromCaret = true; r.engine.play (id, o); });
+}
+
+float restartWhilePlaying (Signal s)
+{
+    Rig r; const auto id = r.add (document (s, { 48000 }));
+    r.engine.play (id, looping());
+    return r.across (kToPeak, [&] { r.engine.play (id, looping()); });
+}
+
+float onceRunsOut (Signal s)
+{
+    Rig r; const auto id = r.add (document (s, { kOffZero }));
+    r.engine.play (id, {});
+    return r.across (kBlock, [] {});
+}
+
+float closeSound (Signal s)
+{
+    Rig r; const auto id = r.add (document (s, { 48000 }));
+    r.engine.play (id, looping());
+    return r.across (kToPeak, [&] { r.engine.removeWindow (id); });
+}
+
+/** A loop heard for several laps; the first block (the start) is not what is asked about. */
+float laps (std::unique_ptr<se::SoundDocument> d, se::PlayDirection dir = se::PlayDirection::forward,
+            bool fast = false, bool fromCaret = false)
+{
+    Rig r; const auto id = r.add (std::move (d));
+    r.engine.setDirection (id, dir);
+    se::PlayOptions o = looping();
+    o.fromCaret = fromCaret;
+    r.engine.play (id, o);
+    if (fast) r.engine.advance (id);
+    r.run (kBlock);
+    const size_t from = r.left.size();
+    r.run (6 * (int) kOffZero);
+    return r.jumpFrom (from);
+}
+
+float wrapWhole (Signal s)    { return laps (document (s, { kOffZero })); }
+float wrapBackward (Signal s) { return laps (document (s, { kOffZero }), se::PlayDirection::backward); }
+float wrapFast (Signal s)     { return laps (document (s, { kOffZero }), se::PlayDirection::forward, true); }
+float wrapOwnLengths (Signal s)
+{
+    auto d = document (s, { kOffZero, 3 * kPeriod + 3 * kPeak + 1 });   // ends on the trough
+    d->tracks[0].outRight = false;
+    d->tracks[1].outLeft = false;
+    return laps (std::move (d));
+}
+float wrapSelection (Signal s)
+{
+    auto d = document (s, { 48000 });
+    d->selSt = 2 * kPeriod * 2;
+    d->selEnd = d->selSt + (2 * kPeriod + kPeak + 1) * 2;
+    return laps (std::move (d));
+}
+float wrapRegion (Signal s)
+{
+    auto d = document (s, { 48000 });
+    d->loopSt = 0;
+    d->loopEnd = (2 * kPeriod + kPeak + 1) * 2;
+    return laps (std::move (d));
+}
+/** A track that ends on its peak inside the looped selection, and comes back. */
+float wrapShortTrack (Signal s)
+{
+    auto d = document (s, { 48000, 2 * kPeriod + kPeak + 1 });
+    d->tracks[0].outRight = false;
+    d->tracks[1].outLeft = false;
+    d->firstSelTrack = 1; d->lastSelTrack = 2;
+    d->selSt = kPeriod * 2;
+    d->selEnd = 4 * kPeriod * 2;
+    return laps (std::move (d));
+}
+/** From a caret past track 2's end: it comes in at its next lap. */
+float caretLateTrack (Signal s)
+{
+    auto d = document (s, { 48000, kOffZero });
+    d->tracks[0].outRight = false;
+    d->tracks[1].outLeft = false;
+    d->selSt = d->selEnd = (kOffZero + 500) * 2;
+    return laps (std::move (d), se::PlayDirection::forward, false, true);
+}
+
+// The Keyboard: the voice drives the engine as the mouse and MIDI do.
+struct Keys
+{
+    Rig r;
+    se::KeyboardVoice voice { r.engine };
+    uint64_t id;
+    int note;
+
+    explicit Keys (Signal s) : id (r.add (document (s, { 48000 }))), note (voice.baseNote()) {}
+};
+
+float keyStrike (Signal s)
+{
+    Keys k (s);
+    // The Keyboard starts at the sound's start, where the sine is zero: strike a
+    // sound whose selection begins on the peak.
+    auto* d = k.r.engine.editDoc (k.id);
+    d->selSt = kPeak * 2; d->selEnd = d->selSt + 100 * kPeriod * 2;
+    k.r.engine.commitEdit (k.id);
+    return k.r.across (kBlock, [&] { k.voice.strike (k.note); });
+}
+
+float keyRelease (Signal s)
+{
+    Keys k (s);
+    k.voice.strike (k.note);
+    return k.r.across (kToPeak, [&] { k.voice.release(); });
+}
+
+/** Let go and struck again before the audio thread has seen the release. */
+float keyRetrigger (Signal s)
+{
+    Keys k (s);
+    k.voice.strike (k.note);
+    return k.r.across (kToPeak, [&] { k.voice.release(); k.voice.strike (k.note); });
+}
+
+/** The same through MIDI: note off and note on in one pump of the queue. */
+float midiRetrigger (Signal s)
+{
+    Keys k (s);
+    k.voice.midiNoteOn (k.note, k.note, 0.0);
+    return k.r.across (kToPeak, [&] { k.voice.midiNoteOff (k.note); k.voice.midiNoteOn (k.note, k.note, 0.0); });
+}
+
+float midiGlide (Signal s)
+{
+    Keys k (s);
+    k.voice.midiNoteOn (k.note, k.note, 0.0);
+    return k.r.across (kToPeak, [&] { k.voice.midiNoteOn (k.note + 12, k.note + 12, 0.0); });
+}
+
+/** An MPE slide: a re-rate every few milliseconds, over loop wraps. */
+float mpeSlide (Signal s)
+{
+    Keys k (s);
+    auto* d = k.r.engine.editDoc (k.id);
+    d->selSt = 0; d->selEnd = (2 * kPeriod + kPeak + 1) * 2;
+    k.r.engine.commitEdit (k.id);
+    k.voice.midiNoteOn (1000, k.note, 0.0);
+    k.r.run (kBlock);
+    const size_t from = k.r.left.size();
+    for (int i = 0; i < 600; ++i)
+    {
+        k.voice.midiBend (1000, 12.0 * std::sin (i * 0.05));
+        k.r.run (128);
+    }
+    return k.r.jumpFrom (from);
+}
+
+// Gain switches, each caught on the peak of a looping Sound.
+float gainEvent (Signal s, const std::function<void (Rig&, se::Window&, se::Window&)>& setup,
+                 const std::function<void (Rig&, se::Window&, se::Window&)>& event)
+{
+    Rig r;
+    const auto id = r.add (document (s, { 48000 }));
+    const auto other = r.add (document (Signal::dc, { 0 }));   // silent: only its solo matters
+    auto& w = *r.engine.windowById (id);
+    auto& o = *r.engine.windowById (other);
+    setup (r, w, o);
+    r.engine.play (id, looping());
+    return r.across (kToPeak, [&] { event (r, w, o); });
+}
+
+void nothing (Rig&, se::Window&, se::Window&) {}
+
+float muteOn (Signal s)      { return gainEvent (s, nothing, [] (Rig&, se::Window& w, se::Window&) { w.muted = true; }); }
+float muteOff (Signal s)     { return gainEvent (s, [] (Rig&, se::Window& w, se::Window&) { w.muted = true; },
+                                                    [] (Rig&, se::Window& w, se::Window&) { w.muted = false; }); }
+float soloOn (Signal s)      { return gainEvent (s, nothing, [] (Rig&, se::Window&, se::Window& o) { o.soloed = true; }); }
+float soloOff (Signal s)     { return gainEvent (s, [] (Rig&, se::Window&, se::Window& o) { o.soloed = true; },
+                                                    [] (Rig&, se::Window&, se::Window& o) { o.soloed = false; }); }
+float mainMuteOn (Signal s)  { return gainEvent (s, nothing, [] (Rig& r, se::Window&, se::Window&) { r.engine.setMasterMuted (true); }); }
+float mainMuteOff (Signal s) { return gainEvent (s, [] (Rig& r, se::Window&, se::Window&) { r.engine.setMasterMuted (true); },
+                                                    [] (Rig& r, se::Window&, se::Window&) { r.engine.setMasterMuted (false); }); }
+float faderJump (Signal s)   { return gainEvent (s, nothing, [] (Rig&, se::Window& w, se::Window&) { w.gain = 0.0f; }); }
+float balanceJump (Signal s) { return gainEvent (s, nothing, [] (Rig&, se::Window& w, se::Window&) { w.balance = 1.0f; }); }
+float mainJump (Signal s)    { return gainEvent (s, nothing, [] (Rig& r, se::Window&, se::Window&) { r.engine.setMasterGain (0.0f); }); }
+
+struct Scenario
+{
+    const char* name;
+    float (*run) (Signal);
+    float dc, sine;          // the largest jump, pinned
+};
+
+const Scenario kScenarios[] = {
+    { "stop",                         stopIt,              0.5000f, 0.9999f },
+    { "pause",                        pauseIt,             0.5000f, 0.9999f },
+    { "resume",                       resumeIt,            0.5000f, 1.0000f },
+    { "play from the caret",          playFromCaret,       0.5000f, 1.0000f },
+    { "play again while playing",     restartWhilePlaying, 0.0000f, 0.9999f },
+    { "play once runs out",           onceRunsOut,         0.5000f, 1.0000f },
+    { "close a playing Sound",        closeSound,          0.5000f, 0.9999f },
+    { "loop wrap, whole sound",       wrapWhole,           0.0000f, 1.0000f },
+    { "loop wrap, backward",          wrapBackward,        0.0000f, 1.0000f },
+    { "loop wrap, FF",                wrapFast,            0.0000f, 0.9999f },
+    { "loop wrap, two own lengths",   wrapOwnLengths,      0.0000f, 1.0000f },
+    { "loop wrap, selection",         wrapSelection,       0.0000f, 1.0000f },
+    { "loop wrap, Set Loop region",   wrapRegion,          0.0000f, 1.0000f },
+    { "loop wrap, short track",       wrapShortTrack,      0.5000f, 1.0000f },
+    { "caret loop, late track",       caretLateTrack,      0.5000f, 1.0000f },
+    { "keyboard strike",              keyStrike,           0.5000f, 1.0000f },
+    { "keyboard release",             keyRelease,          0.5000f, 0.9999f },
+    { "keyboard retrigger",           keyRetrigger,        0.5000f, 0.9999f },
+    { "MIDI retrigger",               midiRetrigger,       0.5000f, 0.9999f },
+    { "MIDI glide",                   midiGlide,           0.0000f, 0.0262f },
+    { "MPE slide over wraps",         mpeSlide,            0.0000f, 1.0000f },
+    { "mute on",                      muteOn,              0.5000f, 0.9999f },
+    { "mute off",                     muteOff,             0.5000f, 1.0000f },
+    { "solo elsewhere on",            soloOn,              0.5000f, 0.9999f },
+    { "solo elsewhere off",           soloOff,             0.5000f, 1.0000f },
+    { "Main Mute on",                 mainMuteOn,          0.0020f, 0.0099f },
+    { "Main Mute off",                mainMuteOff,         0.0020f, 0.0131f },
+    { "fader jump",                   faderJump,           0.5000f, 0.9999f },
+    { "balance jump",                 balanceJump,         0.5000f, 0.9999f },
+    { "Main Level jump",              mainJump,            0.0020f, 0.0099f },
+};
+
+} // namespace
+
+int declickTests()
+{
+    std::printf ("declick: largest sample-to-sample jump (full scale = 1)\n");
+    int failures = 0;
+    for (const auto& sc : kScenarios)
+        for (Signal s : { Signal::dc, Signal::sine })
+        {
+            const float got = sc.run (s);
+            const float want = s == Signal::dc ? sc.dc : sc.sine;
+            const bool ok = std::fabs (got - want) < 0.002f;
+            std::printf ("%-4s declick: %-28s %s jump %.4f (pinned %.4f)\n",
+                         ok ? "ok" : "FAIL", sc.name, nameOf (s), got, want);
+            if (! ok) ++failures;
+        }
+    return failures;
+}
