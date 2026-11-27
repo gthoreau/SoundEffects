@@ -4,7 +4,7 @@
   The 0.5.0 "Application Menus" block (1078:6637) no longer exists in the file.
   Read with use_figma: figma.spec.getContent({ specNodeId: '998:20646' }).
   Figma is the source of truth; re-sync this file whenever the Figma spec changes.
-  Last sync: 2026-11-27. Decisions that resolve gaps or contradictions in this text
+  Last sync: 2026-11-27, re-read at 9.1 (unchanged). Decisions that resolve gaps or contradictions in this text
   live in docs/0.6.0/PLAN.md ("Decisions").
   Embedded links are kept as node ids: open them as
   https://www.figma.com/design/QmG2Chvizn1QXGPwQVBgnn/SoundEffects?node-id=<id with "-">

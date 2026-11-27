@@ -23,7 +23,7 @@ unsynchronised loopers you arrange spatially.
 
 ## Download
 
-**SoundEffects 0.5.0** — the app plus the **VST3** and **Audio Unit** plug-ins,
+**SoundEffects 0.6.0** — the app plus the **VST3** and **Audio Unit** plug-ins,
 universal (Apple Silicon + Intel), macOS 11 Big Sur or later.
 
 Download it from the
@@ -32,8 +32,8 @@ It comes one of two ways, and they install identically:
 
 | | |
 |---|---|
-| `SoundEffects-0.5.0-macOS.dmg` | A disk image. Open it and drag the app into Applications; the plug-ins are in its `Plug-ins` folder. |
-| `SoundEffects-0.5.0-macOS.zip` | The same in an archive, for when it came by email. Unzip, move the app into Applications. |
+| `SoundEffects-0.6.0-macOS.dmg` | A disk image. Open it and drag the app into Applications; the plug-ins are in its `Plug-ins` folder. |
+| `SoundEffects-0.6.0-macOS.zip` | The same in an archive, for when it came by email. Unzip, move the app into Applications. |
 
 <details>
 <summary>Why two formats?</summary>
@@ -118,14 +118,21 @@ xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/SoundEffects.vst3 ~
   Each window plays **Forward, Backward or Ping-pong** (`D`, or the strip on the
   Play button) and switches mid-play without a glitch. A running loop follows the
   selection as you change it.
+- **Several sounds at once.** **⇧-click** windows or mixer strips to group
+  them: Play, Pause, Stop, Direction, 2×, Loop, Mute, Solo and the Keyboard then
+  act on all of them, starting in the same instant. Everything else stays per
+  window.
+- **No clicks.** Starting, stopping, loop wraps, keyboard notes, mutes and
+  faders are smoothed over a few milliseconds. The audio itself is not changed.
 - **Recording.** The **Source** button (⌘⇧R) records from an audio input, from
   the canvas (the main mix, or one window's own output) or, in a plugin, from
   the DAW. With nothing selected, a take goes into new tracks; with a selection
   over one or two tracks, it goes into the selection, as a punch-in or looping.
-  Conversion is Raw (lo-fi, the default) or Clean.
+  Conversion is Clean (the default) or Raw (lo-fi, untick Clean conversion).
 - **The mixer.** One strip per window, in numbered slots (keys `1`…`0` select a
   slot). Each strip has a fader with a stereo VU meter, balance, mute and solo,
-  and you drag strips to reorder them.
+  and you drag strips to reorder them. **⌘-click** a solo box to solo that one
+  alone, or, on a lit box, to clear every solo.
 - **37 effects** in a panel, ported from the originals and checked against golden
   vectors generated from the TypeScript reference. They include Amplify,
   Echo/Delay, Flanger, the FIR and IIR filters, Robotize, Granular Synthesis,
@@ -141,16 +148,23 @@ xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/VST3/SoundEffects.vst3 ~
   (Push 3, LinnStrument) whose per-note pitch slide bends the sound continuously.
   It is mono, the last note played sounding. In the app, tick your device in
   **Audio/Midi Setup**; in the plug-ins the DAW's MIDI plays it, window open or not.
+- **MIDI Mapping.** A panel that lets the twelve MIDI notes C0–B0 (notes 12–23,
+  which Ableton calls C-1 to B-1) play, pause and stop sounds by mixer slot, from
+  a controller or a sequencer. Each note has its own action at note start and at
+  note end. The mapping is saved with the canvas.
 - **The Magnetophon.** A reel-to-reel tape recorder under the mixer. It records
   the main mix, one window's output, an input or the DAW into takes, plays them
   back (drag the tape to wind it by hand), and **Send** puts the whole tape, or
-  chosen takes, on the canvas as new sounds. The tape lives for the session.
-- **Main Level.** One fader for the whole canvas, saved with it.
+  chosen takes, on the canvas as new sounds. Hover a take and click the trash to
+  delete it (no undo); its **S** box solos the tape. The tape lives for the session.
+- **Main Level.** One fader for the whole canvas, saved with it, with a **M** box
+  that mutes everything.
 - **Colour theme.** **Canvas → Hide Color Theme** swaps every colour for a sober
   Mac OS 8 grey.
 - **Projects.** **Save Canvas** (⌘S) writes a folder holding the `.sefx` file and
   an `Assets` folder with every track as a WAV. **Export Sound** and **Import
-  Sound** move single sounds between canvases. **Open Sound** (⌘O) reads WAV and
+  Sound** move single sounds between canvases; Export also writes a **WAV stereo
+  mixdown** or **mono stems**. **Open Sound** (⌘O) reads WAV and
   AIFF; a stereo file arrives as two tracks routed left and right.
 
 ## What doesn't work yet
@@ -160,6 +174,7 @@ Worth knowing before you spend an evening on a patch:
 - **There is no undo**, and there never will be. That one is deliberate: the
   menu item is there and always greyed. See the original's own alert text in the
   spec.
+- **MIDI Mapping** has been tried in the app, not yet inside a DAW.
 - **The plug-in's MPE** reaches the Audio Unit; the VST3 wrapper has no
   note-expression support yet, so try the AU for a pitch slide from a DAW.
 - **The Magnetophon's tape is not saved**: use **Send** to keep it. Closing a
@@ -220,8 +235,9 @@ cmake -B native/build -S native -G Ninja && cmake --build native/build
 The plug-ins are the `SoundEffects_VST3` and `SoundEffects_AU` targets of the
 same build.
 
-The 0.5.0 work, its decisions and its journal are in
-[docs/0.5.0/PLAN.md](docs/0.5.0/PLAN.md); the 0.4.0 work is in
+The 0.6.0 work, its decisions and its journal are in
+[docs/0.6.0/PLAN.md](docs/0.6.0/PLAN.md); 0.5.0 is in
+[docs/0.5.0/PLAN.md](docs/0.5.0/PLAN.md), 0.4.0 in
 [docs/0.4.0/PLAN.md](docs/0.4.0/PLAN.md), and what comes next is in
 [docs/0.4.0/perf-audit-plan.md](docs/0.4.0/perf-audit-plan.md).
 

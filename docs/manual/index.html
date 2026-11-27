@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SoundEffects User Manual</title>
-<meta name="description" content="The user manual for SoundEffects 0.5.0, a native macOS rebuild of Alberto Ricci's destructive sound editor.">
+<meta name="description" content="The user manual for SoundEffects 0.6.0, a native macOS rebuild of Alberto Ricci's destructive sound editor.">
 <style>
 @font-face { font-family: "Chicago"; src: url("fonts/ClassicChicago.ttf") format("truetype"); font-display: swap; }
 :root {
@@ -95,7 +95,7 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
 <div class="layout">
 <nav class="toc" aria-label="Contents">
   <p class="brand">SoundEffects</p>
-  <p class="ver">User manual · version 0.5.0</p>
+  <p class="ver">User manual · version 0.6.0</p>
   <ol>
     <li><a href="#welcome">Welcome</a></li>
     <li><a href="#install">Installing</a></li>
@@ -108,6 +108,7 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
     <li><a href="#effects">Effects</a></li>
     <li><a href="#mixer">The mixer</a></li>
     <li><a href="#keyboard">The Keyboard and MIDI</a></li>
+    <li><a href="#mapping">MIDI Mapping</a></li>
     <li><a href="#tape">The Magnetophon</a></li>
     <li><a href="#files">Saving and files</a></li>
     <li><a href="#plugins">Using it in a DAW</a></li>
@@ -119,7 +120,7 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
 <main>
 <header class="hero">
   <h1>SoundEffects</h1>
-  <p class="lede">A canvas of looping sounds, each one a window you can record into, cut up, run through effects and play against the others. This is the manual for version 0.5.0.</p>
+  <p class="lede">A canvas of looping sounds, each one a window you can record into, cut up, run through effects and play against the others. This is the manual for version 0.6.0.</p>
   <figure class="photo"><img src="img/hero.png" alt="The SoundEffects canvas: seven coloured sound windows, the mixer on the left, the Effects panel on the right, the keyboard palette at the bottom." width="1400" height="850"><figcaption>The whole app at a glance: the canvas in the middle, the mixer and the Magnetophon on the left, the Effects panel on the right.</figcaption></figure>
 </header>
 
@@ -148,7 +149,7 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
 <section id="install"><h2><span>2. Installing</span></h2><div class="body">
   <p>SoundEffects needs <strong>macOS 11 Big Sur or later</strong>, on Apple Silicon or Intel. The download holds the app plus the VST3 and Audio Unit plug-ins.</p>
   <ol>
-    <li>Get <code>SoundEffects-0.5.0-macOS.dmg</code> or <code>.zip</code> from the <a href="https://github.com/gthoreau/SoundEffects/releases">releases page</a>.</li>
+    <li>Get <code>SoundEffects-0.6.0-macOS.dmg</code> or <code>.zip</code> from the <a href="https://github.com/gthoreau/SoundEffects/releases">releases page</a>.</li>
     <li>Drag <strong>SoundEffects</strong> into your <strong>Applications</strong> folder (open the <code>.dmg</code>, or unzip the <code>.zip</code> first).</li>
     <li>Launch it. macOS will refuse with <em>"Apple could not verify SoundEffects is free of malware."</em> That is expected.</li>
     <li>Open <strong>System Settings → Privacy &amp; Security</strong>, scroll to the Security section, click <strong>Open Anyway</strong> next to SoundEffects, and confirm.</li>
@@ -170,13 +171,16 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
   <figure><img src="img/app.png" alt="The SoundEffects window with its menu bar, mixer, two sound windows, the Effects panel, the Magnetophon and the zoom bar." width="1440" height="900"><figcaption>A fresh canvas with two sounds: one empty, one holding a two-track recording.</figcaption></figure>
   <table>
     <tr><th>Where</th><th>What it is</th><th>Chapter</th></tr>
-    <tr><td>Menu bar</td><td>File, Edit, Selection, Sound and Canvas. Every command in the app is here, with its shortcut.</td><td><a href="#shortcuts">15</a></td></tr>
+    <tr><td>Menu bar</td><td>File, Edit, Selection, Sound and Canvas. Every command in the app is here, with its shortcut.</td><td><a href="#shortcuts">16</a></td></tr>
     <tr><td>Centre</td><td>The canvas, with a window for each sound.</td><td><a href="#canvas">4</a>, <a href="#windows">5</a></td></tr>
     <tr><td>Left, top</td><td>The mixer: one strip per window, and <strong>New Sound</strong> and <strong>Open Sound</strong> buttons.</td><td><a href="#mixer">10</a></td></tr>
-    <tr><td>Left, bottom</td><td>The Magnetophon tape recorder.</td><td><a href="#tape">12</a></td></tr>
+    <tr><td>Left, above the Magnetophon</td><td>The MIDI Mapping panel, folded to its title bar at first.</td><td><a href="#mapping">12</a></td></tr>
+    <tr><td>Left, bottom</td><td>The Magnetophon tape recorder.</td><td><a href="#tape">13</a></td></tr>
     <tr><td>Right</td><td>The Effects panel.</td><td><a href="#effects">9</a></td></tr>
     <tr><td>Bottom centre</td><td>The zoom bar, with the grid and free-canvas switch and the keyboard button.</td><td><a href="#canvas">4</a>, <a href="#keyboard">11</a></td></tr>
   </table>
+  <p>A new canvas, and the first launch, start empty: make your first sound with <strong>New Sound</strong>. Each side panel folds to its title bar: the mixer's stays at the top, the Magnetophon stays at the bottom.</p>
+  <p>Dialogs can be dragged by their title bar. The alerts shown before New, Open, Revert and Quit have a <strong>Don't show again</strong> box. There is no way in the app to bring a hidden alert back.</p>
   <p>Press <kbd>⌘</kbd><kbd>.</kbd> to hide both side panels and give the canvas the whole screen.</p>
 </div></section>
 
@@ -258,6 +262,15 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
   <p>With Loop on, a window repeats. <strong>The loop follows your selection:</strong> if you change the selection while the loop runs, the loop follows it.</p>
   <p>You can also fix a loop in place. Select a span and use <strong>Selection → Set Loop</strong> (<kbd>⌘</kbd><kbd>L</kbd>). The window then loops that span whatever you select afterwards. <strong>Unset Loop</strong> (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>L</kbd>) takes it away, and <strong>Select Set Loop</strong> (<kbd>⌘</kbd><kbd>⇧</kbd><kbd>A</kbd>) selects it again.</p>
   <figure><img src="img/window-setloop.png" alt="A sound window after Set Loop: the loop span is marked on the scroll bar and a different part of the waveform is selected." width="1072" height="516"><figcaption>A loop set on one span, with a different span selected.</figcaption></figure>
+  <h3 id="group">Playing several sounds together</h3>
+  <p><kbd>⇧</kbd>-click a window, or its mixer strip, to add it to a <strong>group</strong>; <kbd>⇧</kbd>-click it again to take it out. Every member's title bar is striped. The one you clicked last keeps the heavier frame: the Effects panel, the selection fields and the Keyboard readout show that one.</p>
+  <ul>
+    <li><strong>Shared:</strong> Play, Pause, Stop, Direction, Advance, Loop, Mute, Solo and the Keyboard (mouse and MIDI). Use any of them, by button, key or Sound menu, on one member and all members take the same state, in the same instant.</li>
+    <li><strong>Not shared:</strong> Record, selections, effects, loop points, volume and balance. A sound joining a group keeps its own state until you next use a shared control.</li>
+    <li>Colour and Rename are greyed out while two or more sounds are grouped.</li>
+    <li>The group ends when you click a sound outside it, or the empty canvas.</li>
+  </ul>
+  <p>Starts, stops, loop wraps and level changes are smoothed over a few milliseconds, so they do not click. The audio itself is not changed.</p>
   <div class="note"><b>Gain, mute and solo never stop a transport.</b> Muting a window silences it, and the window keeps its place. Unmute it later and it is where it would have been.</div>
 </div></section>
 
@@ -277,7 +290,7 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
     <li>With a selection over one or two tracks, it goes <strong>into the selection</strong>, as a punch-in or looping over it.</li>
   </ul>
   <h3>Raw or Clean</h3>
-  <p>Conversion is <strong>Raw</strong> (lo-fi, and the default) or <strong>Clean</strong>. Raw keeps the gritty character of the original. Pick Clean for a faithful take.</p>
+  <p>Conversion is <strong>Clean</strong> (the default) or <strong>Raw</strong>. Untick <strong>Clean conversion</strong> in the Source dialog for the gritty, lo-fi character of the original. The dialog's level fader shows a live stereo meter of the chosen source.</p>
   <h3>Setting up audio</h3>
   <p>Choose the input and output device in <strong>File → Audio/Midi Setup</strong> (<kbd>⌘</kbd><kbd>,</kbd>). macOS asks for microphone access the first time you record.</p>
 </div></section>
@@ -339,8 +352,10 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
     <tr><td>Resampling</td><td>Downsample Bits, Resample Rate, Upsample Bits</td></tr>
   </table>
   <p>Some buttons are greyed out when they cannot apply. <strong>Sum</strong>, <strong>Difference</strong> and <strong>Iterative Crossfade</strong> need a selection across more than one track, for example.</p>
+  <h3>Waveform Generator and Echo</h3>
+  <p>The Waveform Generator's <strong>Wave</strong> menu offers Triangle (the default), Sawtooth, Sine and Square. In Echo, <strong>Only N echoes</strong> gives exactly that many echoes of the selection (80 at most).</p>
   <h3>Setups</h3>
-  <p>Every effect with a tray has a <strong>Setup</strong> menu. Save your values under a name and call them up later. Setups are saved with your preferences.</p>
+  <p>Every effect with a tray has a <strong>Setup</strong> menu. Save your values under a name and call them up later. <strong>Manage setup…</strong> renames or deletes one; deleting does not ask for confirmation. Setups are saved with your preferences.</p>
   <figure><img src="img/popup-save.png" alt="The dialog that saves an effect setup under a name." width="268" height="136"><figcaption>Saving a setup.</figcaption></figure>
 </div></section>
 
@@ -353,8 +368,10 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
         <li>The <strong>fader</strong> sets the window's level, with a stereo VU meter.</li>
         <li>The <strong>balance</strong> control sets left against right.</li>
         <li><strong>M</strong> mutes the window and <strong>S</strong> solos it. Solo silences every other window.</li>
+        <li><kbd>⌘</kbd>-click an unlit <strong>S</strong> to solo that sound alone; <kbd>⌘</kbd>-click a lit one to clear every solo. This works on strips, title bars and the Magnetophon.</li>
+        <li><kbd>⇧</kbd>-click strips to <a href="#group">group sounds</a>.</li>
         <li><strong>Drag a strip</strong> up or down to reorder it.</li>
-        <li><strong>Main Level</strong> at the bottom is one fader for the whole canvas. It is saved with the canvas.</li>
+        <li><strong>Main Level</strong> at the bottom is one fader for the whole canvas. It is saved with the canvas. Its <strong>M</strong> box mutes everything; that is not saved.</li>
       </ul>
       <p>Changing a gain, a mute or a solo never interrupts a transport. The window just gets quieter, or silent.</p>
     </div>
@@ -366,7 +383,9 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
   <figure><img src="img/palette-keyboard.png" alt="The keyboard palette: a piano keyboard, a note readout and an Apply button." width="575" height="62" style="width:575px"><figcaption>The Keyboard palette. The readout shows the note and its distance from the original in semitones.</figcaption></figure>
   <ul>
     <li><strong>Click or drag</strong> on the keys to play.</li>
-    <li>The Keyboard is <strong>mono</strong>: the last note played is the one that sounds.</li>
+    <li>The Keyboard is <strong>mono</strong>: the last note played is the one that sounds. With a group, each member plays the note.</li>
+    <li>It listens from <strong>C1</strong> (MIDI note 24) upwards. The notes below belong to <a href="#mapping">MIDI Mapping</a>.</li>
+    <li>A sound that is armed or recording is never played by the Keyboard.</li>
     <li><strong>Apply</strong> writes the pitch change into the sound.</li>
   </ul>
   <h3>Playing it from MIDI</h3>
@@ -379,7 +398,17 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
   <p>In a plug-in, the DAW's MIDI plays the Keyboard, whether its window is open or not.</p>
 </div></section>
 
-<section id="tape"><h2><span>12. The Magnetophon</span></h2><div class="body">
+<section id="mapping"><h2><span>12. MIDI Mapping</span></h2><div class="body">
+  <p><strong>MIDI Mapping</strong> plays, pauses and stops sounds from a controller or a sequencer. Open the panel above the Magnetophon. It has twelve pads for the notes <strong>C0 to B0</strong> (MIDI notes 12 to 23; Ableton Live calls them C-1 to B-1).</p>
+  <ol>
+    <li>Click a pad.</li>
+    <li>Choose a sound in the <strong>Sound</strong> menu. The pad keeps the sound's <em>mixer slot number</em>: if you reorder the mixer, the note drives whichever sound is then in that slot.</li>
+    <li>Choose what happens <strong>at note start</strong> (Play, Stop or Pause) and <strong>at note end</strong> (Stop, Pause or Play). A note that starts with Stop or Pause ends with Play.</li>
+  </ol>
+  <p>Assigned pads wear their sound's colour, and turn dark while their note comes in. One sound may be on several notes: the latest note wins. A mapped note acts like pressing the sound's own button, so it also drives that sound's <a href="#group">group</a>. The mapping is saved with the canvas.</p>
+</div></section>
+
+<section id="tape"><h2><span>13. The Magnetophon</span></h2><div class="body">
   <div class="row">
     <figure><img src="img/magnetophon.png" alt="The Magnetophon panel: two tape reels, a take list and its own transport." width="540" height="550" style="width:270px"></figure>
     <div style="flex:1; min-width: 260px">
@@ -387,14 +416,16 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
       <ul>
         <li><strong>Record</strong> the main mix, one window's output, an input, or the DAW. Choose with its own <strong>Source</strong> button. Each recording is a <strong>take</strong>.</li>
         <li><strong>Play</strong> takes back. Drag the tape to wind it by hand.</li>
-        <li><strong>Send</strong> (the arrow button) puts the whole tape, or the takes you choose, on the canvas as new sounds.</li>
+        <li><strong>Send</strong> (the arrow button) puts the whole tape, or the takes you tick, on the canvas as new sounds.</li>
+        <li><strong>Delete a take</strong> with the trash icon that appears when the mouse is over it. There is no confirmation and no undo.</li>
+        <li>The <strong>S</strong> box solos the tape, with the same rules as a sound.</li>
       </ul>
       <div class="warn"><b>The tape is not saved.</b> It lives for the session. Use Send to keep a take. Closing a canvas warns you while takes are unsent.</div>
     </div>
   </div>
 </div></section>
 
-<section id="files"><h2><span>13. Saving and files</span></h2><div class="body">
+<section id="files"><h2><span>14. Saving and files</span></h2><div class="body">
   <table>
     <tr><th>Command</th><th>Key</th><th>Does</th></tr>
     <tr><td>Save Canvas</td><td><kbd>⌘</kbd><kbd>S</kbd></td><td>Writes a folder holding the <code>.sefx</code> file and an <code>Assets</code> folder with every track as a WAV.</td></tr>
@@ -402,13 +433,14 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
     <tr><td>Open Canvas / New Canvas</td><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>O</kbd> / <kbd>N</kbd></td><td>Open a saved canvas, or start an empty one.</td></tr>
     <tr><td>Revert Canvas</td><td></td><td>Goes back to the last saved version.</td></tr>
     <tr><td>Open Sound</td><td><kbd>⌘</kbd><kbd>O</kbd></td><td>Reads a WAV or AIFF file into a new window. Stereo arrives as two tracks.</td></tr>
-    <tr><td>Export Sound… / Import Sound…</td><td></td><td>Move a single sound between canvases.</td></tr>
+    <tr><td>Export Sound… / Import Sound…</td><td></td><td>Move a single sound between canvases. Export also writes a <strong>WAV stereo mixdown</strong> (the sound as its mixer strip plays it: routing, volume and balance, without Main Level) or <strong>WAV mono stems</strong> (one file per track, before the fader).</td></tr>
   </table>
+  <p><strong>Audio/Midi Setup</strong> (in the app, not the plug-ins) sets the output and input devices and channels, sample rate, buffer size and MIDI inputs, with a Test button and a switch that mutes the audio input.</p>
   <p>The app also keeps your last canvas for you: it is written to its settings file when you quit, and opens again at launch. Do not rely on this as your only copy.</p>
   <figure><img src="img/app-menu-file.png" alt="The File menu." width="181" height="216" style="width:271px"><figcaption>The File menu.</figcaption></figure>
 </div></section>
 
-<section id="plugins"><h2><span>14. Using it in a DAW</span></h2><div class="body">
+<section id="plugins"><h2><span>15. Using it in a DAW</span></h2><div class="body">
   <p>The download holds <code>SoundEffects.vst3</code> and <code>SoundEffects.component</code> (Audio Unit). The whole app runs inside the plug-in: canvas, mixer, effects, and recording from the DAW's input. The canvas is saved with your DAW set.</p>
   <h3>Installing the plug-ins</h3>
   <p>In the Finder, choose <strong>Go → Go to Folder…</strong> and copy:</p>
@@ -426,7 +458,7 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
   <div class="note"><b>MPE:</b> pitch slide from an MPE controller reaches the Audio Unit. The VST3 wrapper has no note-expression support yet, so use the AU when you want it.</div>
 </div></section>
 
-<section id="shortcuts"><h2><span>15. Keyboard shortcuts</span></h2><div class="body">
+<section id="shortcuts"><h2><span>16. Keyboard shortcuts</span></h2><div class="body">
   <p>Every shortcut is shown in the menus too. <kbd>⌘</kbd> is Command, <kbd>⇧</kbd> Shift, <kbd>⌥</kbd> Option.</p>
   <div class="shortcuts wide">
     <div>
@@ -495,12 +527,13 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
   </div>
 </div></section>
 
-<section id="limits"><h2><span>16. Limits and troubleshooting</span></h2><div class="body">
+<section id="limits"><h2><span>17. Limits and troubleshooting</span></h2><div class="body">
   <h3>What is not there yet</h3>
   <ul>
     <li><strong>No undo</strong>, by design.</li>
     <li>From the original, not back yet: the <strong>Preferences</strong> pages, the <strong>level meter</strong>, <strong>Spectrum</strong>, the <strong>Chunk List</strong> and <strong>Play Clipboard</strong>.</li>
     <li>The VST3 wrapper has no MPE note-expression support. The Audio Unit does.</li>
+    <li>MIDI Mapping has been tried in the app, not yet inside a DAW.</li>
     <li>The Magnetophon's tape is not saved. Use Send.</li>
   </ul>
   <h3>When something goes wrong</h3>
@@ -509,7 +542,7 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
     <tr><td>macOS refuses to open the app</td><td>See <a href="#install">Installing</a>: <strong>Open Anyway</strong> in System Settings → Privacy &amp; Security.</td></tr>
     <tr><td>No sound</td><td>Check <strong>File → Audio/Midi Setup</strong> for the right output. Check that the window is not muted, that no other window is soloed, and that Main Level is up.</td></tr>
     <tr><td>Nothing records</td><td>Check <strong>Source</strong>, and that macOS allows SoundEffects to use the microphone (System Settings → Privacy &amp; Security → Microphone).</td></tr>
-    <tr><td>My MIDI keyboard does nothing</td><td>Tick it in <strong>Audio/Midi Setup</strong>, then select a window. The Keyboard plays the selected window.</td></tr>
+    <tr><td>My MIDI keyboard does nothing</td><td>Tick it in <strong>Audio/Midi Setup</strong>, then select a window. The Keyboard plays the selected window from C1 up; C0 to B0 drive <a href="#mapping">MIDI Mapping</a>.</td></tr>
     <tr><td>The DAW does not list the plug-in</td><td>Check the folders in <a href="#plugins">Using it in a DAW</a>, remove duplicates, rescan, and clear the quarantine flag.</td></tr>
     <tr><td>I lost my canvas</td><td>The canvas is saved only on <kbd>⌘</kbd><kbd>S</kbd> and when you quit. After a crash, open your last saved canvas.</td></tr>
   </table>
