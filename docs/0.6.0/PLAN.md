@@ -149,7 +149,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - [x] 8.5 **Plug-in check** in a host: a clip of C0–B0 notes drives Sounds, window open and closed
 
 ### 9. Release
-- [~] 9.1 Re-sync the spec snapshot, version 0.6.0, README and manual, `package.sh`; tag, GitHub release and merge into `main`, each on the author's go-ahead
+- [x] 9.1 Re-sync the spec snapshot, version 0.6.0, README and manual, `package.sh`; tag, GitHub release and merge into `main`, each on the author's go-ahead
 
 ## Verification per sub-step
 - Tests: `cmake -S native/tests -B native/tests/build -G Ninja && cmake --build native/tests/build`, then **from `native/tests`** run `./build/effect-fixtures`, `./build/engine-tests` and `./build/state-tests`. TSan / ASan for engine changes (steps 3, 6.2, 7.3, 8.2).
@@ -219,3 +219,5 @@ One line per finished sub-step: date · sub-step · what was verified · commit.
 - 2026-11-27 · 8.5 · Left open by the author ("good enough to test with a clear head", to save usage). Known: the dev VST3 builds and its binary loads with `dlopen`, but a temporary REAPER 7.59 profile added it to a track without instantiating it (empty `<VST …>` chunk, binary never opened; the built-in ReaEQ worked). Cause unknown: the temporary profile or the plug-in. 0.6.0 plug-ins have therefore not been seen running in a host. · (no code)
 - 2026-11-27 · 9.1 (part) · Specs block `998:20646` re-read: unchanged but for link formatting. Version 0.6.0; README and manual cover 0.6.0 (manual screenshots are still 0.5.0's); `effect-fixtures` (215/215), `engine-tests`, `state-tests` pass; dev standalone builds; `package.sh` made universal app, VST3 and AU, all reporting 0.6.0, `native/dist/SoundEffects-0.6.0-macOS.dmg` and `.zip` verified as archives. The release build was not launched or loaded in a host. NOT done, each waiting for the author's go-ahead: tag, GitHub release, merge into `main`, installing the app or plug-ins. · (this commit)
 - 2026-11-27 · 8.5 · The author installed the packaged 0.6.0 plug-ins in `/Library/Audio/Plug-Ins` and tried them with the sequencer of Ableton Live 13 beta: works extremely well; ticked on their go-ahead. Not specified: VST3 or AU, and playing with the plug-in's window closed. This lifts the release risk above (REAPER stays unexplained). · (this commit)
+- 2026-11-27 · 9.1 · On the author's go-ahead ("Cocher et publier"): `origin/main` had two README commits of the author's (manual link), merged in cleanly (`2e8b2a1`); `main` fast-forwarded to it and pushed, lightweight tag `v0.6.0` on the same commit; **GitHub release 0.6.0** published: https://github.com/gthoreau/SoundEffects/releases/tag/v0.6.0 with the dmg and zip built at `a106939` (the ones tried; only docs changed since). The old 0.4.1 AU in `~/Library/Audio/Plug-Ins/Components` is left in place. **STEP 9 COMPLETE, 0.6.0 RELEASED.** · (this commit)
+
