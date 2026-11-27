@@ -185,8 +185,9 @@ StereoFrame mixFrameAt (const SoundDocument& doc, double pos,
         if (vol <= 0.0) continue;
 
         const double s = trackSampleAt (doc, t, tr, pos, ctx, opts) * vol;
-        if (track.outLeft)  left  += s;
-        if (track.outRight) right += s;
+        const bool eased = opts.routeLeft != nullptr && opts.routeRight != nullptr && t < kPhaseTracks;
+        left  += s * (eased ? static_cast<double> (opts.routeLeft[t])  : track.outLeft  ? 1.0 : 0.0);
+        right += s * (eased ? static_cast<double> (opts.routeRight[t]) : track.outRight ? 1.0 : 0.0);
     }
 
     return { clampFloat (left), clampFloat (right) };

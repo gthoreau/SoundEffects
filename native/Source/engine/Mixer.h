@@ -23,6 +23,11 @@ struct MixOptions
     // so an edge takes the same time to cross at any pitch.
     int    ramp = 0;
     double srcStep = 1.0;
+
+    // Each track's share of each side (kPhaseTracks of them), for a toggle ramped
+    // between 0 and 1; null = as the track's own L / R say.
+    const float* routeLeft  = nullptr;
+    const float* routeRight = nullptr;
 };
 
 /** Which way a Window reads its tracks. Per Window, not per track: every track

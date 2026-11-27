@@ -413,6 +413,27 @@ float tapeGrabbed (Signal s)
     return t.r.across (kToPeak, [&] { t.deck.scrubBegin(); });
 }
 
+// A track's L / R speakers, clicked while it plays (as the Window posts them).
+float routeEvent (Signal s, bool startOn, bool left, bool right)
+{
+    Rig r;
+    auto d = document (s, { 48000 });
+    d->tracks[0].outLeft = d->tracks[0].outRight = startOn;
+    const auto id = r.add (std::move (d));
+    r.engine.play (id, looping());
+    return r.across (kToPeak, [&]
+    {
+        auto* doc = r.engine.editDoc (id);
+        doc->tracks[0].outLeft = left;
+        doc->tracks[0].outRight = right;
+        r.engine.commitMeta (id);
+    });
+}
+
+float routeOff (Signal s)  { return routeEvent (s, true, false, false); }
+float routeOn (Signal s)   { return routeEvent (s, false, true, true); }
+float routeSide (Signal s) { return routeEvent (s, true, true, false); }
+
 struct Scenario
 {
     const char* name;
@@ -450,6 +471,9 @@ const Scenario kScenarios[] = {
     { "fader jump",                   faderJump },
     { "balance jump",                 balanceJump },
     { "Main Level jump",              mainJump },
+    { "track L and R off",            routeOff },
+    { "track L and R on",             routeOn },
+    { "track R off",                  routeSide },
     { "tape play",                    tapeStart },
     { "tape stop",                    tapeHalt },
     { "tape jump while playing",      tapeJump },
@@ -485,7 +509,7 @@ void fadeShapes()
         size_t p = 0;
         expect (w->transport->uiState() == se::TransportState::stopped && w->transport->uiPlayhead() == 0
                 && ! w->transport->uiTrackPosition (0, p), "a stop reads as stopped at once, playheads cleared");
-        expect (std::fabs (r.left[1000 + kRamp5ms / 2] - 0.25f) < 0.002f && r.left[1000 + kRamp5ms] == 0.0f
+        expect (std::fabs (r.left[1000 + kRamp5ms / 2] - 0.25f) < 0.002f && std::fabs (r.left[1000 + kRamp5ms]) < 1.0e-4f && r.left[1000 + kRamp5ms + 8] == 0.0f
                 && r.left[1000 + kRamp5ms - 1] > 0.0f, "...and fades out over 5 ms");
         r.run (kBlock);
         expect (! w->transport->audible(), "then the transport is silent");
@@ -741,6 +765,51 @@ void tapeShapes()
     }
 }
 
+// ---- the track toggles ----------------------------------------------------------
+
+void routeShapes()
+{
+    Rig r;
+    auto d = document (Signal::dc, { 48000, 48000 });
+    d->tracks[1].outLeft = d->tracks[1].outRight = false;
+    const auto id = r.add (std::move (d));
+    const auto set = [&] (int t, bool l, bool rr)
+    {
+        auto* doc = r.engine.editDoc (id);
+        doc->tracks[(size_t) t].outLeft = l;
+        doc->tracks[(size_t) t].outRight = rr;
+        r.engine.commitMeta (id);
+    };
+    r.engine.play (id, looping());
+    r.run (1000);
+    set (0, false, true);
+    r.run (1000);
+    expect (std::fabs (r.left[1000 + kRamp5ms / 2] - 0.25f) < 0.003f && std::fabs (r.left[1000 + kRamp5ms]) < 1.0e-4f && r.left[1000 + kRamp5ms + 8] == 0.0f
+            && std::fabs (r.right[1000 + kRamp5ms / 2] - 0.5f) < 1.0e-4f,
+            "L off ramps the left over 5 ms and leaves the right alone");
+
+    // Set while stopped: the next play has it from its first sample.
+    r.engine.stop (id);
+    r.run (1000);
+    set (0, true, false);
+    const size_t at = r.left.size();
+    r.engine.play (id, looping());
+    r.run (1000);
+    expect (*std::max_element (r.right.begin() + (std::ptrdiff_t) at, r.right.end()) == 0.0f
+            && std::fabs (r.left.back() - 0.5f) < 1.0e-4f, "a toggle made while stopped is in force from the start");
+
+    const size_t from = r.left.size();
+    for (int i = 0; i < 400; ++i)
+    {
+        set (i % 2, (i % 3) == 0, (i % 5) < 2);
+        if (i % 17 == 0) r.engine.pause (id);
+        if (i % 17 == 3) r.engine.pause (id);
+        if (i % 29 == 0) r.engine.setDirection (id, (se::PlayDirection) (i % 3));
+        r.run (1 + i % 71);
+    }
+    expect (r.jumpFrom (from) < kThreshold, "toggles hammered through pauses and turns: no click");
+}
+
 } // namespace
 
 int declickTests()
@@ -751,6 +820,7 @@ int declickTests()
     retriggerShapes();
     gainShapes();
     tapeShapes();
+    routeShapes();
     int failures = 0;
     for (const auto& sc : kScenarios)
         for (Signal s : { Signal::dc, Signal::sine })

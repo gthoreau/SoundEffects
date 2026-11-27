@@ -21,7 +21,8 @@
 // silence, plus the TAILS it leaves behind. Anything that would cut the sound —
 // stop, pause, a new play, a seek, a re-anchor, a change of the excluded tracks —
 // retires the live voice into a tail, which plays on from where it was and fades
-// out over se::kDeclickMs. The state the UI reads changes at once.
+// out over se::kDeclickMs. The state the UI reads changes at once. A track's L / R
+// toggled while it sounds is ramped in the mix itself.
 
 #pragma once
 
@@ -213,6 +214,10 @@ private:
     double lastStep = 0.0;      // the step the live voice last rendered with
     uint64_t soundingMask = 0;  // the excludeMask it last rendered with
     double edgeStep = 0.0;      // MixOptions::srcStep, easing toward the played speed
+    // Each track's share of each side as heard, easing toward its L / R toggles;
+    // the first `routed` entries are set.
+    std::array<float, kPhaseTracks> routeLeft {}, routeRight {};
+    int routed = 0;
 
     /** A voice fading out. Plain copies: the audio thread never allocates. */
     struct Tail

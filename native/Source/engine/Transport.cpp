@@ -454,9 +454,27 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
     const double srcStep = s / static_cast<double> (fs);
     if (! wasPlaying || level <= 0.0f || edgeStep <= 0.0) edgeStep = srcStep;
 
+    // With nothing sounding (or the ramps off) the routing is simply what the
+    // tracks say; so is a track that has just appeared.
+    const int n = std::min (doc.numTracks(), kPhaseTracks);
+    if (ramp == 0 || (level <= 0.0f && ! anyTail())) routed = 0;
+    for (; routed < n; ++routed)
+    {
+        const Track& t = doc.tracks[static_cast<size_t> (routed)];
+        routeLeft[static_cast<size_t> (routed)]  = t.outLeft  ? 1.0f : 0.0f;
+        routeRight[static_cast<size_t> (routed)] = t.outRight ? 1.0f : 0.0f;
+    }
+    routed = n;
+    const auto ease = [rise] (float& now, bool on)
+    {
+        now += std::clamp ((on ? 1.0f : 0.0f) - now, -rise, rise);
+    };
+
     MixOptions mix;
     mix.excludeMask = excludeMask;
     mix.ramp = ramp;
+    mix.routeLeft = routeLeft.data();
+    mix.routeRight = routeRight.data();
 
     bool ranOut = false;
     int written = 0;
@@ -494,6 +512,8 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
             was.excludeMask = t.mask;
             was.ramp = ramp;
             was.srcStep = t.edgeStep;
+            was.routeLeft = routeLeft.data();
+            was.routeRight = routeRight.data();
             const StereoFrame o = mixFrameAt (doc, t.pos, t.ctx, was);
             const float g = t.from * static_cast<float> (t.left) / static_cast<float> (t.total)
                           * (t.once ? endGain (t.pos, t.stopPos, t.step, ramp) : 1.0f);
@@ -505,6 +525,11 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
         left[i]  = std::clamp (f.left,  -1.0f, 1.0f);
         right[i] = std::clamp (f.right, -1.0f, 1.0f);
         ++written;
+        for (size_t k = 0; k < static_cast<size_t> (n); ++k)
+        {
+            ease (routeLeft[k],  doc.tracks[k].outLeft);
+            ease (routeRight[k], doc.tracks[k].outRight);
+        }
     }
 
     // A tail alone says nothing about where the transport is: after a stop the

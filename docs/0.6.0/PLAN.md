@@ -116,7 +116,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - [x] 3.4 **Keyboard voice**: strike fades in, retrigger crossfades, release fades out, mouse and MIDI alike; MPE re-rate stays smooth
 - [x] 3.5 **Gain switches** ramped: mute, solo, Main Mute, fader jumps; every 3.1 scenario under a threshold. The author listens (KeyStep, Push 3, loops, Stop / Pause)
 - [x] 3.6 **The tape's playback**: Magnetophon play, stop, jump, scrub, end of tape and Clear without a click (asked by the author after listening to 3.1–3.5); capture untouched
-- [ ] 3.7 **Track L / R toggles** ramped while the Sound plays (same)
+- [x] 3.7 **Track L / R toggles** ramped while the Sound plays (same)
 
 ### 4. Effects
 - [ ] 4.1 **1-click trays** laid out per `543:9781` (title, Auto-Apply left, Cancel / Apply right)
@@ -183,3 +183,4 @@ One line per finished sub-step: date · sub-step · what was verified · commit.
 - 2026-11-27 · 3.5 · `se::Ramp`: mute, solo, fader, balance, Main Level and Main Mute travel over 5 ms at any block size (Main used one block); capture taps follow the same fader ramps. Every declick scenario now has to stay under 0.04 (worst 0.035, MPE slide; before 1.0), plus hammering tests for transport and gain. Not covered: the tape's own play / stop, effects applied while playing, per-track L / R toggles. Tests, TSan, ASan pass; standalone builds. The author has not listened yet. · (this commit)
 - 2026-11-27 · 3.1–3.5 · The author tried them in the dev build: "sounds really good". Asked for the same on the Magnetophon and the per-track L / R toggles: 3.6 and 3.7 added. · (this commit)
 - 2026-11-27 · 3.6 · The tape's playback fades in; stop, jump, take change, record-over and a grab by the scrub copy the next 5 ms aside as a fade-out (`Engine::fadeOutTape`), so nothing reads the tape afterwards; the end of the tape ramps out. Clear no longer shortens the store at once: it is freed when the audio thread has let go, so a playback or scrub fades. Seven tape scenarios ≤ 0.013 and a hammering test; tests, TSan, ASan pass; standalone builds. Not heard by the author yet. For 6.2: deleting audio under a playing tape must fade the same way. · (this commit)
+- 2026-11-27 · 3.7 · A track's L / R share is eased over 5 ms in the transport's mix (live voice and fading ones alike); with nothing sounding it applies at once, so a toggle made while stopped is in force from the first sample. Toggle scenarios ≤ 0.013 and a hammering test; tests, TSan, ASan pass; standalone builds. Not heard by the author yet. · (this commit)
