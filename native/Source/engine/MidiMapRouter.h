@@ -13,6 +13,7 @@
 #include "Engine.h"
 #include "MidiMap.h"
 
+#include <array>
 #include <functional>
 #include <vector>
 
@@ -34,6 +35,7 @@ public:
     {
         MapCommand c;
         const auto inSlot = [this] (int slot) { return engine.windowInSlot (slot); };
+        if (MidiMap::takes (note)) ++struck[static_cast<size_t> (note - MidiMap::kLowNote)];
         if (player.noteOn (note, engine.midiMap(), inSlot, c)) send (c);
     }
     void noteOff (int note)
@@ -42,7 +44,11 @@ public:
         if (player.noteOff (note, c)) send (c);
     }
     void allOff() { for (const auto& c : player.allOff()) send (c); }
+    /** A note holding a Sound (not one on an empty pad: see strikes). */
     bool isHeld (int note) const noexcept { return player.isHeld (note); }
+    /** How many notes pad `i` has had, assigned or not: the panel lights on a change. */
+    uint32_t strikes (int i) const noexcept
+    { return i >= 0 && i < MidiMap::kPads ? struck[static_cast<size_t> (i)] : 0; }
 
 private:
     void send (const MapCommand& c)
@@ -83,6 +89,7 @@ private:
 
     Engine& engine;
     MidiMapPlayer player;
+    std::array<uint32_t, MidiMap::kPads> struck {};
 };
 
 } // namespace se

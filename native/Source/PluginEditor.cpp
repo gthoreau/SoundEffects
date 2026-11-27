@@ -36,6 +36,9 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     mixerPanel.setTitleRule (true);
     addAndMakeVisible (effectsPanel);
     addAndMakeVisible (magnetophonPanel);
+    addAndMakeVisible (midiMappingPanel);
+    midiMappingPanel.setCollapsed (AppPrefs::get().midiMapCollapsed(), juce::dontSendNotification);
+    midiMappingPanel.onCollapsedChanged = [this] (bool c) { AppPrefs::get().setMidiMapCollapsed (c); resized(); };
 
     // Each panel shades to its title bar from the box in that bar, and stays so.
     mixerPanel.setCollapsed (AppPrefs::get().mixerCollapsed(), juce::dontSendNotification);
@@ -877,6 +880,7 @@ void SoundEffectsAudioProcessorEditor::timerCallback()
     }
     magnetophon.setSourceName (tapeSourceName());
     if (magnetophonPanel.isVisible() && ! magnetophonPanel.isCollapsed()) magnetophon.refresh();
+    if (midiMappingPanel.isVisible() && ! midiMappingPanel.isCollapsed()) midiMapping.refresh();
     if (keyboard.isVisible()) keyboard.refresh();
 }
 
@@ -1039,6 +1043,7 @@ void SoundEffectsAudioProcessorEditor::resized()
     mixerPanel.setVisible (panels);
     effectsPanel.setVisible (panels);
     magnetophonPanel.setVisible (panels);
+    midiMappingPanel.setVisible (panels);
 
     // Never more than a third of the editor each, so a small host window still
     // leaves a canvas between them.
@@ -1067,16 +1072,17 @@ void SoundEffectsAudioProcessorEditor::resized()
         auto left = shaded ? area.withWidth (w) : area.removeFromLeft (w);
 
         // Pegged to the bottom, lowest first; none may cover the Mixer's title bar.
-        // The MIDI Mapping panel takes the slot above the Magnetophon (0.6.0 step 8).
+        // MIDI Mapping sits on top of the Magnetophon (0.6.0 step 8).
         const auto peg = [&left] (SidePanel& panel, int expandedHeight)
         {
             const int h = panel.isCollapsed() ? SidePanel::kCollapsedHeight : expandedHeight;
             panel.setBounds (left.removeFromBottom (juce::jlimit (0, h, left.getHeight() - SidePanel::kCollapsedHeight)));
         };
         peg (magnetophonPanel, MagnetophonComponent::kContentHeight + SidePanel::kCollapsedHeight);
+        peg (midiMappingPanel, MidiMapPanel::kContentHeight + SidePanel::kCollapsedHeight);
 
         mixerPanel.setBounds (shaded ? left.removeFromTop (SidePanel::kCollapsedHeight) : left);
-        if (shaded) floating = magnetophonPanel.getBounds();
+        if (shaded) floating = magnetophonPanel.getBounds().getUnion (midiMappingPanel.getBounds());
 
         column (effectsPanel, false);
     }
@@ -1084,6 +1090,7 @@ void SoundEffectsAudioProcessorEditor::resized()
     canvas.setBoundsKeepingView (area);     // a panel opening or closing moves no Sound
     mixerPanel.toFront (false);     // over the canvas when shaded
     magnetophonPanel.toFront (false);
+    midiMappingPanel.toFront (false);
     effectsPanel.toFront (false);
     palette.toFront (false);
     keyboard.toFront (false);

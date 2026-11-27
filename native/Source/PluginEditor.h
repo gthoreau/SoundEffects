@@ -26,6 +26,7 @@
 #include "ui/KeyboardPalette.h"
 #include "ui/MixerComponent.h"
 #include "ui/MagnetophonComponent.h"
+#include "ui/MidiMapPanel.h"
 #include "ui/SidePanel.h"
 #include "ui/ViewPalette.h"
 
@@ -177,6 +178,8 @@ private:
     SidePanel             effectsPanel { "Effects", effects };
     MagnetophonComponent  magnetophon { processorRef.engine(), processorRef.tapeDeck() };
     SidePanel             magnetophonPanel { "Magnetophon", magnetophon };   // at the column's bottom
+    MidiMapPanel          midiMapping { processorRef.engine(), processorRef.midiMapRouter() };
+    SidePanel             midiMappingPanel { "MIDI Mapping", midiMapping };   // on top of it
     ViewPalette           palette;    // floats OVER the canvas, so it is added last
     KeyboardPalette       keyboard;   // ...and hangs directly below the palette
 

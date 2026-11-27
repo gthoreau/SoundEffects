@@ -108,6 +108,7 @@ target_sources(SoundEffects PRIVATE
     Source/ui/WindowComponent.cpp
     Source/ui/MixerComponent.cpp
     Source/ui/MagnetophonComponent.cpp
+        Source/ui/MidiMapPanel.cpp
     Source/ui/TapePopups.cpp
     Source/ui/ViewPalette.cpp)
 

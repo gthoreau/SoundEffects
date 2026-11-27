@@ -44,6 +44,9 @@ public:
     /** The Magnetophon, under the Mixer: collapsed to its title bar. */
     bool magnetophonCollapsed() const;
     void setMagnetophonCollapsed (bool);
+    /** MIDI Mapping starts shaded: it is a tall panel over the Mixer's list. */
+    bool midiMapCollapsed() const;
+    void setMidiMapCollapsed (bool);
 
     /** An alert the user answered with "Don't show again" (0.6.0 step 5.2), one
         per question. There is no way back in the app. */
