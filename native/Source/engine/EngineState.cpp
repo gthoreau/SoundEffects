@@ -524,6 +524,7 @@ bool applyEngineState (Engine& engine, const EngineState& state)
     engine.setNextAssetId (state.nextAssetId);
     engine.setMasterGain (state.masterGain);
     engine.setMasterMuted (false);   // never saved: a canvas opens unmuted
+    engine.setTapeSoloed (false);    // nor this: a canvas opens with its Sounds' solos only
     std::set<uint32_t> seen;
     for (const auto& w : state.windows)
     {

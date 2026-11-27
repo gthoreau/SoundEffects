@@ -13,7 +13,8 @@
 //     asked (greyed while recording);
 //   - the status line (16 px, dark): "From: <source>", the position centred on the
 //     playhead, then rate and bits;
-//   - the transport (44 px): Source, Record, Stop, Previous, Play, Next, Send.
+//   - the transport (44 px): Source, Record, Stop, Previous, Play, Next, Send, and
+//     the tape's S box (solo, with the Mixer's rules).
 //
 // The panel draws and drives the processor's TapeDeck (which outlives it); the
 // editor opens the source popup and the Send popup through the callbacks.
@@ -66,6 +67,8 @@ public:
     /** The strip's playhead (2 px, centred on this x: the first column of what is
         still to come) and its time scale. */
     static constexpr int kPlayheadX = 134;
+    /** The S box's 11 x 11 face. */
+    static constexpr int kSoloX = 249, kSoloY = kTransportTop + 16;
     static constexpr double kPixelsPerSecond = 24.0;
 
 private:
@@ -108,6 +111,7 @@ private:
     se::Tape::Mode lastMode = se::Tape::Mode::stopped;
     int lastTakes = 0;
     uint32_t lastCuts = 0, peakCuts = 0;
+    bool lastSoloed = false;
     float angleL = 0.0f, angleR = 0.0f;   // reel rotations, radians (screen clockwise)
 
     // Winding the tape by hand in the strip.

@@ -432,6 +432,18 @@ float deleteEvent (Signal s, size_t playFrom, int take)
 float tapeTakeDeleted (Signal s)    { return deleteEvent (s, 100, 0); }
 float tapeEarlierDeleted (Signal s) { return deleteEvent (s, 30000, 0); }
 
+// The tape playing, silenced and let back by a Sound's solo, and by its own.
+float tapeSoloEvent (Signal s, bool soloedFirst)
+{
+    Reel t (s, 48000);
+    const auto id = t.r.add (document (Signal::dc, { 48000 }));   // stopped: silent
+    if (soloedFirst) t.r.engine.clickSolo (id, false);
+    t.deck.play();
+    return t.r.across (kToPeak, [&] { t.r.engine.clickSolo (id, false); });
+}
+float tapeSoloElsewhereOn (Signal s)  { return tapeSoloEvent (s, false); }
+float tapeSoloElsewhereOff (Signal s) { return tapeSoloEvent (s, true); }
+
 // A track's L / R speakers, clicked while it plays (as the Window posts them).
 float routeEvent (Signal s, bool startOn, bool left, bool right)
 {
@@ -500,6 +512,8 @@ const Scenario kScenarios[] = {
     { "tape cleared while playing",   tapeCleared },
     { "tape record over playback",    tapePunchIn },
     { "tape grabbed while playing",   tapeGrabbed },
+    { "tape solo elsewhere on",       tapeSoloElsewhereOn },
+    { "tape solo elsewhere off",      tapeSoloElsewhereOff },
     { "tape take deleted under head", tapeTakeDeleted },
     { "tape earlier take deleted",    tapeEarlierDeleted },
 };

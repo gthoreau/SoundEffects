@@ -162,7 +162,7 @@ void WindowComponent::refresh()
     const bool playing = w != nullptr && w->transport->uiState() == se::TransportState::playing;
     const bool muted = w != nullptr && w->muted.load (std::memory_order_relaxed);
     const bool soloed = w != nullptr && w->soloed.load (std::memory_order_relaxed);
-    const bool silenced = muted || (! soloed && engine.anyWindowSoloed());
+    const bool silenced = muted || (! soloed && engine.anySoloed());
     const size_t blockSt  = w != nullptr ? w->transport->uiPlaySt()  : 0;
     const size_t blockEnd = w != nullptr ? w->transport->uiPlayEnd() : 0;
     auto heads = playheadXs();
@@ -679,7 +679,7 @@ void WindowComponent::paint (Graphics& g)
     const bool soloed = w != nullptr && w->soloed.load (std::memory_order_relaxed);
     // Silenced by somebody else's solo: the Mute look with the M box unlit, as its
     // mixer strip shows it.
-    const bool silenced = muted || (! soloed && engine.anyWindowSoloed());
+    const bool silenced = muted || (! soloed && engine.anySoloed());
 
     // The face is the theme colour; silenced, a white veil at 80% washes it out (the
     // "Window" frame's own fill in the Mute=On variants).

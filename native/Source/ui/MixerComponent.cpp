@@ -408,13 +408,13 @@ void MixerStrip::mouseDown (const juce::MouseEvent& e)
     {
         if (clearAll && w->muted.load (std::memory_order_relaxed)) engine.unmuteAll();
         else w->muted.store (! w->muted.load (std::memory_order_relaxed), std::memory_order_relaxed);
-        refreshState (engine.anyWindowSoloed());
+        refreshState (engine.anySoloed());
         return;
     }
     if (soloBox().expanded (2).contains (e.getPosition()))
     {
         engine.clickSolo (id, clearAll);
-        refreshState (engine.anyWindowSoloed());   // the OTHER strips catch up on the next tick
+        refreshState (engine.anySoloed());   // the OTHER strips catch up on the next tick
         return;
     }
 
@@ -562,7 +562,7 @@ void MixerComponent::refresh()
     refreshMainLevel();
 
     // One question for the whole panel, not one per strip: is the solo filter on?
-    const bool soloFilterOn = engine.anyWindowSoloed();
+    const bool soloFilterOn = engine.anySoloed();
     for (auto& s : strips) s->refreshState (soloFilterOn);
 }
 

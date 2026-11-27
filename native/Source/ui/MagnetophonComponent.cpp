@@ -343,6 +343,11 @@ void MagnetophonComponent::refresh()
         lastCuts = deck.cuts();
         lastPos = pos; lastLen = len; lastMode = t.mode(); lastTakes = t.numTakes();
     }
+    if (engine.tapeSoloed() != lastSoloed)   // a ⌘-click elsewhere clears it
+    {
+        lastSoloed = engine.tapeSoloed();
+        repaint (0, kTransportTop, getWidth(), kTransportHeight);
+    }
     updateButtons();
 }
 
@@ -513,12 +518,20 @@ void MagnetophonComponent::paintTransport (juce::Graphics& g) const
     g.setColour (kBevelDark);
     g.fillRect (r.getX() + 2, r.getBottom() - 2, r.getWidth() - 2, 2);
     g.fillRect (r.getRight() - 2, r.getY() + 2, 2, r.getHeight() - 2);
+    os8::paintTitleBarBox (g, { kSoloX, kSoloY }, engine.tapeSoloed(), os8::TitleBox::solo);
 }
 
 void MagnetophonComponent::mouseDown (const juce::MouseEvent& e)
 {
     // Wind the tape by hand, heard: grab the strip and drag it (a scrub). A playing
     // tape stops while held and plays on from where it is let go.
+    if (juce::Rectangle<int> (kSoloX, kSoloY, 11, 11).expanded (2).contains (e.getPosition()))
+    {
+        engine.clickTapeSolo (e.mods.isCommandDown());
+        refresh();
+        return;
+    }
+
     hover (e.getPosition());
     pressed = trashAt (e.getPosition());
     if (pressed.take >= 0 && pressed.hit.contains (e.getPosition()))

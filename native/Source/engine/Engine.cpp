@@ -159,8 +159,9 @@ void Engine::normaliseSlots()
     compactSlots();
 }
 
-bool Engine::anyWindowSoloed() const noexcept
+bool Engine::anySoloed() const noexcept
 {
+    if (tapeSoloed()) return true;
     for (const auto& kv : registry)
         if (kv.second->soloed.load (std::memory_order_relaxed)) return true;
     return false;
@@ -173,6 +174,7 @@ void Engine::unmuteAll() noexcept
 
 void Engine::clearAllSolos() noexcept
 {
+    setTapeSoloed (false);
     for (const auto& kv : registry) kv.second->soloed.store (false, std::memory_order_relaxed);
 }
 
@@ -190,6 +192,18 @@ void Engine::clickSolo (uint64_t id, bool command) noexcept
     w->soloed.store (true, std::memory_order_relaxed);
     for (const auto& kv : registry)
         if (kv.second != w) kv.second->soloed.store (false, std::memory_order_relaxed);
+    setTapeSoloed (false);
+}
+
+void Engine::clickTapeSolo (bool command) noexcept
+{
+    const bool lit = tapeSoloed();
+
+    if (! command) { setTapeSoloed (! lit); return; }
+    if (lit)       { clearAllSolos(); return; }
+
+    setTapeSoloed (true);   // on before the others go off, as in clickSolo()
+    for (const auto& kv : registry) kv.second->soloed.store (false, std::memory_order_relaxed);
 }
 
 Window* Engine::windowById (uint64_t id) noexcept
@@ -673,7 +687,8 @@ void Engine::render (float* left, float* right, int frames,
     // Solo is a filter over the whole desktop, so it has to be resolved before any
     // Window is rendered: one pass to ask whether ANY channel is soloed, then the
     // per-Window test below. Cheap — a handful of relaxed loads over `live`.
-    bool anySolo = false;
+    const bool tapeSolo = tapeSoloValue.load (std::memory_order_relaxed);
+    bool anySolo = tapeSolo;
     for (Window* w : live)
         if (! w->leaving && w->soloed.load (std::memory_order_relaxed)) { anySolo = true; break; }
 
@@ -933,6 +948,13 @@ void Engine::render (float* left, float* right, int frames,
         tapeMeterValue.store (tapeMeterValue.load (std::memory_order_relaxed) * meterDecay, std::memory_order_relaxed);
     }
 
+    // The solo filter on the tape. With the tape not being read there is nothing to
+    // ramp: a playback starts at the gate's setting.
+    const float tapeOpen = ! anySolo || tapeSolo ? 1.0f : 0.0f;
+    if (! tapePlayActive && ! scrubActive && tfadeAt >= tfadeEnd) tapeGate.jump (tapeOpen);
+    else                                                          tapeGate.aim (tapeOpen, ramp);
+    const auto tapeAt = [&] (size_t i) { return masterAt (i) * tapeGate.at (static_cast<int> (i)); };
+
     // The tape's playback, last of all: heard through Main Level, captured by nothing.
     if (tapePlayActive && tplayL.size() >= scratchL.size())
     {
@@ -942,7 +964,7 @@ void Engine::render (float* left, float* right, int frames,
         const float rise = ramp > 0 ? 1.0f / static_cast<float> (ramp) : 1.0f;
         for (size_t k = 0; k < got; ++k)
         {
-            const float g = tapeLevel * tapeEndGain (tapePos + k, len, ramp) * masterAt (k);
+            const float g = tapeLevel * tapeEndGain (tapePos + k, len, ramp) * tapeAt (k);
             left[k]  += tplayL[k] * g;
             right[k] += tplayR[k] * g;
             tapeLevel = std::min (1.0f, tapeLevel + rise);
@@ -960,8 +982,8 @@ void Engine::render (float* left, float* right, int frames,
     // What a stop or a jump left fading out.
     for (size_t k = 0; tfadeAt < tfadeEnd && k < static_cast<size_t> (cap_); ++k, ++tfadeAt)
     {
-        left[k]  += tfadeL[tfadeAt] * masterAt (k);
-        right[k] += tfadeR[tfadeAt] * masterAt (k);
+        left[k]  += tfadeL[tfadeAt] * tapeAt (k);
+        right[k] += tfadeR[tfadeAt] * tapeAt (k);
     }
 
     // Scrub: the read point chases the dragged target, varispeed and interpolated;
@@ -990,7 +1012,7 @@ void Engine::render (float* left, float* right, int frames,
             float l0, r0, l1, r1;
             tape.frameAt (f0, l0, r0);
             tape.frameAt (f1, l1, r1);
-            const float m = masterAt (static_cast<size_t> (i));
+            const float m = tapeAt (static_cast<size_t> (i));
             left[i]  += (l0 + (l1 - l0) * t) * scrubGain * m;
             right[i] += (r0 + (r1 - r0) * t) * scrubGain * m;
         }
@@ -1001,6 +1023,7 @@ void Engine::render (float* left, float* right, int frames,
         }
     }
 
+    tapeGate.advance (cap_);
     masterRamp.advance (frames);
     muteRamp.advance (frames);
 

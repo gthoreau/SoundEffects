@@ -178,10 +178,10 @@ public:
     uint64_t addWindow (std::unique_ptr<SoundDocument> doc, uint32_t assetId = 0);
     bool     removeWindow (uint64_t id);
     size_t   numWindows() const noexcept { return order.size(); }
-    /** Is ANY Window soloed — i.e. is the solo filter on at all? The same question
-        render() asks before it mixes; the mixer asks it to grey the channels solo
-        is silencing. */
-    bool     anyWindowSoloed() const noexcept;
+    /** Is anything soloed, a Window or the tape — i.e. is the solo filter on at all?
+        The same question render() asks before it mixes; the mixer asks it to grey
+        the channels solo is silencing. */
+    bool     anySoloed() const noexcept;
     /** ⌘-click on a lit M: unmute every Window. ⌘-click on a lit S: clear every solo. */
     void     unmuteAll() noexcept;
     void     clearAllSolos() noexcept;
@@ -189,6 +189,13 @@ public:
         on a lit box: clear every solo. With ⌘ on an unlit box: the solo swap, which
         leaves that Window as the only one soloed. */
     void     clickSolo (uint64_t id, bool command) noexcept;
+    /** The same click on the Magnetophon's S box. The tape is a solo source like a
+        Window: any solo silences its playback and scrub unless it is soloed too, and
+        its solo silences every unsoloed Window. What it records, and the monitoring
+        of its input, are untouched. Never saved: the tape isn't. */
+    void     clickTapeSolo (bool command) noexcept;
+    bool     tapeSoloed() const noexcept { return tapeSoloValue.load (std::memory_order_relaxed); }
+    void     setTapeSoloed (bool s) noexcept { tapeSoloValue.store (s, std::memory_order_relaxed); }
     const std::vector<uint64_t>& windowIds() const noexcept { return order; }
 
     /** The canvas's asset-id counter: the id the next new Window gets. Saved in the
@@ -505,6 +512,8 @@ private:
     std::atomic<uint32_t> tapeAck { 0 };
     std::atomic<float> tapeGainValue { 1.0f };
     std::atomic<bool> tapeMonitorOn { false };
+    std::atomic<bool> tapeSoloValue { false };
+    Ramp tapeGate;                  // audio thread: the solo filter on the tape's playback
     std::atomic<float> tapeMeterValue { 0.0f };
 
     double deviceRate = 48000.0;

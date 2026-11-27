@@ -2875,7 +2875,7 @@ void emptyCanvasTests()
     e.clickSolo (0, true);
     e.unmuteAll();
     e.clearAllSolos();
-    check (! e.anyWindowSoloed() && e.highestSlot() < 0 && renderLevel (e) == 0.0f,
+    check (! e.anySoloed() && e.highestSlot() < 0 && renderLevel (e) == 0.0f,
            "empty canvas: keys, solo and mute do nothing");
 }
 
@@ -3646,6 +3646,97 @@ static void tapeDeleteTests()
     }
 }
 
+// The Magnetophon's solo: a solo source like a Sound.
+static void tapeSoloTests()
+{
+    std::printf ("tape solo\n");
+    se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
+    se::TapeDeck d (e);
+    se::TapeSource ext; ext.kind = se::AudioSourceKind::external; ext.stereo = false;
+    d.setSource (ext);
+    std::vector<float> l, r;
+    d.record();
+    for (int i = 0; i < 200; ++i) tapeBlock (e, d, { 0.5f }, l, r);
+    d.stop(); tapeSettle (e, d, {});
+
+    const uint64_t a = e.addWindow (dcDocument (30, "a"));
+    const uint64_t b = e.addWindow (dcDocument (20, "b"));
+    se::PlayOptions loopAll; loopAll.loop = true;
+    e.play (a, loopAll);
+    e.play (b, loopAll);
+    auto* wa = e.windowById (a);
+    auto* wb = e.windowById (b);
+    renderWithInput (e, {}, l, r);
+    const float both = l[0];
+    wb->muted = true;  renderWithInput (e, {}, l, r);
+    const float onlyA = l[0];
+    wb->muted = false;
+    d.seek (0); d.play();
+    const auto heard = [&] { tapeBlock (e, d, {}, l, r); return l[(size_t) kBlock - 1]; };
+    const auto is = [] (float got, float want) { return std::abs (got - want) < 1.0e-5f; };
+
+    check (is (heard(), both + 0.5f) && ! e.anySoloed(), "no solo: Sounds and tape");
+    e.clickTapeSolo (false);
+    check (e.tapeSoloed() && e.anySoloed() && is (heard(), 0.5f), "tape soloed: the tape alone");
+    e.clickSolo (a, false);
+    check (is (heard(), onlyA + 0.5f), "...and a Sound soloed too: that Sound and the tape");
+    e.clickTapeSolo (false);
+    check (! e.tapeSoloed() && is (heard(), onlyA), "a Sound soloed alone: the tape is silenced");
+    check (d.tape().mode() == se::Tape::Mode::playing, "...but it keeps running");
+    const size_t before = d.tape().position();
+    heard();
+    check (d.tape().position() == before + (size_t) kBlock, "...in time");
+
+    e.clickTapeSolo (true);
+    check (e.tapeSoloed() && ! wa->soloed && is (heard(), 0.5f), "cmd on the tape's unlit S: the solo swaps to the tape");
+    e.clickSolo (b, true);
+    check (! e.tapeSoloed() && wb->soloed && is (heard(), both - onlyA), "cmd on a Sound's unlit S: the swap takes it off the tape");
+    e.clickTapeSolo (false);
+    e.clickSolo (b, true);
+    check (! e.anySoloed() && is (heard(), both + 0.5f), "cmd on a lit S: every solo cleared, the tape's too");
+    e.clickSolo (a, false);
+    e.clickTapeSolo (false);
+    e.clickTapeSolo (true);
+    check (! e.anySoloed(), "cmd on the tape's lit S: every solo cleared");
+
+    // The scrub obeys it as playback does.
+    d.stop(); heard();
+    e.clickSolo (a, false);
+    d.seek (0); d.scrubBegin();
+    float peak = 0.0f;
+    for (int i = 1; i <= 10; ++i) { d.scrubTo ((size_t) (i * 200)); heard(); for (float v : l) peak = std::max (peak, std::abs (v - onlyA)); }
+    check (peak < 1.0e-5f, "scrub silenced by a Sound's solo");
+    d.scrubEnd();
+    for (int i = 0; i < 20; ++i) heard();
+    d.seek (0); d.play();
+    check (is (heard(), onlyA), "a playback starting under another solo is silent from its first block");
+    d.stop(); heard();
+
+    // What it records is untouched: the take is the input, soloed elsewhere or not,
+    // and from Main it is what the speakers get.
+    d.seek (d.tape().length());
+    const size_t at = d.tape().position();
+    d.record();
+    tapeBlock (e, d, { 0.25f }, l, r);
+    d.stop(); tapeSettle (e, d, { 0.25f });
+    check (tapeAt (e, at) == 0.25f, "recording an input is not filtered by solo");
+    e.setTapeMonitor (true);
+    d.record();
+    tapeBlock (e, d, { 0.25f }, l, r);
+    check (is (l[(size_t) kBlock - 1], onlyA + 0.25f), "nor is its monitoring");
+    d.stop(); tapeSettle (e, d, {});
+    e.setTapeMonitor (false);
+    e.clearAllSolos();
+    e.clickTapeSolo (false);
+    d.setSource ({});
+    const size_t main = d.tape().length();
+    d.seek (main);
+    d.record();
+    tapeBlock (e, d, {}, l, r);
+    d.stop(); tapeSettle (e, d, {});
+    check (tapeAt (e, main) == 0.0f, "the tape soloed: Main holds no Sound to record");
+}
+
 static void tapeSendTests()
 {
     std::printf ("tape send\n");
@@ -3774,7 +3865,7 @@ static void tapeConcurrencyTests()
             case 6: d.seek ((size_t) (i * 7)); break;
             case 7: if (i % 90 == 7) d.clear(); else if (i % 3 == 0) { d.scrubBegin(); d.scrubTo ((size_t) i); } else d.scrubEnd(); break;
             case 1: if (i % 4 == 1) d.deleteTake (d.tape().numTakes() > 0 ? i % d.tape().numTakes() : 0); break;
-            case 8: { se::TapeSource s; s.tapWindow = (i % 2) ? a : 0; if (i % 3 == 0) s.kind = se::AudioSourceKind::external; d.setSource (s); } break;
+            case 8: if (i % 5 == 0) e.clickTapeSolo (i % 2 == 0); { se::TapeSource s; s.tapWindow = (i % 2) ? a : 0; if (i % 3 == 0) s.kind = se::AudioSourceKind::external; d.setSource (s); } break;
             default: break;
         }
         d.service();
@@ -3829,12 +3920,12 @@ int main()
     const float tol = 1.0e-4f;
 
     // --- no solo: everything sums -------------------------------------------
-    check (! engine.anyWindowSoloed(), "no solo: the filter is off");
+    check (! engine.anySoloed(), "no solo: the filter is off");
     checkClose (renderLevel (engine), la + lb + lc, tol, "no solo: all three sum");
 
     // --- solo is a filter ----------------------------------------------------
     wb->soloed = true;
-    check (engine.anyWindowSoloed(), "one solo: the filter is on");
+    check (engine.anySoloed(), "one solo: the filter is on");
     checkClose (renderLevel (engine), lb, tol, "solo b: only b sounds");
 
     // --- and it is CUMULATIVE ------------------------------------------------
@@ -3851,13 +3942,13 @@ int main()
     wb->muted = false;
 
     wb->soloed = false; wc->soloed = false;
-    check (! engine.anyWindowSoloed(), "solo cleared: the filter is off again");
+    check (! engine.anySoloed(), "solo cleared: the filter is off again");
     checkClose (renderLevel (engine), la + lb + lc, tol, "solo cleared: all three back");
 
     // --- ⌘-click on a lit box: clear it everywhere (step 12.3) -----------------
     wa->soloed = true; wc->soloed = true; wb->muted = true; wc->muted = true;
     engine.clearAllSolos();
-    check (! engine.anyWindowSoloed(), "clearAllSolos: no solo left");
+    check (! engine.anySoloed(), "clearAllSolos: no solo left");
     check (wb->muted && wc->muted, "clearAllSolos: mutes untouched");
     wa->soloed = true;
     engine.unmuteAll();
@@ -3876,13 +3967,13 @@ int main()
     check (wb->muted == false, "solo swap: mutes untouched");
     engine.clickSolo (a, false);
     engine.clickSolo (a, true);
-    check (! engine.anyWindowSoloed(), "cmd on a lit S: every solo cleared");
+    check (! engine.anySoloed(), "cmd on a lit S: every solo cleared");
     engine.clickSolo (b, true);
     check (! wa->soloed && wb->soloed && ! wc->soloed, "cmd with nothing soloed: solos that one");
     engine.clickSolo (b, false);
-    check (! engine.anyWindowSoloed(), "plain click on a lit S: off");
+    check (! engine.anySoloed(), "plain click on a lit S: off");
     engine.clickSolo (987654, true);
-    check (! engine.anyWindowSoloed(), "unknown id: nothing happens");
+    check (! engine.anySoloed(), "unknown id: nothing happens");
     checkClose (renderLevel (engine), la + lb + lc, tol, "after the clicks: all three back");
 
     // --- gain --------------------------------------------------------------
@@ -4077,6 +4168,7 @@ int main()
     tapeModelTests();
     tapeEngineTests();
     tapeDeleteTests();
+    tapeSoloTests();
     tapeConcurrencyTests();
     tapeSendTests();
     tapeScrubTests();
