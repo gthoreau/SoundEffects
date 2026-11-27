@@ -634,6 +634,16 @@ void CanvasComponent::setPan (juce::Point<float> newPan)
     applyViewTransform();
 }
 
+void CanvasComponent::setBoundsKeepingView (juce::Rectangle<int> bounds)
+{
+    // The pan is measured from the viewport's corner. The first layout has no view
+    // to keep.
+    const bool laidOut = ! getBounds().isEmpty();
+    const auto held = pan + getPosition().toFloat();
+    setBounds (bounds);
+    if (laidOut) setPan (held - bounds.getPosition().toFloat());
+}
+
 void CanvasComponent::zoomAround (float newZoom, juce::Point<float> anchor)
 {
     newZoom = std::clamp (newZoom, kMinZoom, kMaxZoom);

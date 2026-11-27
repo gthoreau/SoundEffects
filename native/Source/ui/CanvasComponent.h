@@ -63,6 +63,10 @@ public:
     void setPanMode (bool shouldPan);
     bool isPanMode() const noexcept { return panMode; }
 
+    /** setBounds for a viewport whose edges move under a board that must not: the
+        side panels opening and closing. What is on screen stays where it is. */
+    void setBoundsKeepingView (juce::Rectangle<int>);
+
     float zoomLevel() const noexcept { return zoom; }
     void  resetView();
     /** Zoom about the CENTRE of the viewport, keeping the pan. What the palette's

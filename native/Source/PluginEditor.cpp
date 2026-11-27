@@ -1061,7 +1061,7 @@ void SoundEffectsAudioProcessorEditor::resized()
         column (effectsPanel, false);
     }
 
-    canvas.setBounds (area);
+    canvas.setBoundsKeepingView (area);     // a panel opening or closing moves no Sound
     mixerPanel.toFront (false);     // over the canvas when shaded
     magnetophonPanel.toFront (false);
     effectsPanel.toFront (false);
