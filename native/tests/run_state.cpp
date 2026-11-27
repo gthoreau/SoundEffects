@@ -509,10 +509,15 @@ int main()
                  && back5.sourceVersion == se::kEngineStateVersion,
                "master: the gain round-trips through the blob");
 
+        e.setMasterMuted (true);
+        check (se::serializeEngine (e) == blob5, "main mute: not saved");
+
         se::Engine again;
         again.setMasterGain (1.0f);
+        again.setMasterMuted (true);
         check (se::applyEngineState (again, back5) && again.masterGain() == 0.4f,
                "master: opening a canvas restores the gain");
+        check (! again.masterMuted(), "main mute: a canvas opens unmuted");
 
         // Opening a canvas saved at unity puts a lowered one back to unity.
         se::Engine lowered;

@@ -233,6 +233,10 @@ private:
         final output. */
     Os8Slider mainLevel { os8::SliderKind::volume };
     juce::Rectangle<int> footerBounds() const;
+    /** The footer's M, Main Mute (window-button in 1083:14659). */
+    juce::Rectangle<int> mainMuteBox() const { return { 8, footerBounds().getY() + 17, 11, 11 }; }
+    bool shownMainMute = false;
+    void mouseDown (const juce::MouseEvent&) override;
     void refreshMainLevel();
 
     juce::Viewport viewport;

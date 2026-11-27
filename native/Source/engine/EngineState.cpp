@@ -523,6 +523,7 @@ bool applyEngineState (Engine& engine, const EngineState& state)
     // repeated id (a hand-edited file) gets a fresh one rather than share files.
     engine.setNextAssetId (state.nextAssetId);
     engine.setMasterGain (state.masterGain);
+    engine.setMasterMuted (false);   // never saved: a canvas opens unmuted
     std::set<uint32_t> seen;
     for (const auto& w : state.windows)
     {

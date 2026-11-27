@@ -2859,6 +2859,41 @@ void masterLevelTests()
     renderBlocks (e, 1);
 }
 
+// --- Main Mute (0.6.0 step 1.4) ----------------------------------------------
+void mainMuteTests()
+{
+    se::Engine e;
+    e.prepare (48000.0, 512);
+    const uint64_t a = e.addWindow (dcDocument (20, "a"));
+    se::PlayOptions loop;
+    loop.loop = true;
+    e.play (a, loop);
+    const float level = renderLevel (e);
+    check (level > 0.0f && ! e.masterMuted(), "main mute: off by default");
+
+    e.setMasterGain (0.5f);
+    (void) renderLevel (e);
+
+    // The block that takes the mute ramps down to silence, it does not cut.
+    std::vector<float> l (512), r (512);
+    e.setMasterMuted (true);
+    e.render (l.data(), r.data(), 512);
+    float step = 0.0f;
+    for (size_t i = 1; i < l.size(); ++i) step = std::max (step, std::abs (l[i] - l[i - 1]));
+    check (l[0] > 0.45f * level && l[511] == 0.0f, "main mute: ramps from the level to zero");
+    check (step < level / 400.0f, "main mute: no jump inside the ramp");
+    check (renderLevel (e) == 0.0f, "main mute: silent");
+    check (e.masterGain() == 0.5f, "main mute: the fader keeps its value");
+    check (e.windowById (a)->transport->uiState() == se::TransportState::playing, "main mute: the transport still plays");
+
+    e.setMasterGain (1.0f);
+    check (renderLevel (e) == 0.0f, "main mute: the fader does not unmute");
+    e.setMasterMuted (false);
+    e.render (l.data(), r.data(), 512);
+    check (l[0] < level / 100.0f && std::abs (l[511] - level) < 1.0e-4f, "main mute: ramps back up");
+    checkClose (renderLevel (e), level, 1.0e-4f, "main mute: off again");
+}
+
 
 // 10.2: where the Effects column scrolls to when a tray opens.
 static void scrollTargetTests()
@@ -3719,6 +3754,7 @@ int main()
     keyboardVoiceTests();
     transportButtonsTests();
     masterLevelTests();
+    mainMuteTests();
     directionTests();
     loopOnPinTests();
     playOnceSelectionTests();

@@ -647,17 +647,28 @@ void Engine::render (float* left, float* right, int frames,
     // been rendered above, so no gain value, zero included, can stop or re-aim one.
     // The excluded Window's share is scaled alike, so "the mix without it" stays
     // exact for the Canvas capture, which therefore hears what the speakers get.
+    // Main Mute is the same fader pulled to zero. What is added to the output after
+    // this point (monitors, the tape) follows the same two ramps sample by sample.
+    const bool  mainMuted = masterMutedValue.load (std::memory_order_relaxed);
+    const float masterFrom = masterApplied;
+    const float masterTo = mainMuted ? 0.0f : masterGainValue.load (std::memory_order_relaxed);
+    const float masterStep = (masterTo - masterFrom) / static_cast<float> (std::max (frames, 1));
+    const float muteFrom = muteApplied;
+    const float muteTo = mainMuted ? 0.0f : 1.0f;
+    const float muteStep = (muteTo - muteFrom) / static_cast<float> (std::max (frames, 1));
+    const auto  masterAt = [=] (size_t i) { return masterFrom + masterStep * static_cast<float> (i + 1); };
+    const auto  muteAt   = [=] (size_t i) { return muteFrom + muteStep * static_cast<float> (i + 1); };
+    muteApplied = muteTo;
     {
-        const float target = masterGainValue.load (std::memory_order_relaxed);
-        const float from = masterApplied;
+        const float target = masterTo;
+        const float from = masterFrom;
         if (from != 1.0f || target != 1.0f)
         {
-            const float step = (target - from) / static_cast<float> (std::max (frames, 1));
             const bool scaleEx = capturing && cap.kind == AudioSourceKind::canvas;
             float m = from;
             for (int i = 0; i < frames; ++i)
             {
-                m += step;
+                m += masterStep;
                 left[i] *= m;
                 right[i] *= m;
                 if (scaleEx && i < cap_)
@@ -706,7 +717,7 @@ void Engine::render (float* left, float* right, int frames,
             const size_t k = static_cast<size_t> (i);
             capL[k] = std::clamp (capL[k], -1.0f, 1.0f);
             capR[k] = std::clamp (capR[k], -1.0f, 1.0f);
-            if (heard) { left[i] += capL[k]; right[i] += capR[k]; }
+            if (heard) { left[i] += capL[k] * muteAt (k); right[i] += capR[k] * muteAt (k); }
         }
         ring.push (capL.data(), capR.data(), static_cast<size_t> (n));
     }
@@ -750,7 +761,7 @@ void Engine::render (float* left, float* right, int frames,
             tcapL[k] = std::clamp (tcapL[k], -1.0f, 1.0f);
             tcapR[k] = std::clamp (tcapR[k], -1.0f, 1.0f);
             peak = std::max (peak, std::max (std::abs (tcapL[k]), std::abs (tcapR[k])));
-            if (heard) { left[i] += tcapL[k]; right[i] += tcapR[k]; }
+            if (heard) { left[i] += tcapL[k] * muteAt (k); right[i] += tcapR[k] * muteAt (k); }
         }
         tapeMeterValue.store (std::max (peak, tapeMeterValue.load (std::memory_order_relaxed) * meterDecay),
                               std::memory_order_relaxed);
@@ -766,11 +777,10 @@ void Engine::render (float* left, float* right, int frames,
     {
         const size_t want = static_cast<size_t> (cap_);
         const size_t got = tape.read (tapePos, tplayL.data(), tplayR.data(), want);
-        const float m = masterApplied;
         for (size_t k = 0; k < got; ++k)
         {
-            left[k]  += tplayL[k] * m;
-            right[k] += tplayR[k] * m;
+            left[k]  += tplayL[k] * masterAt (k);
+            right[k] += tplayR[k] * masterAt (k);
         }
         tapePos += got;
         tapePlayPos.store (tapePos, std::memory_order_relaxed);
@@ -790,7 +800,6 @@ void Engine::render (float* left, float* right, int frames,
         const double target = (double) tapeScrubTarget.load (std::memory_order_relaxed);
         const double lag = deviceRate * 0.05;
         constexpr double kMaxSpeed = 8.0;
-        const float m = masterApplied;
         for (int i = 0; i < cap_; ++i)
         {
             const double want = std::clamp ((target - scrubPos) / lag, -kMaxSpeed, kMaxSpeed);
@@ -809,6 +818,7 @@ void Engine::render (float* left, float* right, int frames,
             float l0, r0, l1, r1;
             tape.frameAt (f0, l0, r0);
             tape.frameAt (f1, l1, r1);
+            const float m = masterAt (static_cast<size_t> (i));
             left[i]  += (l0 + (l1 - l0) * t) * scrubGain * m;
             right[i] += (r0 + (r1 - r0) * t) * scrubGain * m;
         }

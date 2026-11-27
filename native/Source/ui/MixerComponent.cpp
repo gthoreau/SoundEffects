@@ -571,8 +571,21 @@ juce::Rectangle<int> MixerComponent::footerBounds() const
     return { 0, getHeight() - kFooterHeight, getWidth(), kFooterHeight };
 }
 
+void MixerComponent::mouseDown (const juce::MouseEvent& e)
+{
+    if (! mainMuteBox().expanded (3).contains (e.getPosition())) return;
+    engine.setMasterMuted (! engine.masterMuted());
+    refreshMainLevel();
+}
+
 void MixerComponent::refreshMainLevel()
 {
+    if (shownMainMute != engine.masterMuted())
+    {
+        shownMainMute = ! shownMainMute;
+        repaint (footerBounds());
+    }
+
     // Follow the engine (a loaded canvas, another instance) unless the fader is held.
     if (! mainLevel.isMouseButtonDown())
     {
@@ -818,7 +831,8 @@ void MixerComponent::paint (Graphics& g)
     g.fillRect (0, kBarHeight, getWidth(), 1);
 
     // "main-level" 1083:14659: the same #dddddd and bevel as the bar, under a black
-    // rule (its stroke's top edge), with its label at x 26 and the fader at x 119.
+    // rule (its stroke's top edge), with Main Mute at x 8, the label at x 28 and the
+    // fader at x 119.
     const auto foot = footerBounds();
     g.setColour (gray100);
     g.fillRect (foot);
@@ -836,9 +850,10 @@ void MixerComponent::paint (Graphics& g)
         label = db <= MixerStrip::kMinDb ? juce::String::fromUTF8 ("-\xE2\x88\x9E dB")
                                          : (db >= 0.0f ? "+" : "") + juce::String (db, 1) + " dB";
     }
+    os8::paintTitleBarBox (g, mainMuteBox().getPosition(), shownMainMute, os8::TitleBox::mute);
     g.setColour (black);
     os8::drawText (g, label, os8::TextStyle::menuItem,
-                   Rectangle<float> (26.0f, (float) foot.getY() + 17.0f, 90.0f, 11.0f));
+                   Rectangle<float> (28.0f, (float) foot.getY() + 17.0f, 90.0f, 11.0f));
 }
 
 void MixerComponent::resized()

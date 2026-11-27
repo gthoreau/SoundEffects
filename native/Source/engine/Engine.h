@@ -313,6 +313,12 @@ public:
                                std::memory_order_relaxed);
     }
     float masterGain() const noexcept { return masterGainValue.load (std::memory_order_relaxed); }
+    /** Main Mute (0.6.0), the M beside Main Level: silences everything that reaches
+        the output, input monitoring included. Ramped across a block like the fader,
+        which keeps its value. Never saved: a canvas always opens unmuted. Like Main
+        Level it comes before the Canvas capture, and it stops no transport. */
+    void setMasterMuted (bool m) noexcept { masterMutedValue.store (m, std::memory_order_relaxed); }
+    bool masterMuted() const noexcept { return masterMutedValue.load (std::memory_order_relaxed); }
     /** Peaks of the final output (after Main Level and the clamp), one per side, for
         the Main Level's VU. Published by the audio thread and decayed there like the
         Windows' own. */
@@ -418,6 +424,8 @@ private:
     std::atomic<float> masterGainValue { 1.0f };
     std::atomic<float> masterMeterL { 0.0f }, masterMeterR { 0.0f };
     float masterApplied = 1.0f;   // audio thread only: the gain the last block ended on
+    std::atomic<bool> masterMutedValue { false };
+    float muteApplied = 1.0f;     // audio thread only: Main Mute's own factor, for the monitors
     std::atomic<bool>  monitorOn { false };
     std::atomic<bool>  capRunning { false };
     std::atomic<uint32_t> capStartGen { 0 };
