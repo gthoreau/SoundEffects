@@ -2894,7 +2894,7 @@ void mainMuteTests()
     check (level > 0.0f && ! e.masterMuted(), "main mute: off by default");
 
     e.setMasterGain (0.5f);
-    (void) renderLevel (e);
+    renderBlocks (e, 4);   // the fader's own ramp is over
 
     // The block that takes the mute ramps down to silence, it does not cut.
     std::vector<float> l (512), r (512);

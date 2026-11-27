@@ -604,6 +604,9 @@ void Engine::render (float* left, float* right, int frames,
     for (Window* w : live)
         if (! w->leaving && w->soloed.load (std::memory_order_relaxed)) { anySolo = true; break; }
 
+    // Every gain change, mute and solo included, is ramped (Declick.h).
+    const int ramp = declickFrames (deviceRate, declickMs);
+
     for (Window* w : live)
     {
         float peakL = 0.0f, peakR = 0.0f;
@@ -613,7 +616,16 @@ void Engine::render (float* left, float* right, int frames,
                               && (! anySolo || w->soloed.load (std::memory_order_relaxed));
         const float g = w->gain.load (std::memory_order_relaxed);
         const auto  bal = balanceGains (w->balance.load (std::memory_order_relaxed));
-        const float gl = g * bal.left, gr = g * bal.right;
+        if (! w->rampsSet)
+        {
+            w->faderLeft.jump (g * bal.left);
+            w->faderRight.jump (g * bal.right);
+            w->gate.jump (audible ? 1.0f : 0.0f);
+            w->rampsSet = true;
+        }
+        w->faderLeft.aim (g * bal.left, ramp);
+        w->faderRight.aim (g * bal.right, ramp);
+        w->gate.aim (audible ? 1.0f : 0.0f, ramp);
 
         if (playable)
         {
@@ -628,17 +640,15 @@ void Engine::render (float* left, float* right, int frames,
             // transport returns 0 frames before doing any work.
             const int written = w->transport->render (*w->audioDoc, scratchL.data(), scratchR.data(), cap_);
 
-            if (audible && g > 0.0f)
+            for (int i = 0; i < written; ++i)
             {
-                for (int i = 0; i < written; ++i)
-                {
-                    const float l = scratchL[static_cast<size_t> (i)] * gl;
-                    const float r = scratchR[static_cast<size_t> (i)] * gr;
-                    left[i]  += l;
-                    right[i] += r;
-                    peakL = std::max (peakL, std::abs (l));
-                    peakR = std::max (peakR, std::abs (r));
-                }
+                const float open = w->gate.at (i);
+                const float l = scratchL[static_cast<size_t> (i)] * w->faderLeft.at (i) * open;
+                const float r = scratchR[static_cast<size_t> (i)] * w->faderRight.at (i) * open;
+                left[i]  += l;
+                right[i] += r;
+                peakL = std::max (peakL, std::abs (l));
+                peakR = std::max (peakR, std::abs (r));
             }
 
             // The Canvas source's taps. A Window's own tap is post-fader and
@@ -650,14 +660,14 @@ void Engine::render (float* left, float* right, int frames,
                 if (w->id == cap.tapWindow)
                     for (int i = 0; i < written; ++i)
                     {
-                        tapL[static_cast<size_t> (i)] = scratchL[static_cast<size_t> (i)] * gl;
-                        tapR[static_cast<size_t> (i)] = scratchR[static_cast<size_t> (i)] * gr;
+                        tapL[static_cast<size_t> (i)] = scratchL[static_cast<size_t> (i)] * w->faderLeft.at (i);
+                        tapR[static_cast<size_t> (i)] = scratchR[static_cast<size_t> (i)] * w->faderRight.at (i);
                     }
-                if (w->id == cap.excludeWindow && audible && g > 0.0f)
+                if (w->id == cap.excludeWindow)
                     for (int i = 0; i < written; ++i)
                     {
-                        exL[static_cast<size_t> (i)] = scratchL[static_cast<size_t> (i)] * gl;
-                        exR[static_cast<size_t> (i)] = scratchR[static_cast<size_t> (i)] * gr;
+                        exL[static_cast<size_t> (i)] = scratchL[static_cast<size_t> (i)] * w->faderLeft.at (i) * w->gate.at (i);
+                        exR[static_cast<size_t> (i)] = scratchR[static_cast<size_t> (i)] * w->faderRight.at (i) * w->gate.at (i);
                     }
             }
 
@@ -666,10 +676,13 @@ void Engine::render (float* left, float* right, int frames,
             if (tapeTapping && w->id == tapeCap.tapWindow)
                 for (int i = 0; i < written; ++i)
                 {
-                    ttapL[static_cast<size_t> (i)] = scratchL[static_cast<size_t> (i)] * gl;
-                    ttapR[static_cast<size_t> (i)] = scratchR[static_cast<size_t> (i)] * gr;
+                    ttapL[static_cast<size_t> (i)] = scratchL[static_cast<size_t> (i)] * w->faderLeft.at (i);
+                    ttapR[static_cast<size_t> (i)] = scratchR[static_cast<size_t> (i)] * w->faderRight.at (i);
                 }
         }
+        w->faderLeft.advance (cap_);
+        w->faderRight.advance (cap_);
+        w->gate.advance (cap_);
 
         const float heldL = w->meterLeft.load (std::memory_order_relaxed) * meterDecay;
         const float heldR = w->meterRight.load (std::memory_order_relaxed) * meterDecay;
@@ -681,43 +694,32 @@ void Engine::render (float* left, float* right, int frames,
     for (size_t i = live.size(); i-- > 0;)
         if (live[i]->leaving && ! live[i]->transport->audible()) retire (i);
 
-    // Main Level: the master fader over the summed Windows, ramped across the block
-    // so a drag does not zipper. It scales the mix only; every transport has already
+    // Main Level: the master fader over the summed Windows, ramped so neither a drag
+    // nor a jump is heard as one. It scales the mix only; every transport has already
     // been rendered above, so no gain value, zero included, can stop or re-aim one.
     // The excluded Window's share is scaled alike, so "the mix without it" stays
     // exact for the Canvas capture, which therefore hears what the speakers get.
     // Main Mute is the same fader pulled to zero. What is added to the output after
     // this point (monitors, the tape) follows the same two ramps sample by sample.
-    const bool  mainMuted = masterMutedValue.load (std::memory_order_relaxed);
-    const float masterFrom = masterApplied;
-    const float masterTo = mainMuted ? 0.0f : masterGainValue.load (std::memory_order_relaxed);
-    const float masterStep = (masterTo - masterFrom) / static_cast<float> (std::max (frames, 1));
-    const float muteFrom = muteApplied;
-    const float muteTo = mainMuted ? 0.0f : 1.0f;
-    const float muteStep = (muteTo - muteFrom) / static_cast<float> (std::max (frames, 1));
-    const auto  masterAt = [=] (size_t i) { return masterFrom + masterStep * static_cast<float> (i + 1); };
-    const auto  muteAt   = [=] (size_t i) { return muteFrom + muteStep * static_cast<float> (i + 1); };
-    muteApplied = muteTo;
+    const bool mainMuted = masterMutedValue.load (std::memory_order_relaxed);
+    masterRamp.aim (mainMuted ? 0.0f : masterGainValue.load (std::memory_order_relaxed), ramp);
+    muteRamp.aim (mainMuted ? 0.0f : 1.0f, ramp);
+    const auto masterAt = [this] (size_t i) { return masterRamp.at (static_cast<int> (i)); };
+    const auto muteAt   = [this] (size_t i) { return muteRamp.at (static_cast<int> (i)); };
+    if (masterRamp.left > 0 || masterRamp.target != 1.0f)
     {
-        const float target = masterTo;
-        const float from = masterFrom;
-        if (from != 1.0f || target != 1.0f)
+        const bool scaleEx = capturing && cap.kind == AudioSourceKind::canvas;
+        for (int i = 0; i < frames; ++i)
         {
-            const bool scaleEx = capturing && cap.kind == AudioSourceKind::canvas;
-            float m = from;
-            for (int i = 0; i < frames; ++i)
+            const float m = masterRamp.at (i);
+            left[i] *= m;
+            right[i] *= m;
+            if (scaleEx && i < cap_)
             {
-                m += masterStep;
-                left[i] *= m;
-                right[i] *= m;
-                if (scaleEx && i < cap_)
-                {
-                    exL[static_cast<size_t> (i)] *= m;
-                    exR[static_cast<size_t> (i)] *= m;
-                }
+                exL[static_cast<size_t> (i)] *= m;
+                exR[static_cast<size_t> (i)] *= m;
             }
         }
-        masterApplied = target;
     }
 
     if (capturing)
@@ -867,6 +869,9 @@ void Engine::render (float* left, float* right, int frames,
             tapePlayingFlag.store (tapePlayActive, std::memory_order_release);
         }
     }
+
+    masterRamp.advance (frames);
+    muteRamp.advance (frames);
 
     float peakL = 0.0f, peakR = 0.0f;
     for (int i = 0; i < frames; ++i)

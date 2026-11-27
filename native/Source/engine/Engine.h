@@ -117,6 +117,10 @@ struct Window
 
     // Audio thread only: removed, kept until its sound has faded out.
     bool leaving = false;
+    // Audio thread only: gain and balance (what the capture taps hear), and the
+    // mute / solo gate on top of them in the mix, each ramped to where it is set.
+    Ramp faderLeft, faderRight, gate;
+    bool rampsSet = false;   // a Window's first block starts where it is set
 
     // Canvas placement, in canvas ("world") coordinates. Zero means "not placed
     // yet" — the canvas picks a spot and a size the first time it sees the Window.
@@ -334,7 +338,7 @@ public:
     }
     float masterGain() const noexcept { return masterGainValue.load (std::memory_order_relaxed); }
     /** Main Mute (0.6.0), the M beside Main Level: silences everything that reaches
-        the output, input monitoring included. Ramped across a block like the fader,
+        the output, input monitoring included. Ramped like the fader,
         which keeps its value. Never saved: a canvas always opens unmuted. Like Main
         Level it comes before the Canvas capture, and it stops no transport. */
     void setMasterMuted (bool m) noexcept { masterMutedValue.store (m, std::memory_order_relaxed); }
@@ -446,9 +450,9 @@ private:
     std::atomic<float> inputGainValue { 1.0f };
     std::atomic<float> masterGainValue { 1.0f };
     std::atomic<float> masterMeterL { 0.0f }, masterMeterR { 0.0f };
-    float masterApplied = 1.0f;   // audio thread only: the gain the last block ended on
+    Ramp masterRamp;              // audio thread only: Main Level, Main Mute in it
     std::atomic<bool> masterMutedValue { false };
-    float muteApplied = 1.0f;     // audio thread only: Main Mute's own factor, for the monitors
+    Ramp muteRamp;                // audio thread only: Main Mute alone, for the monitors
     std::atomic<bool>  monitorOn { false };
     std::atomic<bool>  capRunning { false };
     std::atomic<uint32_t> capStartGen { 0 };

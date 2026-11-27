@@ -4,7 +4,7 @@
 // full-scale sine caught on its peak) through one event, and reports the largest
 // difference between two neighbouring output samples from just before the event on.
 // The sine's own slope is 0.0131 per sample (100 Hz at 48 kHz), so anything far
-// above that is the event's doing.
+// above that is the event's doing, and every scenario must stay under kThreshold.
 
 #include "run_declick.h"
 
@@ -27,6 +27,10 @@ constexpr int    kBlock = 256;
 constexpr size_t kPeriod = 480;     // 100 Hz
 constexpr size_t kPeak = 120;       // the sine's top within a period
 constexpr int    kAfter = 4096;     // rendered past the event: many times any ramp
+
+// Above the sine's own step at FF or an octave up (0.026) plus a ramp's (0.008);
+// without declicking these events jumped 0.5 to 1.
+constexpr float kThreshold = 0.04f;
 
 enum class Signal { dc, sine };
 
@@ -331,40 +335,39 @@ struct Scenario
 {
     const char* name;
     float (*run) (Signal);
-    float dc, sine;          // the largest jump, pinned
 };
 
 const Scenario kScenarios[] = {
-    { "stop",                         stopIt,              0.0021f, 0.0099f },
-    { "pause",                        pauseIt,             0.0021f, 0.0099f },
-    { "resume",                       resumeIt,            0.0021f, 0.0131f },
-    { "play from the caret",          playFromCaret,       0.0021f, 0.0131f },
-    { "play again while playing",     restartWhilePlaying, 0.0000f, 0.0131f },
-    { "play once runs out",           onceRunsOut,         0.0021f, 0.0131f },
-    { "close a playing Sound",        closeSound,          0.0021f, 0.0099f },
-    { "loop wrap, whole sound",       wrapWhole,           0.0000f, 0.0131f },
-    { "loop wrap, backward",          wrapBackward,        0.0000f, 0.0173f },
-    { "loop wrap, FF",                wrapFast,            0.0000f, 0.0304f },
-    { "loop wrap, two own lengths",   wrapOwnLengths,      0.0000f, 0.0131f },
-    { "loop wrap, selection",         wrapSelection,       0.0000f, 0.0131f },
-    { "loop wrap, Set Loop region",   wrapRegion,          0.0000f, 0.0131f },
-    { "loop wrap, short track",       wrapShortTrack,      0.0021f, 0.0131f },
-    { "caret loop, late track",       caretLateTrack,      0.0021f, 0.0131f },
-    { "keyboard strike",              keyStrike,           0.0021f, 0.0131f },
-    { "keyboard release",             keyRelease,          0.0021f, 0.0099f },
-    { "keyboard retrigger",           keyRetrigger,        0.0000f, 0.0131f },
-    { "MIDI retrigger",               midiRetrigger,       0.0000f, 0.0131f },
-    { "MIDI glide",                   midiGlide,           0.0000f, 0.0262f },
-    { "MPE slide over wraps",         mpeSlide,            0.0000f, 0.0345f },
-    { "mute on",                      muteOn,              0.5000f, 0.9999f },
-    { "mute off",                     muteOff,             0.5000f, 1.0000f },
-    { "solo elsewhere on",            soloOn,              0.5000f, 0.9999f },
-    { "solo elsewhere off",           soloOff,             0.5000f, 1.0000f },
-    { "Main Mute on",                 mainMuteOn,          0.0020f, 0.0099f },
-    { "Main Mute off",                mainMuteOff,         0.0020f, 0.0131f },
-    { "fader jump",                   faderJump,           0.5000f, 0.9999f },
-    { "balance jump",                 balanceJump,         0.5000f, 0.9999f },
-    { "Main Level jump",              mainJump,            0.0020f, 0.0099f },
+    { "stop",                         stopIt },
+    { "pause",                        pauseIt },
+    { "resume",                       resumeIt },
+    { "play from the caret",          playFromCaret },
+    { "play again while playing",     restartWhilePlaying },
+    { "play once runs out",           onceRunsOut },
+    { "close a playing Sound",        closeSound },
+    { "loop wrap, whole sound",       wrapWhole },
+    { "loop wrap, backward",          wrapBackward },
+    { "loop wrap, FF",                wrapFast },
+    { "loop wrap, two own lengths",   wrapOwnLengths },
+    { "loop wrap, selection",         wrapSelection },
+    { "loop wrap, Set Loop region",   wrapRegion },
+    { "loop wrap, short track",       wrapShortTrack },
+    { "caret loop, late track",       caretLateTrack },
+    { "keyboard strike",              keyStrike },
+    { "keyboard release",             keyRelease },
+    { "keyboard retrigger",           keyRetrigger },
+    { "MIDI retrigger",               midiRetrigger },
+    { "MIDI glide",                   midiGlide },
+    { "MPE slide over wraps",         mpeSlide },
+    { "mute on",                      muteOn },
+    { "mute off",                     muteOff },
+    { "solo elsewhere on",            soloOn },
+    { "solo elsewhere off",           soloOff },
+    { "Main Mute on",                 mainMuteOn },
+    { "Main Mute off",                mainMuteOff },
+    { "fader jump",                   faderJump },
+    { "balance jump",                 balanceJump },
+    { "Main Level jump",              mainJump },
 };
 
 // ---- what the fades do ----------------------------------------------------------
@@ -577,6 +580,37 @@ void retriggerShapes()
     }
 }
 
+// ---- gain switches -----------------------------------------------------------
+
+void gainShapes()
+{
+    Rig r; const auto id = r.add (document (Signal::dc, { 48000 }));
+    auto& w = *r.engine.windowById (id);
+    w.muted = true;
+    r.engine.play (id, looping());
+    r.run (1000);
+    expect (*std::max_element (r.left.begin(), r.left.end()) == 0.0f, "a Sound muted before it plays is silent from its first sample");
+
+    w.muted = false;
+    r.run (1000);
+    expect (std::fabs (r.left[1000 + kRamp5ms / 2] - 0.25f) < 0.003f && std::fabs (r.left[1000 + kRamp5ms] - 0.5f) < 1.0e-4f,
+            "unmute ramps over 5 ms, whatever the block size");
+
+    // Flipped faster than the ramp, in uneven blocks, with the faders moving too.
+    const size_t from = r.left.size();
+    for (int i = 0; i < 600; ++i)
+    {
+        w.muted = (i % 3) == 0;
+        w.gain = (i % 5) * 0.2f;
+        w.balance = (i % 7) / 3.0f - 1.0f;
+        r.engine.setMasterMuted ((i % 11) == 0);
+        r.engine.setMasterGain ((i % 4) * 0.4f);
+        r.run (1 + i % 97);
+    }
+    const float j = r.jumpFrom (from);
+    expect (j < kThreshold, "mute, fader, balance and Main hammered together: no click");
+}
+
 } // namespace
 
 int declickTests()
@@ -585,15 +619,15 @@ int declickTests()
     fadeShapes();
     wrapShapes();
     retriggerShapes();
+    gainShapes();
     int failures = 0;
     for (const auto& sc : kScenarios)
         for (Signal s : { Signal::dc, Signal::sine })
         {
             const float got = sc.run (s);
-            const float want = s == Signal::dc ? sc.dc : sc.sine;
-            const bool ok = std::fabs (got - want) < 0.002f;
-            std::printf ("%-4s declick: %-28s %s jump %.4f (pinned %.4f)\n",
-                         ok ? "ok" : "FAIL", sc.name, nameOf (s), got, want);
+            const bool ok = got < kThreshold;
+            std::printf ("%-4s declick: %-28s %s jump %.4f (under %.2f)\n",
+                         ok ? "ok" : "FAIL", sc.name, nameOf (s), got, kThreshold);
             if (! ok) ++failures;
         }
     return failures + fadeFailures;
