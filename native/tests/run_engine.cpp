@@ -154,7 +154,7 @@ void directionTests()
     // Forward is what it always was.
     {
         auto doc = rampDocument ({ kRamp });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         check (isSequence (renderTransport (tr, *doc, 250).left, walk (0, kRamp, 0, 1, false, 250)),
                "direction: forward loops 0..99 as always");
@@ -163,7 +163,7 @@ void directionTests()
     for (int pp = 0; pp < 2; ++pp)
     {
         auto doc = rampDocument ({ kRamp });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection (pp ? PlayDirection::pingPong : PlayDirection::backward, *doc);   // stopped: kept
         tr.play (*doc, loop);
         const auto want = pp ? walk (0, kRamp, 0, 1, true, 450) : walk (0, kRamp, kRamp - 1, -1, false, 250);
@@ -173,7 +173,7 @@ void directionTests()
     // Tracks of different lengths each keep their own length and phase.
     {
         auto doc = rampDocument ({ 100, 60 });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection (PlayDirection::backward, *doc);
         tr.play (*doc, loop);
         const auto o = renderTransport (tr, *doc, 300);
@@ -182,7 +182,7 @@ void directionTests()
     }
     {
         auto doc = rampDocument ({ 100, 60 });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection (PlayDirection::pingPong, *doc);
         tr.play (*doc, loop);
         const auto o = renderTransport (tr, *doc, 400);
@@ -194,7 +194,7 @@ void directionTests()
     {
         auto doc = rampDocument ({ kRamp });
         doc->selSt = 20; doc->selEnd = 40;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection ((PlayDirection) d, *doc);
         tr.play (*doc, loop);
         const auto want = d == 0 ? walk (20, 20, 0, 1, false, 70) : d == 1 ? walk (20, 20, 19, -1, false, 70)
@@ -206,7 +206,7 @@ void directionTests()
     // Play once: through the span, in the direction, then stop.
     {
         auto doc = rampDocument ({ kRamp });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection (PlayDirection::backward, *doc);
         tr.play (*doc, {});
         const auto o = renderTransport (tr, *doc, 300);
@@ -215,7 +215,7 @@ void directionTests()
     }
     {
         auto doc = rampDocument ({ kRamp });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection (PlayDirection::pingPong, *doc);
         tr.play (*doc, {});
         const auto o = renderTransport (tr, *doc, 500);
@@ -225,7 +225,7 @@ void directionTests()
     {
         auto doc = rampDocument ({ kRamp });
         doc->selSt = 30; doc->selEnd = 50;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection (PlayDirection::backward, *doc);
         tr.play (*doc, {});
         const auto o = renderTransport (tr, *doc, 100);
@@ -237,7 +237,7 @@ void directionTests()
     // on from where it was, and what is left of the step is crossfaded.
     const auto maxStep = [] (const std::vector<float>& a, const std::vector<float>& b)
     {
-        // Over the 2 ms the crossfade lasts; the loop's own wrap is not what is asked about.
+        // Over the start of the crossfade; the loop's own wrap is not what is asked about.
         float worst = 0.0f, prev = a.empty() ? 0.0f : a.back();
         for (size_t i = 0; i < b.size() && i < 30; ++i) { worst = std::max (worst, std::fabs (b[i] - prev)); prev = b[i]; }
         return worst * 128.0f;   // in sample units
@@ -246,24 +246,23 @@ void directionTests()
         auto doc = rampDocument ({ 100, 60 });
         se::Transport tr (kRate);
         tr.play (*doc, loop);
-        const auto before = renderTransport (tr, *doc, 37);            // pos 37: next reads 37 and 37
+        const auto before = renderTransport (tr, *doc, 337);           // past the fade-in; next reads 37 and 37
         size_t p0 = 0, p1 = 0;
         tr.setDirection (PlayDirection::backward, *doc);
         check (tr.uiTrackPosition (0, p0) && tr.uiTrackPosition (1, p1) && p0 == 37 && p1 == 37,
                "switch: forward -> backward, every track stays on the frame it was on");
-        const auto after = renderTransport (tr, *doc, 120);
+        const auto after = renderTransport (tr, *doc, 240);
         check (maxStep (before.rawL, after.rawL) < 2.5f, "switch: no step in the signal (micro-crossfade)");
-        // Once the 2 ms crossfade is over, it is plainly walking down from 37 (wrapping).
-        const int skip = 60;
-        const auto want = walk (0, 100, 37, -1, false, 120);
+        // Once the crossfade is over, it is plainly walking down from 37 (wrapping).
+        const int skip = 120;
+        const auto want = walk (0, 100, 37, -1, false, 240);
         check (std::vector<int> (after.left.begin() + skip, after.left.end()) == std::vector<int> (want.begin() + skip, want.end()),
                "switch: backward carries on from 37 downward");
 
         tr.setDirection (PlayDirection::pingPong, *doc);   // heading down: keeps heading down, bounces at 0
-        const size_t pos1 = 37 + 120;                     // track 0: 37 - 120 mod 100 -> index 17 after the wrap
-        (void) pos1;
+        // Track 0 reads 37 - 240 mod 100 = 97 next.
         const auto a2 = renderTransport (tr, *doc, 160);
-        const auto w2 = walk (0, 100, 17, -1, true, 160);   // heading down from 17, bounce at 0, then up
+        const auto w2 = walk (0, 100, 97, -1, true, 160);   // heading down from 97, bounce at 0, then up
         check (std::vector<int> (a2.left.begin() + skip, a2.left.end()) == std::vector<int> (w2.begin() + skip, w2.end()),
                "switch: backward -> ping-pong keeps heading the same way, then bounces");
 
@@ -274,7 +273,7 @@ void directionTests()
     // Rolling a play-once: a direction change finishes the pass the other way.
     {
         auto doc = rampDocument ({ kRamp });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, {});
         renderTransport (tr, *doc, 60);
         tr.setDirection (PlayDirection::backward, *doc);
@@ -287,7 +286,7 @@ void directionTests()
     {
         auto doc = rampDocument ({ kRamp });
         doc->selSt = 20; doc->selEnd = 40;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         renderTransport (tr, *doc, 25);                       // inside: reading frame 25 next
         doc->selSt = 10; doc->selEnd = 90;                    // new range holds the playhead
@@ -312,7 +311,7 @@ void directionTests()
         auto doc = rampDocument ({ kRamp });
         doc->selSt = 20; doc->selEnd = 40;
         se::PlayOptions region; region.loop = true; region.useLoopRegion = true;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, region);                                // no region yet: the selection
         renderTransport (tr, *doc, 5);
         doc->loopSt = 30; doc->loopEnd = 50;                   // Set Loop: the region wins
@@ -324,7 +323,7 @@ void directionTests()
     // The Keyboard's re-pitch of a rolling transport still works with a direction.
     {
         auto doc = rampDocument ({ kRamp });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection (PlayDirection::backward, *doc);
         tr.play (*doc, loop);
         tr.setRateScale (2.0);
@@ -367,7 +366,7 @@ void loopOnPinTests()
     // No selection: every track loops over ITS OWN length, from 0, drifting apart.
     {
         auto doc = rampDocument ({ 100, 60 });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, region);
         const auto o = renderTransport (tr, *doc, 350);
         check (tr.uiLoopMode() == se::LoopMode::all && o.frames == 350
@@ -381,7 +380,7 @@ void loopOnPinTests()
     {
         auto doc = rampDocument ({ 100, 60 });
         doc->selSt = doc->selEnd = 70;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, region);
         const auto o = renderTransport (tr, *doc, 120);
         check (o.left.front() == 0 && o.right.front() == 0 && isSequence (o.left, walk (0, 100, 0, 1, false, 120))
@@ -393,7 +392,7 @@ void loopOnPinTests()
         auto doc = rampDocument ({ 100, 100 });
         doc->firstSelTrack = doc->lastSelTrack = 2;
         doc->selSt = 20; doc->selEnd = 60;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, region);
         std::vector<float> l;
         const auto r = rawRight (tr, *doc, 200, l);
@@ -410,7 +409,7 @@ void loopOnPinTests()
         auto doc = rampDocument ({ 100, 40 });
         doc->firstSelTrack = 1; doc->lastSelTrack = 2;
         doc->selSt = 20; doc->selEnd = 60;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         std::vector<float> l;
         const auto r = rawRight (tr, *doc, 80, l);
@@ -426,7 +425,7 @@ void loopOnPinTests()
         doc->loopSt = 30; doc->loopEnd = 50;
         doc->firstSelTrack = doc->lastSelTrack = 2;
         doc->selSt = 70; doc->selEnd = 90;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, region);
         const auto o = renderTransport (tr, *doc, 70);
         check (isSequence (o.left, walk (30, 20, 0, 1, false, 70)) && isSequence (o.right, walk (30, 20, 0, 1, false, 70)),
@@ -439,7 +438,7 @@ void loopOnPinTests()
         auto doc = rampDocument ({ 100, 60 });
         doc->loopSt = 30; doc->loopEnd = 50;
         doc->selSt = doc->selEnd = 80;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, region);
         const auto o = renderTransport (tr, *doc, 50);
         check (isSequence (o.left, walk (30, 20, 0, 1, false, 50)) && isSequence (o.right, walk (30, 20, 0, 1, false, 50)),
@@ -451,7 +450,7 @@ void loopOnPinTests()
         doc->loopSt = 30; doc->loopEnd = 50;
         doc->firstSelTrack = 1; doc->lastSelTrack = 2;
         doc->selSt = 60; doc->selEnd = 70;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         const auto o = renderTransport (tr, *doc, 30);
         check (isSequence (o.left, walk (60, 10, 0, 1, false, 30)) && isSequence (o.right, walk (60, 10, 0, 1, false, 30)),
@@ -461,7 +460,7 @@ void loopOnPinTests()
     {
         auto doc = rampDocument ({ 100, 20 });
         doc->loopSt = 30; doc->loopEnd = 50;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, region);
         std::vector<float> l;
         const auto r = rawRight (tr, *doc, 60, l);
@@ -471,7 +470,7 @@ void loopOnPinTests()
     // Block after block, the loop keeps running (it never stops).
     {
         auto doc = rampDocument ({ 100, 60 });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, region);
         for (int k = 0; k < 40; ++k) renderTransport (tr, *doc, kBlock);
         check (tr.state() == se::TransportState::playing && at (tr, 0) == (40 * kBlock) % 100 && at (tr, 1) == (40 * kBlock) % 60,
@@ -491,7 +490,7 @@ void playOnceSelectionTests()
         auto doc = rampDocument ({ 100, 100 });
         doc->firstSelTrack = doc->lastSelTrack = 2;
         doc->selSt = 20; doc->selEnd = 60;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         check (at (tr, 0) == -1 && at (tr, 1) == 20, "bug 2: the unselected track has no playhead");
         check (tr.uiPlaySt() == 20 && tr.uiPlayEnd() == 60 && tr.uiFirstPlayTrack() == 2 && tr.uiLastPlayTrack() == 2,
@@ -508,7 +507,7 @@ void playOnceSelectionTests()
         auto doc = rampDocument ({ 100, 100, 100 });
         doc->firstSelTrack = 1; doc->lastSelTrack = 2;
         doc->selSt = 10; doc->selEnd = 30;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         renderTransport (tr, *doc, 5);
         check (at (tr, 0) == 15 && at (tr, 1) == 15 && at (tr, 2) == -1, "bug 2: tracks 1-2 selected, track 3 out");
@@ -519,7 +518,7 @@ void playOnceSelectionTests()
         auto doc = rampDocument ({ 100, 100 });
         doc->firstSelTrack = doc->lastSelTrack = 2;
         doc->selSt = 30; doc->selEnd = 50;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection ((PlayDirection) d, *doc);
         tr.play (*doc, once);
         std::vector<float> l;
@@ -536,7 +535,7 @@ void playOnceSelectionTests()
         auto doc = rampDocument ({ 100, 100 });
         doc->firstSelTrack = doc->lastSelTrack = 2;
         doc->selSt = 10; doc->selEnd = 100;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         renderTransport (tr, *doc, 60);                    // reads 70 next
         tr.setDirection (PlayDirection::backward, *doc);
@@ -550,7 +549,7 @@ void playOnceSelectionTests()
         auto doc = rampDocument ({ 100, 30 });
         doc->firstSelTrack = 1; doc->lastSelTrack = 2;
         doc->selSt = 20; doc->selEnd = 60;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         const auto o = renderTransport (tr, *doc, 100);
         check (o.frames == 40 && isSequence (o.left, walk (20, 40, 0, 1, false, 40)) && o.right[9] == 29,
@@ -562,7 +561,7 @@ void playOnceSelectionTests()
         doc->firstSelTrack = doc->lastSelTrack = 2;
         doc->selSt = 20; doc->selEnd = 60;
         se::PlayOptions rec; rec.allTracks = true;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, rec);
         const auto o = renderTransport (tr, *doc, 100);
         check (o.frames == 40 && isSequence (o.left, walk (20, 40, 0, 1, false, 40)) && isSequence (o.right, walk (20, 40, 0, 1, false, 40)),
@@ -572,7 +571,7 @@ void playOnceSelectionTests()
     {
         auto doc = rampDocument ({ 100, 60 });
         doc->firstSelTrack = doc->lastSelTrack = 2;        // a caret on track 2 is not a selection
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         const auto o = renderTransport (tr, *doc, 200);
         check (o.frames == 100 && isSequence (o.left, walk (0, 100, 0, 1, false, 100))
@@ -583,7 +582,7 @@ void playOnceSelectionTests()
     // Through the Engine, as the Play button sends it (loop off, useLoopRegion).
     {
         se::Engine engine;
-        engine.prepare (kRate, kBlock);
+        engine.prepare (kRate, kBlock); engine.setDeclickMs (0.0);
         auto doc = rampDocument ({ 100, 100 });
         doc->firstSelTrack = doc->lastSelTrack = 1;
         doc->selSt = 40; doc->selEnd = 50;
@@ -614,7 +613,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100, 60 });
         caretAt (*doc, 30, 1);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         check (at (tr, 0) == 30 && at (tr, 1) == 30 && tr.uiPlaySt() == 30 && tr.uiPlayEnd() == 100,
                "caret, loop off: every track starts at the caret; the region is caret..end");
@@ -630,7 +629,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100, 100 });
         caretAt (*doc, 40, 2);                              // a caret in track 2 only
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         const auto o = renderTransport (tr, *doc, 10);
         check (o.left.front() == 40 && o.right.front() == 40 && tr.uiFirstPlayTrack() == 1 && tr.uiLastPlayTrack() == 2,
@@ -639,7 +638,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100, 60 });
         caretAt (*doc, 70, 1);                              // past track 2's end
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         const bool noHead = at (tr, 1) == -1;
         std::vector<float> l;
@@ -652,7 +651,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100 });
         caretAt (*doc, c, 1);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         const auto o = renderTransport (tr, *doc, 200);
         check (o.frames == 100 && isSequence (o.left, walk (0, 100, 0, 1, false, 100)),
@@ -662,7 +661,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100, 100 });
         caretAt (*doc, 30, 1);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection (PlayDirection::backward, *doc);
         tr.play (*doc, once);
         const auto o = renderTransport (tr, *doc, 100);
@@ -672,7 +671,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100 });
         caretAt (*doc, 30, 1);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         tr.advance (*doc);                                  // FF while rolling
         const auto o = renderTransport (tr, *doc, 5);
@@ -685,7 +684,7 @@ void playFromCaretTests()
         auto doc = rampDocument ({ 100, 100 });
         caretAt (*doc, 30, 1);
         se::PlayOptions plain;                              // the Recorder's / an old caller's
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, plain);
         check (at (tr, 0) == 0 && at (tr, 1) == 0, "caret: without fromCaret, play-once starts at 0 (the Recorder)");
     }
@@ -693,7 +692,7 @@ void playFromCaretTests()
         auto doc = rampDocument ({ 100, 100 });
         doc->firstSelTrack = doc->lastSelTrack = 2;
         doc->selSt = 20; doc->selEnd = 40;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         check (at (tr, 0) == -1 && at (tr, 1) == 20, "caret: a selection is not a caret (Bug 2 rule)");
     }
@@ -702,7 +701,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100, 60 });
         caretAt (*doc, 30, 1);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         check (tr.uiLoopMode() == se::LoopMode::all && at (tr, 0) == 30 && at (tr, 1) == 30, "caret, loop on: every track starts at the caret");
         const auto o = renderTransport (tr, *doc, 300);
@@ -712,7 +711,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100, 60 });
         caretAt (*doc, 70, 1);                              // past track 2's end: its next lap is at 120
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         const bool noHead = at (tr, 1) == -1;
         std::vector<float> l;
@@ -727,7 +726,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100, 40 });
         caretAt (*doc, 80, 1);                              // exactly on track 2's lap boundary
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         const auto o = renderTransport (tr, *doc, 50);
         check (isSequence (o.right, walk (0, 40, 0, 1, false, 50)), "caret, loop on: a caret on a lap boundary starts that track at once, from 0");
@@ -735,7 +734,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100, 60 });
         caretAt (*doc, 100, 1);                             // at the end: the start, as before
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         const auto o = renderTransport (tr, *doc, 150);
         check (isSequence (o.left, walk (0, 100, 0, 1, false, 150)) && isSequence (o.right, walk (0, 60, 0, 1, false, 150)),
@@ -744,7 +743,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100, 20 });
         caretAt (*doc, 30, 1);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection (PlayDirection::backward, *doc);
         tr.play (*doc, loop);
         std::vector<float> l;
@@ -758,7 +757,7 @@ void playFromCaretTests()
     {
         auto doc = rampDocument ({ 100 });
         caretAt (*doc, 30, 1);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection (PlayDirection::pingPong, *doc);
         tr.play (*doc, loop);
         const auto o = renderTransport (tr, *doc, 250);
@@ -768,7 +767,7 @@ void playFromCaretTests()
         auto doc = rampDocument ({ 100, 100 });
         doc->loopSt = 50; doc->loopEnd = 60;
         caretAt (*doc, 30, 1);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         const auto o = renderTransport (tr, *doc, 30);
         check (isSequence (o.left, walk (50, 10, 0, 1, false, 30)), "caret, loop on: a Set Loop region wins over the caret");
@@ -777,7 +776,7 @@ void playFromCaretTests()
         auto doc = rampDocument ({ 100, 100 });
         doc->firstSelTrack = doc->lastSelTrack = 2;
         doc->selSt = 20; doc->selEnd = 40;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         check (tr.uiLoopMode() == se::LoopMode::selection && at (tr, 0) == -1 && at (tr, 1) == 20,
                "caret, loop on: a selection loops as before (3.1)");
@@ -786,7 +785,7 @@ void playFromCaretTests()
         // Moving the caret while it loops re-aims nothing (a running loop is never re-aimed by a caret).
         auto doc = rampDocument ({ 100 });
         caretAt (*doc, 30, 1);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         renderTransport (tr, *doc, 10);
         caretAt (*doc, 80, 1);
@@ -797,7 +796,7 @@ void playFromCaretTests()
         // A direction change during a track's wait ends the wait: it joins on the others' frame.
         auto doc = rampDocument ({ 100, 60 });
         caretAt (*doc, 70, 1);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         renderTransport (tr, *doc, 10);                     // track 1 reads 80 next; track 2 waiting
         tr.setDirection (PlayDirection::backward, *doc);
@@ -806,7 +805,7 @@ void playFromCaretTests()
     // Through the Engine, as the Play button sends it.
     {
         se::Engine engine;
-        engine.prepare (kRate, kBlock);
+        engine.prepare (kRate, kBlock); engine.setDeclickMs (0.0);
         auto doc = rampDocument ({ 100, 60 });
         caretAt (*doc, 30, 1);
         const uint64_t id = engine.addWindow (std::move (doc));
@@ -838,7 +837,7 @@ void deselectSyncTests()
     {
         auto doc = rampDocument ({ 100, 100, 100 });
         selectTracks (*doc, 2, 2, 20, 60);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         renderTransport (tr, *doc, 25);                    // track 2 reads 45 next
         doc->selSt = doc->selEnd = 10;                     // a caret
@@ -855,7 +854,7 @@ void deselectSyncTests()
     {
         auto doc = rampDocument ({ 100, 100 });
         selectTracks (*doc, 2, 2, 20, 60);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.setDirection (pp ? PlayDirection::pingPong : PlayDirection::backward, *doc);
         tr.play (*doc, loop);
         renderTransport (tr, *doc, pp ? 50 : 10);          // backward: 59 down to 50; ping-pong: up 40, down 10 -> 49
@@ -870,7 +869,7 @@ void deselectSyncTests()
     // the topmost of them.
     {
         auto doc = rampDocument ({ 100, 70, 100 });
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         renderTransport (tr, *doc, 80);                    // 80, 10, 80
         selectTracks (*doc, 1, 2, 0, 100);
@@ -884,7 +883,7 @@ void deselectSyncTests()
     {
         auto doc = rampDocument ({ 100, 30, 100 });
         selectTracks (*doc, 2, 3, 20, 60);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         renderTransport (tr, *doc, 25);                    // track 2 (30 long) absent at 45, track 3 at 45
         doc->selSt = doc->selEnd = 0;
@@ -896,7 +895,7 @@ void deselectSyncTests()
     {
         auto doc = rampDocument ({ 100, 30 });
         selectTracks (*doc, 2, 2, 40, 80);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         renderTransport (tr, *doc, 5);                     // track 2 absent at 45
         doc->selSt = doc->selEnd = 0;
@@ -907,7 +906,7 @@ void deselectSyncTests()
     {
         auto doc = rampDocument ({ 100, 100 });
         selectTracks (*doc, 1, 1, 20, 60);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         renderTransport (tr, *doc, 15);                    // track 1 reads 35 next
         selectTracks (*doc, 1, 2, 20, 60);
@@ -921,7 +920,7 @@ void deselectSyncTests()
     {
         auto doc = rampDocument ({ 100, 100 });
         selectTracks (*doc, 1, 1, 10, 60);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         renderTransport (tr, *doc, 20);                    // 30 next
         bool steady = true;
@@ -942,7 +941,7 @@ void deselectSyncTests()
         doc->loopSt = 20; doc->loopEnd = 60;
         selectTracks (*doc, 1, 1, 30, 40);
         se::PlayOptions region; region.loop = true; region.useLoopRegion = true;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, region);
         renderTransport (tr, *doc, 10);
         const long before = at (tr, 0);
@@ -956,7 +955,7 @@ void deselectSyncTests()
         auto doc = rampDocument ({ 100, 100 });
         selectTracks (*doc, 1, 1, 20, 60);
         se::PlayOptions once;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         renderTransport (tr, *doc, 5);
         doc->selSt = doc->selEnd = 0;
@@ -967,7 +966,7 @@ void deselectSyncTests()
     {
         auto doc = rampDocument ({ 100, 100 });
         selectTracks (*doc, 2, 2, 20, 60);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         renderTransport (tr, *doc, 25);
         tr.pause();
@@ -983,7 +982,7 @@ void deselectSyncTests()
     {
         auto doc = rampDocument ({ 100, 100 });
         selectTracks (*doc, 2, 2, 20, 60);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         tr.excludeMask = 2;                                // track 2 is being written
         tr.takeOpen = true;
@@ -1001,7 +1000,7 @@ void deselectSyncTests()
         auto doc = sineDocument (400);
         doc->tracks.push_back (doc->tracks[0]);
         doc->tracks[1].outLeft = true;
-        selectTracks (*doc, 2, 2, 100, 300);
+        selectTracks (*doc, 2, 2, 100, 380);   // the old loop does not wrap under the crossfade
         se::Transport tr (kRate);
         tr.play (*doc, loop);
         const auto a = renderTransport (tr, *doc, 150);
@@ -1015,7 +1014,7 @@ void deselectSyncTests()
     {
         auto doc = rampDocument ({ 100, 100 });
         selectTracks (*doc, 2, 2, 20, 60);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, loop);
         tr.setRateScale (2.0);
         renderTransport (tr, *doc, 10);                    // 20 + 2*10: reads 40 next
@@ -1204,7 +1203,7 @@ void directionEngineTests()
 {
     using se::PlayDirection;
     se::Engine engine;
-    engine.prepare (kRate, kBlock);
+    engine.prepare (kRate, kBlock); engine.setDeclickMs (0.0);
     const uint64_t id = engine.addWindow (rampDocument ({ kRamp }));
     check (engine.direction (id) == PlayDirection::forward, "engine: a new Window plays forward");
     engine.setDirection (id, PlayDirection::backward);
@@ -1421,7 +1420,7 @@ void recordTests()
 
     // Mono source into a blank Sound: the empty track is used, nothing is added.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t w = e.addWindow (blankSound (1, kRate));
         se::Recorder rec (e);
         se::RecordSetup s; s.source.kind = se::AudioSourceKind::external; s.source.firstChannel = 0; s.source.stereo = false; s.incomingStereo = false;
@@ -1445,7 +1444,7 @@ void recordTests()
     // Stereo source: two new tracks after the existing ones, routed to L and R; the
     // existing track plays on, the new ones stay silent while they are written.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t w = e.addWindow (dcDocument (20, "w"));   // 8-bit, 512 frames of DC, rate == device rate
         auto* win = e.windowById (w);
         const float level = (float) 20 / 128.0f;
@@ -1473,7 +1472,7 @@ void recordTests()
 
     // Pause, then Record again, appends to the same tracks.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t w = e.addWindow (blankSound (1, kRate));
         se::Recorder rec (e);
         se::RecordSetup s; s.source.kind = se::AudioSourceKind::external; s.source.stereo = false; s.incomingStereo = false;
@@ -1505,7 +1504,7 @@ void recordTests()
 
     // Rate and depth conform to the Sound's own: a Sound at half the device rate, 8 bit.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t w = e.addWindow (blankSound (1, kRate / 2.0, 8));
         se::Recorder rec (e);
         se::RecordSetup s; s.source.stereo = false; s.incomingStereo = false;
@@ -1520,7 +1519,7 @@ void recordTests()
 
     // Recording the main mix into a Window leaves that Window out of it.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t a = e.addWindow (dcDocument (40, "a"));
         auto wdoc = dcDocument (10, "w");
         const uint64_t w = e.addWindow (std::move (wdoc));
@@ -1542,7 +1541,7 @@ void recordTests()
     // One selected track: the incoming stereo is summed to mono (averaged), and with
     // Loop off the take is a punch-in/out that ends by itself at the selection's end.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto doc = blankSound (1, kRate);
         doc->tracks[0].data.assign (2000, 0);                    // 1000 frames of silence
         doc->selSt = 200; doc->selEnd = 600; doc->firstSelTrack = doc->lastSelTrack = 1;   // frames 100..299
@@ -1568,7 +1567,7 @@ void recordTests()
 
     // Two selected tracks: left on the upper, right on the lower, whatever their speaker toggles say.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto doc = blankSound (3, kRate);
         for (auto& t : doc->tracks) t.data.assign (800, 0);
         doc->tracks[1].outLeft = false; doc->tracks[1].outRight = true;     // upper selected track: right speaker only
@@ -1586,7 +1585,7 @@ void recordTests()
 
     // Loop on: continuous recording round and round inside the selection, over what was there.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto doc = blankSound (1, kRate);
         doc->tracks[0].data.assign (1000, 0);
         doc->selSt = 100; doc->selEnd = 300; doc->firstSelTrack = doc->lastSelTrack = 1;   // 100 frames: 50..149
@@ -1610,7 +1609,7 @@ void recordTests()
 
     // Loop on, a short pass: positions the pass has not wrapped over keep the earlier take.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto doc = blankSound (1, kRate);
         doc->tracks[0].data.assign (1000, 0);
         doc->selSt = 0; doc->selEnd = 200; doc->firstSelTrack = doc->lastSelTrack = 1;   // 100 frames
@@ -1631,7 +1630,7 @@ void recordTests()
 
     // A track shorter than the selection's end is padded with silence to make room.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto doc = blankSound (1, kRate, 8);
         doc->tracks[0].data.assign (100, 0x80);                 // 8 bit: 0x80 is silence
         doc->selSt = 50; doc->selEnd = 150; doc->firstSelTrack = doc->lastSelTrack = 1;
@@ -1647,7 +1646,7 @@ void recordTests()
 
     // The others play while a selection records: only the track being written is silent.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto doc = dcDocument (10, "x");                         // track 1 (8-bit DC 10)
         doc->addTrack(); doc->addTrack();
         for (int t = 1; t < 3; ++t)
@@ -1669,7 +1668,7 @@ void recordTests()
 
     // With Loop on and only the written track selected, nothing else sounds in the loop.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto doc = dcDocument (20, "y");
         doc->selSt = 10; doc->selEnd = 50; doc->firstSelTrack = doc->lastSelTrack = 1;
         const uint64_t w = e.addWindow (std::move (doc));
@@ -1685,7 +1684,7 @@ void recordTests()
 
     // Selection / 3+ tracks: not allowed.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto doc = blankSound (3, kRate);
         for (auto& t : doc->tracks) t.data.assign (200, 0);
         doc->selSt = 20; doc->selEnd = 100; doc->firstSelTrack = 1; doc->lastSelTrack = 3;
@@ -1709,7 +1708,7 @@ void takeJoinTests()
     // Join a transport that is playing: no restart, the new track starts with
     // silence up to the frame it joined at.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t w = e.addWindow (dcDocument (20, "w"));   // 8-bit, 512 frames
         auto* win = e.windowById (w);
         e.setDirection (w, se::PlayDirection::backward);
@@ -1739,7 +1738,7 @@ void takeJoinTests()
 
     // Join a paused transport: it resumes from where it was held.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t w = e.addWindow (dcDocument (20, "w"));
         auto* win = e.windowById (w);
         e.play (w, {});
@@ -1762,7 +1761,7 @@ void takeJoinTests()
     // Disarm mid-take (Recorder::end): the capture ends, the transport plays on
     // untouched, the new track stays silent until the next Play or Stop.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t w = e.addWindow (dcDocument (20, "w"));
         auto* win = e.windowById (w);
         se::PlayOptions loopAll; loopAll.loop = true;
@@ -1808,7 +1807,7 @@ void takeJoinTests()
             tr.play (*doc, lp);
             tr.excludeMask = 2;
             std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
-            tr.render (*doc, l.data(), r.data(), kBlock);
+            for (int b = 0; b < 3; ++b) tr.render (*doc, l.data(), r.data(), kBlock);   // past the start's fade-in
             tr.releaseExcluded();
             std::vector<float> ramp;
             for (int b = 0; b < 3; ++b)
@@ -1835,7 +1834,7 @@ void takeJoinTests()
 
     // Join a play-once pass over a selection: a punch-in part-way, out at the end.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto doc = blankSound (1, kRate);
         doc->tracks[0].data.assign (2000, 0);
         doc->selSt = 200; doc->selEnd = 600; doc->firstSelTrack = doc->lastSelTrack = 1;   // frames 100..299
@@ -1856,7 +1855,7 @@ void takeJoinTests()
 
     // Loop on and a Set Loop region: the take stays inside it, round and round.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto doc = blankSound (1, kRate);
         doc->tracks[0].data.assign (2000, 0);
         doc->loopSt = 200; doc->loopEnd = 600;   // frames 100..299; no selection
@@ -1886,7 +1885,7 @@ void takeJoinTests()
 
     // A region and a selection over one track: the selected track, inside the region.
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto doc = blankSound (2, kRate);
         for (auto& t : doc->tracks) t.data.assign (400, 0);   // 200 frames: shorter than the region's end
         doc->loopSt = 200; doc->loopEnd = 600;
@@ -1997,7 +1996,7 @@ void captureTests()
 
     {
         se::Engine e;
-        e.prepare (kRate, kBlock);
+        e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         check (! e.captureRunning(), "capture: not running before it is started");
         renderWithInput (e, { 0.25f, -0.5f, 0.125f }, ol, orr);
         check (drain (e).n == 0, "capture: a block rendered before the start captures nothing");
@@ -2068,7 +2067,7 @@ void captureTests()
     {
         // The Canvas source.
         se::Engine e;
-        e.prepare (kRate, kBlock);
+        e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t a = e.addWindow (dcDocument (10, "a"));
         const uint64_t b = e.addWindow (dcDocument (20, "b"));
         const uint64_t c = e.addWindow (dcDocument (40, "c"));
@@ -2136,7 +2135,7 @@ void captureTests()
     {
         // A full ring drops what does not fit and counts it; the audio thread never waits.
         se::Engine e;
-        e.prepare (kRate, kBlock);
+        e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         se::CaptureSetup pair; pair.kind = se::AudioSourceKind::external;
         e.startCapture (pair);
         const size_t blocks = e.captureRing().capacity() / (size_t) kBlock + 8;
@@ -2226,7 +2225,7 @@ void metaTests()
     std::vector<float> out[2];
     for (int mode = 0; mode < 2; ++mode)
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t id = e.addWindow (makeDoc());
         const auto publish = [&] { if (mode == 0) e.commitEdit (id); else e.commitMeta (id); };
         const auto run = [&] (int blocks)
@@ -2261,7 +2260,7 @@ void metaTests()
     // A document whose tracks changed without a commitEdit is left alone (it cannot
     // happen in the app; the guard keeps the audio thread off a mismatched layout).
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t id = e.addWindow (makeDoc());
         se::PlayOptions o; o.loop = true;
         e.play (id, o);
@@ -2314,7 +2313,7 @@ void unsetLoopTests()
         doc->selSt = 30; doc->selEnd = 50; doc->firstSelTrack = 1; doc->lastSelTrack = 2;
         se::setLoop (*doc);
         doc->selSt = 60; doc->selEnd = 80; doc->firstSelTrack = doc->lastSelTrack = 2;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, region);
         renderTransport (tr, *doc, 25);
         check (tr.uiPlaySt() == 30 && tr.uiPlayEnd() == 50 && at (tr, 0) >= 30 && at (tr, 0) < 50,
@@ -2337,7 +2336,7 @@ void unsetLoopTests()
         doc->selSt = 30; doc->selEnd = 50;
         se::setLoop (*doc);
         doc->selSt = doc->selEnd = 10;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, region);
         renderTransport (tr, *doc, 25);
         se::unsetLoop (*doc);
@@ -2352,7 +2351,7 @@ void unsetLoopTests()
     }
     // Through the Engine, as the menu commits it (commitMeta).
     {
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         auto d0 = rampDocument ({ 100 });
         d0->selSt = 20; d0->selEnd = 40;
         se::setLoop (*d0);
@@ -2376,7 +2375,7 @@ void unsetLoopTests()
         se::setLoop (*doc);
         doc->selSt = doc->selEnd = 0;
         se::PlayOptions once; once.useLoopRegion = true; once.fromCaret = true;
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*doc, once);
         const auto a = renderTransport (tr, *doc, 5);
         se::unsetLoop (*doc);
@@ -2494,7 +2493,7 @@ void selectionInfoTests()
         sel (*r, 30, 50, 1, 2);
         se::setLoop (*r);
         sel (*r, 10, 20, 2, 2);
-        se::Transport tr (kRate);
+        se::Transport tr (kRate, 0.0);
         tr.play (*r, region);
         renderTransport (tr, *r, 25);
         se::selectionToWholeTracks (*r);
@@ -2503,7 +2502,7 @@ void selectionInfoTests()
 
         auto q = rampDocument ({ 100, 60 });
         sel (*q, 10, 20, 2, 2);
-        se::Transport t2 (kRate);
+        se::Transport t2 (kRate, 0.0);
         t2.play (*q, region);
         renderTransport (t2, *q, 25);
         se::selectionToWholeTracks (*q);
@@ -2780,7 +2779,7 @@ void masterLevelTests()
 {
     const float tol = 1.0e-4f;
     se::Engine e;
-    e.prepare (kRate, kBlock);
+    e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
     const uint64_t a = e.addWindow (dcDocument (10, "a"));
     const uint64_t b = e.addWindow (dcDocument (40, "b"));
     se::PlayOptions loopAll; loopAll.loop = true;
@@ -2865,7 +2864,7 @@ void masterLevelTests()
 void emptyCanvasTests()
 {
     se::Engine e;
-    e.prepare (48000.0, 512);
+    e.prepare (48000.0, 512); e.setDeclickMs (0.0);
     check (renderLevel (e) == 0.0f && e.numWindows() == 0, "empty canvas: renders silence");
 
     se::KeyboardVoice keys (e);
@@ -2888,6 +2887,8 @@ void mainMuteTests()
     se::PlayOptions loop;
     loop.loop = true;
     e.play (a, loop);
+    (void) renderLevel (e);   // the start fades in
+    renderBlocks (e, 4);
     const float level = renderLevel (e);
     check (level > 0.0f && ! e.masterMuted(), "main mute: off by default");
 
@@ -3007,7 +3008,7 @@ static void keyboardVoiceTests()
 {
     std::printf ("keyboard voice\n");
     se::Engine e;
-    e.prepare (kRate, kBlock);
+    e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
     const uint64_t w = e.addWindow (dcDocument (20, "w"));
     se::KeyboardVoice v (e);
     const auto playing = [&] { renderLevel (e); return e.windowById (w)->transport->uiState() == se::TransportState::playing; };
@@ -3180,7 +3181,7 @@ static void tapeEngineTests()
     std::vector<float> l, r;
     {
         // Main: what the speakers get after Main Level.
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t a = e.addWindow (dcDocument (40, "a"));
         se::PlayOptions loopAll; loopAll.loop = true;
         e.play (a, loopAll);
@@ -3240,7 +3241,7 @@ static void tapeEngineTests()
     }
     {
         // External source (one channel on both sides, then a pair), gain, monitor.
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         se::TapeDeck d (e);
         se::TapeSource ext; ext.kind = se::AudioSourceKind::external; ext.firstChannel = 1; ext.stereo = false;
         check (d.setSource (ext), "source: Input 2 alone");
@@ -3279,7 +3280,7 @@ static void tapeEngineTests()
     }
     {
         // One Sound: post-fader, deaf to mute, the other Sounds left out.
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         const uint64_t a = e.addWindow (dcDocument (20, "a"));
         const uint64_t b = e.addWindow (dcDocument (40, "b"));
         se::PlayOptions loopAll; loopAll.loop = true;
@@ -3302,7 +3303,7 @@ static void tapeEngineTests()
     }
     {
         // Record-over through the deck: the replaced span holds the new audio, the rest the old.
-        se::Engine e; e.prepare (kRate, kBlock);
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
         se::TapeDeck d (e);
         se::TapeSource ext; ext.kind = se::AudioSourceKind::external; ext.stereo = false;
         d.setSource (ext);
@@ -3401,7 +3402,7 @@ static void tapeSendTests()
 static void tapeScrubTests()
 {
     std::printf ("tape scrub\n");
-    se::Engine e; e.prepare (kRate, kBlock);
+    se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
     se::TapeDeck d (e);
     se::TapeSource ext; ext.kind = se::AudioSourceKind::external; ext.stereo = false;
     d.setSource (ext);
@@ -3469,7 +3470,7 @@ static void tapeScrubTests()
 // while render() runs. For TSan.
 static void tapeConcurrencyTests()
 {
-    se::Engine e; e.prepare (kRate, kBlock);
+    se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
     const uint64_t a = e.addWindow (dcDocument (30, "a"));
     se::PlayOptions loopAll; loopAll.loop = true;
     e.play (a, loopAll);
@@ -3516,7 +3517,7 @@ static void tapeConcurrencyTests()
 int main()
 {
     se::Engine engine;
-    engine.prepare (kRate, kBlock);
+    engine.prepare (kRate, kBlock); engine.setDeclickMs (0.0);
 
     // Three channels at deliberately different levels, so which ones are in the sum
     // can be read straight off the output.

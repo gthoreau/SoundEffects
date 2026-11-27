@@ -52,7 +52,7 @@ uint64_t Engine::addWindow (std::unique_ptr<SoundDocument> doc, uint32_t assetId
     auto* w = new Window();
     w->id = id;
     w->audioDoc = new SoundDocument (doc->clone());     // audio-side copy
-    w->transport = std::make_unique<Transport> (deviceRate);
+    w->transport = std::make_unique<Transport> (deviceRate, declickMs);
     w->uiDoc = std::move (doc);                          // UI-side authoritative
     w->slot = lowestFreeSlot();                          // a new Sound takes the lowest free slot
     w->assetId = assetId != 0 ? assetId : assetCounter;
@@ -404,7 +404,7 @@ void Engine::applyTransport (Window& w, const Command& c) noexcept
         case Command::Tx::RecordPause:
             capActive = false;
             capRunning.store (false, std::memory_order_release);
-            if (w.transport->state() == TransportState::playing) w.transport->pause();
+            if (w.transport->state() == TransportState::playing) w.transport->pause (true);
             break;
         case Command::Tx::RecordResume:
             capActive = true;
@@ -424,6 +424,13 @@ void Engine::applyTransport (Window& w, const Command& c) noexcept
     }
 }
 
+void Engine::retire (size_t i) noexcept
+{
+    Window* w = live[i];
+    live.erase (live.begin() + static_cast<std::ptrdiff_t> (i));
+    retiredWins.push (w);
+}
+
 void Engine::drainCommands() noexcept
 {
     Command c;
@@ -432,6 +439,9 @@ void Engine::drainCommands() noexcept
         switch (c.kind)
         {
             case Command::Kind::AddWindow:
+                // No room: a closed Window still fading out gives up its place.
+                for (size_t i = 0; live.size() >= live.capacity() && i < live.size(); ++i)
+                    if (live[i]->leaving) retire (i);
                 if (live.size() < live.capacity()) live.push_back (c.window);
                 else                               retiredWins.push (c.window);
                 break;
@@ -440,9 +450,11 @@ void Engine::drainCommands() noexcept
                 for (size_t i = 0; i < live.size(); ++i)
                     if (live[i]->id == c.id)
                     {
+                        // A Window that is sounding stops first and goes once it is silent.
                         Window* w = live[i];
-                        live.erase (live.begin() + static_cast<std::ptrdiff_t> (i));
-                        retiredWins.push (w);
+                        if (w->transport != nullptr) w->transport->stop();
+                        if (w->transport != nullptr && w->transport->audible()) w->leaving = true;
+                        else retire (i);
                         break;
                     }
                 break;
@@ -567,7 +579,7 @@ void Engine::render (float* left, float* right, int frames,
     // per-Window test below. Cheap — a handful of relaxed loads over `live`.
     bool anySolo = false;
     for (Window* w : live)
-        if (w->soloed.load (std::memory_order_relaxed)) { anySolo = true; break; }
+        if (! w->leaving && w->soloed.load (std::memory_order_relaxed)) { anySolo = true; break; }
 
     for (Window* w : live)
     {
@@ -641,6 +653,10 @@ void Engine::render (float* left, float* right, int frames,
         w->meterLeft.store  (std::max (peakL, heldL), std::memory_order_relaxed);
         w->meterRight.store (std::max (peakR, heldR), std::memory_order_relaxed);
     }
+
+    // The closed Windows whose fade-out is over.
+    for (size_t i = live.size(); i-- > 0;)
+        if (live[i]->leaving && ! live[i]->transport->audible()) retire (i);
 
     // Main Level: the master fader over the summed Windows, ramped across the block
     // so a drag does not zipper. It scales the mix only; every transport has already

@@ -14,11 +14,18 @@
 // transport's `pos` is still one monotonic clock; each track reads through its own
 // phase (PlayContext::phase) over its own span, so a direction change, or a loop
 // range that is moved while it plays, only re-anchors those phases — the playhead
-// of every track carries on from where it is — and a ~2 ms crossfade from the old
+// of every track carries on from where it is — and a crossfade from the old
 // mapping hides whatever step is left.
+//
+// Declicking (0.6.0): what is heard is one LIVE voice (pos, ctx) rising from
+// silence, plus the TAILS it leaves behind. Anything that would cut the sound —
+// stop, pause, a new play, a seek, a re-anchor, a change of the excluded tracks —
+// retires the live voice into a tail, which plays on from where it was and fades
+// out over se::kDeclickMs. The state the UI reads changes at once.
 
 #pragma once
 
+#include "Declick.h"
 #include "Mixer.h"
 #include "SoundDocument.h"
 
@@ -49,20 +56,29 @@ struct PlayOptions
 class Transport
 {
 public:
-    explicit Transport (double deviceRate);
+    /** `declickMs` 0 switches every ramp off (tests that read exact samples). */
+    explicit Transport (double deviceRate, double declickMs = kDeclickMs);
 
     void setDeviceRate (double rate) noexcept { deviceRate = rate; }
+    /** Before audio runs. */
+    void setDeclickMs (double ms) noexcept { declickMs = ms; }
+
+    /** Is there anything left to render: playing, or a tail still fading out. */
+    bool audible() const noexcept;
 
     void play (const SoundDocument& doc, const PlayOptions& opts = {});
     void stop() noexcept;
-    void pause() noexcept;                       // space toggles play/pause
+    /** Space toggles play/pause. A pause lets the fade-out run, so the playhead
+        lands se::kDeclickMs further on; `keepPlace` leaves it where it was (the
+        Recorder's pause, whose take must stay in step with the backing). */
+    void pause (bool keepPlace = false) noexcept;
     void advance (const SoundDocument& doc);     // play at 2× (see .cpp)
     void normalSpeed() noexcept { advanceScale = 1.0; }
 
     /**
      * Change the direction. Stopped: it is kept for the next play(). Rolling or
      * paused: every track keeps the frame it is on and carries on from there in the
-     * new direction (see anchor()), under a micro-crossfade.
+     * new direction (see anchor()), under a crossfade.
      */
     void setDirection (PlayDirection d, const SoundDocument& doc) noexcept;
     PlayDirection direction() const noexcept { return dir; }
@@ -141,12 +157,12 @@ public:
         Separate from excludeMask, which outlives a disarmed take (0.5.0). */
     bool takeOpen = false;
 
-    /** Let the excluded tracks sound again (a disarmed take, once it is published),
-        fading them in over ~5 ms so a track that is not silent where it is read does
-        not click in. Audio thread. */
-    void releaseExcluded() noexcept;
+    /** Let the excluded tracks sound again (a disarmed take, once it is published).
+        Like any change of the mask, it is crossfaded. Audio thread. */
+    void releaseExcluded() noexcept { excludeMask = 0; }
 
-    /** Fill left/right (planar, deviceRate) with up to `frames` frames from `doc`. */
+    /** Fill left/right (planar, deviceRate) with up to `frames` frames from `doc`:
+        what plays, and what is still fading out. Returns how many were written. */
     int render (const SoundDocument& doc, float* left, float* right, int frames) noexcept;
 
 private:
@@ -168,7 +184,11 @@ private:
     void aimLapsFromCaret (const SoundDocument& doc, size_t c) noexcept;
     void publishRegion (size_t st, size_t end, int first, int last) noexcept;
     void publishTrackPositions (const SoundDocument& doc) noexcept;
-    void startCrossfade (const PlayContext& from) noexcept;
+    /** The live voice, if it is sounding, becomes a tail that fades out from here;
+        the live voice goes back to silence, to rise again. */
+    void retire() noexcept;
+    float startLevel() const noexcept { return declickMs > 0.0 ? 0.0f : 1.0f; }
+    bool anyTail() const noexcept;
 
     static constexpr size_t kNoPosition = static_cast<size_t> (-1);
     void setState (TransportState s) noexcept
@@ -188,13 +208,25 @@ private:
     double stopPos = 0.0;       // once-mode stop point (a pos value)
     PlayDirection dir = PlayDirection::forward;
 
-    // The mapping we were on, faded out over the first `xfadeTotal` frames after a
-    // re-anchor. Plain copy: the audio thread never allocates.
-    PlayContext prev;
-    int xfadeLeft = 0, xfadeTotal = 1;
-    // Tracks fading in after releaseExcluded(): the mix they were left out of.
-    uint64_t fadeInFrom = 0;
-    int fadeInLeft = 0, fadeInTotal = 1;
+    double declickMs;
+    float level = 0.0f;         // the live voice's gain, rising to 1
+    double lastStep = 0.0;      // the step the live voice last rendered with
+    uint64_t soundingMask = 0;  // the excludeMask it last rendered with
+
+    /** A voice fading out. Plain copies: the audio thread never allocates. */
+    struct Tail
+    {
+        PlayContext ctx;
+        double   pos = 0.0, step = 0.0, stopPos = 0.0;
+        uint64_t mask = 0;
+        float    from = 0.0f;       // its gain when it was retired
+        int      left = 0, total = 1;
+        bool     once = false;
+    };
+    // Enough for an event every block of a few dozen frames; past that the one
+    // closest to silence gives way.
+    static constexpr int kTails = 8;
+    std::array<Tail, kTails> tails;
 
     std::atomic<size_t>  uiPos { 0 };
     std::atomic<uint8_t> uiStateCode { static_cast<uint8_t> (TransportState::stopped) };

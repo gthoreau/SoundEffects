@@ -5,7 +5,16 @@
 
 namespace se {
 
-Transport::Transport (double rate) : deviceRate (rate)
+/** A play-once's last frames ramp to zero, so a pass that runs out mid-wave
+    does not cut. `ramp` is the length in output frames. */
+static float endGain (double pos, double stopPos, double step, int ramp) noexcept
+{
+    if (ramp <= 0 || step <= 0.0) return 1.0f;
+    const double framesAfter = std::ceil ((stopPos - pos) / step) - 1.0;
+    return static_cast<float> (std::clamp (framesAfter / ramp, 0.0, 1.0));
+}
+
+Transport::Transport (double rate, double ms) : deviceRate (rate), declickMs (ms)
 {
     for (auto& p : uiTrackPos) p.store (kNoPosition, std::memory_order_relaxed);
 }
@@ -68,15 +77,41 @@ void Transport::publishTrackPositions (const SoundDocument& doc) noexcept
     }
 }
 
-void Transport::startCrossfade (const PlayContext& from) noexcept
+bool Transport::anyTail() const noexcept
 {
-    prev = from;
-    xfadeTotal = std::max (1, static_cast<int> (std::lround (deviceRate * 0.002)));   // ~2 ms
-    xfadeLeft = xfadeTotal;
+    for (const auto& t : tails) if (t.left > 0) return true;
+    return false;
+}
+
+bool Transport::audible() const noexcept { return currentState == TransportState::playing || anyTail(); }
+
+void Transport::retire() noexcept
+{
+    const float from = level;
+    level = startLevel();
+    const int n = declickFrames (deviceRate, declickMs);
+    if (currentState != TransportState::playing || from <= 0.0f || n == 0) return;
+
+    Tail* slot = &tails[0];
+    float quietest = 2.0f;
+    for (auto& t : tails)
+    {
+        const float g = t.from * static_cast<float> (t.left) / static_cast<float> (t.total);
+        if (g < quietest) { quietest = g; slot = &t; }
+    }
+    slot->ctx = ctx;
+    slot->pos = pos;
+    slot->step = lastStep;
+    slot->once = ctx.mode == LoopMode::once;
+    slot->stopPos = stopPos;
+    slot->mask = soundingMask;
+    slot->from = from;
+    slot->left = slot->total = n;
 }
 
 void Transport::anchor (const SoundDocument& doc, PlayContext next) noexcept
 {
+    retire();   // the old mapping, from here
     const size_t fs = static_cast<size_t> (std::max (1, doc.frameSize()));
     const int n = std::min (doc.numTracks(), kPhaseTracks);
     const PlayContext old = ctx;
@@ -143,7 +178,6 @@ void Transport::anchor (const SoundDocument& doc, PlayContext next) noexcept
         stopPos = static_cast<double> (stopU) * static_cast<double> (fs) - next.phase[static_cast<size_t> (t0)];
     }
 
-    startCrossfade (old);
     ctx = next;
     publishTrackPositions (doc);
 }
@@ -208,10 +242,11 @@ void Transport::aimLapsFromCaret (const SoundDocument& doc, size_t c) noexcept
 
 void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
 {
+    retire();   // whatever was sounding fades out under the new start
+    level = startLevel();
     playOpts = opts;
     advanceScale = 1.0;
     cachedFrameSize = doc.frameSize();
-    xfadeLeft = 0;
     const size_t fs = static_cast<size_t> (std::max (1, doc.frameSize()));
     const bool hasSelection = doc.selSt != doc.selEnd;
 
@@ -299,15 +334,6 @@ void Transport::play (const SoundDocument& doc, const PlayOptions& opts)
     publishTrackPositions (doc);
 }
 
-void Transport::releaseExcluded() noexcept
-{
-    if (excludeMask == 0) return;
-    fadeInFrom = excludeMask;
-    excludeMask = 0;
-    fadeInTotal = std::max (1, static_cast<int> (std::lround (deviceRate * 0.005)));   // ~5 ms
-    fadeInLeft = fadeInTotal;
-}
-
 size_t Transport::readingFrame (const SoundDocument& doc, int preferTrack) const noexcept
 {
     if (currentState == TransportState::stopped) return 0;
@@ -327,11 +353,10 @@ size_t Transport::readingFrame (const SoundDocument& doc, int preferTrack) const
 
 void Transport::stop() noexcept
 {
+    retire();
     setState (TransportState::stopped);
-    fadeInLeft = 0;
     pos = 0.0;
     advanceScale = 1.0;
-    xfadeLeft = 0;
     uiPos.store (0, std::memory_order_relaxed);
     for (auto& p : uiTrackPos) p.store (kNoPosition, std::memory_order_relaxed);
     // Nothing is playing, so there is no playing region. The UI falls back to the
@@ -341,10 +366,21 @@ void Transport::stop() noexcept
     uiRegionEnd.store (0, std::memory_order_relaxed);
 }
 
-void Transport::pause() noexcept
+void Transport::pause (bool keepPlace) noexcept
 {
-    if (currentState == TransportState::playing)      setState (TransportState::paused);
-    else if (currentState == TransportState::paused)  setState (TransportState::playing);
+    if (currentState == TransportState::playing)
+    {
+        const bool sounding = level > 0.0f;
+        retire();
+        // The fade-out is heard from here on: the playhead stops where it ends.
+        if (sounding && ! keepPlace) pos += lastStep * declickFrames (deviceRate, declickMs);
+        setState (TransportState::paused);
+    }
+    else if (currentState == TransportState::paused)
+    {
+        level = startLevel();
+        setState (TransportState::playing);
+    }
 }
 
 void Transport::advance (const SoundDocument& doc)
@@ -357,14 +393,16 @@ void Transport::seek (const SoundDocument& doc, size_t bytes) noexcept
 {
     const int frameSize = doc.frameSize();
     cachedFrameSize = frameSize;
+    retire();
     const size_t p = std::min (bytes, doc.maxTrackSize());
     pos = static_cast<double> (p - (p % static_cast<size_t> (frameSize)));
 }
 
 int Transport::render (const SoundDocument& doc, float* left, float* right, int frames) noexcept
 {
-    if (left == nullptr || right == nullptr)      return 0;
-    if (currentState != TransportState::playing)  return 0;
+    if (left == nullptr || right == nullptr) return 0;
+    const bool wasPlaying = currentState == TransportState::playing;
+    if (! wasPlaying && ! anyTail()) return 0;
 
     cachedFrameSize = doc.frameSize();
 
@@ -376,7 +414,7 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
     // While a take runs (takeOpen) the aim is frozen: the Recorder writes the span
     // it snapshotted, and the written tracks' playheads must not jump. A selection
     // drawn or cleared mid-take re-aims on the first block after the take ends.
-    if (playOpts.loop && ctx.mode != LoopMode::once && ! takeOpen)
+    if (wasPlaying && playOpts.loop && ctx.mode != LoopMode::once && ! takeOpen)
     {
         const Aim a = loopAim (doc, playOpts);
         const bool same = a.mode == ctx.mode
@@ -397,48 +435,72 @@ int Transport::render (const SoundDocument& doc, float* left, float* right, int 
         }
     }
 
-    const double s         = step (doc);
-    const bool   playOnce  = ctx.mode == LoopMode::once;
+    const double s    = step (doc);
+    const int    ramp = declickFrames (deviceRate, declickMs);
+    const float  rise = ramp > 0 ? 1.0f / static_cast<float> (ramp) : 1.0f;
+
+    if (wasPlaying)
+    {
+        // Tracks taken out of (or back into) the mix: crossfade from the old set.
+        if (excludeMask != soundingMask) retire();
+        soundingMask = excludeMask;
+        lastStep = s;
+    }
 
     MixOptions mix;
     mix.excludeMask = excludeMask;
 
+    bool ranOut = false;
     int written = 0;
     for (int i = 0; i < frames; ++i)
     {
         // pos is MONOTONIC — each track maps it through its own phase and span. Only
         // play-once has a stop point; the loop modes run forever.
-        if (playOnce && pos >= stopPos) { setState (TransportState::stopped); break; }
-
-        StereoFrame f = mixFrameAt (doc, pos, ctx, mix);
-        if (xfadeLeft > 0)
+        const bool once = ctx.mode == LoopMode::once;
+        if (currentState == TransportState::playing && once && pos >= stopPos)
         {
-            const StereoFrame o = mixFrameAt (doc, pos, prev, mix);
-            const float w = 1.0f - static_cast<float> (xfadeLeft) / static_cast<float> (xfadeTotal);
-            f.left  = o.left  + (f.left  - o.left)  * w;
-            f.right = o.right + (f.right - o.right) * w;
-            --xfadeLeft;
+            setState (TransportState::stopped);
+            ranOut = true;
         }
-        if (fadeInLeft > 0)
-        {
-            // Released tracks come in from silence (the mix that left them out).
-            MixOptions without;
-            without.excludeMask = fadeInFrom;
-            const StereoFrame o = mixFrameAt (doc, pos, ctx, without);
-            const float w = 1.0f - static_cast<float> (fadeInLeft) / static_cast<float> (fadeInTotal);
-            f.left  = o.left  + (f.left  - o.left)  * w;
-            f.right = o.right + (f.right - o.right) * w;
-            --fadeInLeft;
-        }
-        left[i]  = f.left;
-        right[i] = f.right;
+        const bool playing = currentState == TransportState::playing;
+        if (! playing && ! anyTail()) break;
 
-        pos += s;
+        StereoFrame f;
+        if (playing)
+        {
+            const StereoFrame now = mixFrameAt (doc, pos, ctx, mix);
+            const float g = level * (once ? endGain (pos, stopPos, s, ramp) : 1.0f);
+            f.left  = now.left  * g;
+            f.right = now.right * g;
+            level = std::min (1.0f, level + rise);
+            pos += s;
+        }
+        for (auto& t : tails)
+        {
+            if (t.left <= 0) continue;
+            if (t.once && t.pos >= t.stopPos) { t.left = 0; continue; }
+            MixOptions was;
+            was.excludeMask = t.mask;
+            const StereoFrame o = mixFrameAt (doc, t.pos, t.ctx, was);
+            const float g = t.from * static_cast<float> (t.left) / static_cast<float> (t.total)
+                          * (t.once ? endGain (t.pos, t.stopPos, t.step, ramp) : 1.0f);
+            f.left  += o.left  * g;
+            f.right += o.right * g;
+            t.pos += t.step;
+            --t.left;
+        }
+        left[i]  = std::clamp (f.left,  -1.0f, 1.0f);
+        right[i] = std::clamp (f.right, -1.0f, 1.0f);
         ++written;
     }
 
-    uiPos.store (framePos(), std::memory_order_relaxed);
-    publishTrackPositions (doc);
+    // A tail alone says nothing about where the transport is: after a stop the
+    // playheads stay cleared.
+    if (wasPlaying || ranOut || currentState == TransportState::paused)
+    {
+        uiPos.store (framePos(), std::memory_order_relaxed);
+        publishTrackPositions (doc);
+    }
     return written;
 }
 

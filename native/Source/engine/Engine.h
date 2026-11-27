@@ -109,6 +109,9 @@ struct Window
     std::atomic<float> meterLeft  { 0.0f };
     std::atomic<float> meterRight { 0.0f };
 
+    // Audio thread only: removed, kept until its sound has faded out.
+    bool leaving = false;
+
     // Canvas placement, in canvas ("world") coordinates. Zero means "not placed
     // yet" — the canvas picks a spot and a size the first time it sees the Window.
     // `width` is the width the Window ASKS for; in the grid the whole column shares
@@ -151,6 +154,13 @@ public:
     static constexpr size_t kMaxWindows = 256;
 
     void prepare (double deviceRate, int maxBlockSize);
+    /** The length of every ramp (Declick.h); 0 switches them off, for tests that read
+        exact samples. Before audio runs. */
+    void setDeclickMs (double ms) noexcept
+    {
+        declickMs = ms;
+        for (auto& kv : registry) kv.second->transport->setDeclickMs (ms);
+    }
 
     // --- message thread: structure ------------------------------------------
     /** `assetId` 0 = take the next one from the canvas's counter; a saved id is
@@ -392,6 +402,8 @@ private:
     bool post (const Command& c) noexcept { return incoming.push (c); }
 
     void drainCommands() noexcept;
+    /** Hand the live Window at `index` back to the message thread. Audio thread. */
+    void retire (size_t index) noexcept;
     Window* liveById (uint64_t id) noexcept;
     void applyTransport (Window& w, const Command& c) noexcept;
 
@@ -453,6 +465,7 @@ private:
     std::atomic<float> tapeMeterValue { 0.0f };
 
     double deviceRate = 48000.0;
+    double declickMs = kDeclickMs;
 };
 
 } // namespace se

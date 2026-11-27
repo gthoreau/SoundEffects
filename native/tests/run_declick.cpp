@@ -335,13 +335,13 @@ struct Scenario
 };
 
 const Scenario kScenarios[] = {
-    { "stop",                         stopIt,              0.5000f, 0.9999f },
-    { "pause",                        pauseIt,             0.5000f, 0.9999f },
-    { "resume",                       resumeIt,            0.5000f, 1.0000f },
-    { "play from the caret",          playFromCaret,       0.5000f, 1.0000f },
-    { "play again while playing",     restartWhilePlaying, 0.0000f, 0.9999f },
-    { "play once runs out",           onceRunsOut,         0.5000f, 1.0000f },
-    { "close a playing Sound",        closeSound,          0.5000f, 0.9999f },
+    { "stop",                         stopIt,              0.0021f, 0.0099f },
+    { "pause",                        pauseIt,             0.0021f, 0.0099f },
+    { "resume",                       resumeIt,            0.0021f, 0.0131f },
+    { "play from the caret",          playFromCaret,       0.0021f, 0.0131f },
+    { "play again while playing",     restartWhilePlaying, 0.0000f, 0.0131f },
+    { "play once runs out",           onceRunsOut,         0.0021f, 0.0131f },
+    { "close a playing Sound",        closeSound,          0.0021f, 0.0099f },
     { "loop wrap, whole sound",       wrapWhole,           0.0000f, 1.0000f },
     { "loop wrap, backward",          wrapBackward,        0.0000f, 1.0000f },
     { "loop wrap, FF",                wrapFast,            0.0000f, 0.9999f },
@@ -350,10 +350,10 @@ const Scenario kScenarios[] = {
     { "loop wrap, Set Loop region",   wrapRegion,          0.0000f, 1.0000f },
     { "loop wrap, short track",       wrapShortTrack,      0.5000f, 1.0000f },
     { "caret loop, late track",       caretLateTrack,      0.5000f, 1.0000f },
-    { "keyboard strike",              keyStrike,           0.5000f, 1.0000f },
-    { "keyboard release",             keyRelease,          0.5000f, 0.9999f },
-    { "keyboard retrigger",           keyRetrigger,        0.5000f, 0.9999f },
-    { "MIDI retrigger",               midiRetrigger,       0.5000f, 0.9999f },
+    { "keyboard strike",              keyStrike,           0.0021f, 0.0131f },
+    { "keyboard release",             keyRelease,          0.0021f, 0.0099f },
+    { "keyboard retrigger",           keyRetrigger,        0.0021f, 0.0099f },
+    { "MIDI retrigger",               midiRetrigger,       0.0021f, 0.0099f },
     { "MIDI glide",                   midiGlide,           0.0000f, 0.0262f },
     { "MPE slide over wraps",         mpeSlide,            0.0000f, 1.0000f },
     { "mute on",                      muteOn,              0.5000f, 0.9999f },
@@ -367,11 +367,115 @@ const Scenario kScenarios[] = {
     { "Main Level jump",              mainJump,            0.0020f, 0.0099f },
 };
 
+// ---- what the fades do ----------------------------------------------------------
+
+int fadeFailures = 0;
+
+void expect (bool ok, const char* what)
+{
+    std::printf ("%-4s declick: %s\n", ok ? "ok" : "FAIL", what);
+    if (! ok) ++fadeFailures;
+}
+
+constexpr size_t kRamp5ms = 240;     // se::kDeclickMs at 48 kHz
+
+void fadeShapes()
+{
+    {
+        Rig r; const auto id = r.add (document (Signal::dc, { 48000 }));
+        r.engine.play (id, looping());
+        r.run (1000);
+        expect (r.left[0] == 0.0f && std::fabs (r.left[kRamp5ms / 2] - 0.25f) < 0.002f
+                && std::fabs (r.left[kRamp5ms] - 0.5f) < 1.0e-4f, "a start fades in over 5 ms");
+        r.engine.stop (id);
+        r.run (kBlock);
+        auto* w = r.engine.windowById (id);
+        size_t p = 0;
+        expect (w->transport->uiState() == se::TransportState::stopped && w->transport->uiPlayhead() == 0
+                && ! w->transport->uiTrackPosition (0, p), "a stop reads as stopped at once, playheads cleared");
+        expect (std::fabs (r.left[1000 + kRamp5ms / 2] - 0.25f) < 0.002f && r.left[1000 + kRamp5ms] == 0.0f
+                && r.left[1000 + kRamp5ms - 1] > 0.0f, "...and fades out over 5 ms");
+        r.run (kBlock);
+        expect (! w->transport->audible(), "then the transport is silent");
+    }
+    {
+        Rig r; const auto id = r.add (document (Signal::dc, { 48000 }));
+        r.engine.play (id, looping());
+        r.run (1000);
+        r.engine.pause (id);
+        r.run (1024);
+        auto* w = r.engine.windowById (id);
+        size_t p = 0;
+        expect (w->transport->uiState() == se::TransportState::paused && w->transport->uiTrackPosition (0, p)
+                && p == (1000 + kRamp5ms) * 2, "a pause: the playhead lands where the fade-out ends");
+    }
+    {
+        se::Transport t (kRate);
+        auto d = document (Signal::dc, { 48000 });
+        t.play (*d, looping());
+        std::vector<float> l (1000), rr (1000);
+        t.render (*d, l.data(), rr.data(), 1000);
+        t.pause (true);
+        t.render (*d, l.data(), rr.data(), 1000);
+        size_t p = 0;
+        expect (t.uiTrackPosition (0, p) && p == 1000 * 2, "the Recorder's pause keeps its place, to stay in step");
+    }
+    {
+        Rig r; const auto id = r.add (document (Signal::dc, { 48000 }));
+        r.engine.play (id, looping());
+        r.run (1000);
+        r.engine.removeWindow (id);
+        r.run (128);
+        expect (r.left.back() > 0.0f && r.engine.numWindows() == 0, "a closed Sound is gone for the UI while it fades out");
+        r.run (1024);
+        r.engine.collectRetired();
+        expect (r.left.back() == 0.0f, "...then silent, and handed back");
+    }
+    {
+        // More closing Sounds than the live set holds: the new ones still get in.
+        Rig r;
+        std::vector<uint64_t> ids;
+        for (size_t i = 0; i < se::Engine::kMaxWindows; ++i) ids.push_back (r.add (document (Signal::dc, { 64 })));
+        r.run (kBlock);
+        for (auto id : ids) r.engine.play (id, looping());
+        r.run (kBlock);
+        for (auto id : ids) r.engine.removeWindow (id);
+        const auto fresh = r.add (document (Signal::dc, { 48000 }));
+        r.engine.play (fresh, looping());
+        r.run (2048);
+        r.engine.collectRetired();
+        expect (std::fabs (r.left.back() - 0.5f) < 1.0e-4f, "a canvas replaced while playing: the new Sound sounds");
+    }
+    {
+        // Events faster than the tails can finish, in tiny blocks: still no click.
+        Rig r; const auto id = r.add (document (Signal::sine, { 48000 }));
+        r.engine.play (id, looping());
+        r.run (1000);
+        const size_t from = r.left.size();
+        for (int i = 0; i < 400; ++i)
+        {
+            switch (i % 5)
+            {
+                case 0: r.engine.pause (id); break;
+                case 1: r.engine.pause (id); break;
+                case 2: r.engine.stop (id); break;
+                case 3: r.engine.play (id, looping()); break;
+                default: r.engine.seek (id, (size_t) (i * 37 % 4000) * 2); break;
+            }
+            r.run (17 + i % 91);
+        }
+        const float j = r.jumpFrom (from);
+        std::printf ("     declick: hammered transport, worst jump %.4f\n", j);
+        expect (j < 0.04f, "pause / resume / stop / play / seek hammered every few ms: no click");
+    }
+}
+
 } // namespace
 
 int declickTests()
 {
     std::printf ("declick: largest sample-to-sample jump (full scale = 1)\n");
+    fadeShapes();
     int failures = 0;
     for (const auto& sc : kScenarios)
         for (Signal s : { Signal::dc, Signal::sine })
@@ -383,5 +487,5 @@ int declickTests()
                          ok ? "ok" : "FAIL", sc.name, nameOf (s), got, want);
             if (! ok) ++failures;
         }
-    return failures;
+    return failures + fadeFailures;
 }
