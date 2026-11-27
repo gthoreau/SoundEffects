@@ -168,7 +168,7 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
 </div></section>
 
 <section id="tour"><h2><span>3. A tour of the screen</span></h2><div class="body">
-  <figure><img src="img/app.png" alt="The SoundEffects window with its menu bar, mixer, two sound windows, the Effects panel, the Magnetophon and the zoom bar." width="1440" height="900"><figcaption>A fresh canvas with two sounds: one empty, one holding a two-track recording.</figcaption></figure>
+  <figure><img src="img/app.png" alt="The SoundEffects window with its menu bar, the mixer, MIDI Mapping and Magnetophon on the left, three sound windows and the Effects panel." width="1440" height="900"><figcaption>Three sounds looping. Drums and Voice are grouped; MIDI Mapping is open above the Magnetophon.</figcaption></figure>
   <table>
     <tr><th>Where</th><th>What it is</th><th>Chapter</th></tr>
     <tr><td>Menu bar</td><td>File, Edit, Selection, Sound and Canvas. Every command in the app is here, with its shortcut.</td><td><a href="#shortcuts">16</a></td></tr>
@@ -200,7 +200,7 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
   <h3>Colour</h3>
   <p>Each sound wears a colour from one of 24 themes, on its window and on its mixer strip. Choose one with <strong>Sound → Color</strong> (<kbd>⌘</kbd><kbd>T</kbd>). <strong>Canvas → Hide Color Theme</strong> swaps every colour for a plain Mac OS 8 grey.</p>
   <div class="row">
-    <figure><img src="img/app-menu-canvas.png" alt="The Canvas menu." width="162" height="144" style="width:243px"><figcaption>The Canvas menu.</figcaption></figure>
+    <figure><img src="img/app-menu-canvas.png" alt="The Canvas menu." width="162" height="162" style="width:243px"><figcaption>The Canvas menu.</figcaption></figure>
     <figure><img src="img/app-menu-sound-color.png" alt="The Color submenu listing the colour themes." width="147" height="438" style="width:221px"><figcaption>Sound → Color.</figcaption></figure>
   </div>
   <h3>Sound slots</h3>
@@ -289,6 +289,9 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
     <li>With <strong>nothing selected</strong>, the take goes into new tracks.</li>
     <li>With a selection over one or two tracks, it goes <strong>into the selection</strong>, as a punch-in or looping over it.</li>
   </ul>
+  <div class="row">
+    <figure><img src="img/popup-select-audio-source.png" alt="The Select Audio Source dialog." width="286" height="208" style="width:286px"><figcaption>Select Audio Source…</figcaption></figure>
+  </div>
   <h3>Raw or Clean</h3>
   <p>Conversion is <strong>Clean</strong> (the default) or <strong>Raw</strong>. Untick <strong>Clean conversion</strong> in the Source dialog for the gritty, lo-fi character of the original. The dialog's level fader shows a live stereo meter of the chosen source.</p>
   <h3>Setting up audio</h3>
@@ -322,8 +325,8 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
   <div class="row">
     <figure><img src="img/app-menu-edit.png" alt="The Edit menu." width="137" height="162" style="width:206px"><figcaption>The Edit menu. Undo is greyed out, always.</figcaption></figure>
     <figure><img src="img/app-menu-selection.png" alt="The Selection menu." width="192" height="256" style="width:288px"><figcaption>The Selection menu.</figcaption></figure>
-    <figure><img src="img/popup-select-exactly.png" alt="The Select Exactly dialog." width="271" height="214" style="width:271px"><figcaption>Select Exactly…</figcaption></figure>
-    <figure><img src="img/popup-shift-sound.png" alt="The Shift Sound dialog." width="271" height="176" style="width:271px"><figcaption>Shift Sound…</figcaption></figure>
+    <figure><img src="img/popup-select-exactly.png" alt="The Select Exactly dialog." width="286" height="207" style="width:286px"><figcaption>Select Exactly…</figcaption></figure>
+    <figure><img src="img/popup-shift-sound.png" alt="The Shift Sound dialog." width="286" height="167" style="width:286px"><figcaption>Shift Sound…</figcaption></figure>
   </div>
   <div class="warn"><b>No undo.</b> Cut, Clear, Crop and every effect change the audio for good. Use <strong>Save Canvas as…</strong> to keep a copy to go back to.</div>
 </div></section>
@@ -354,14 +357,18 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
   <p>Some buttons are greyed out when they cannot apply. <strong>Sum</strong>, <strong>Difference</strong> and <strong>Iterative Crossfade</strong> need a selection across more than one track, for example.</p>
   <h3>Waveform Generator and Echo</h3>
   <p>The Waveform Generator's <strong>Wave</strong> menu offers Triangle (the default), Sawtooth, Sine and Square. In Echo, <strong>Only N echoes</strong> gives exactly that many echoes of the selection (80 at most).</p>
+  <div class="row">
+    <figure><img src="img/tray-waveform-generator.png" alt="The Waveform Generator tray with its Wave menu." width="268" height="217" style="width:268px"><figcaption>The Waveform Generator.</figcaption></figure>
+  </div>
   <h3>Setups</h3>
   <p>Every effect with a tray has a <strong>Setup</strong> menu. Save your values under a name and call them up later. <strong>Manage setup…</strong> renames or deletes one; deleting does not ask for confirmation. Setups are saved with your preferences.</p>
-  <figure><img src="img/popup-save.png" alt="The dialog that saves an effect setup under a name." width="268" height="136"><figcaption>Saving a setup.</figcaption></figure>
+  <figure><img src="img/popup-save.png" alt="The sheet that saves an effect setup, slid down over its tray." width="268" height="341"><figcaption>Saving a setup.</figcaption></figure>
+  <figure><img src="img/popup-manage.png" alt="The Manage Setup sheet over an effect tray." width="268" height="345" style="width:268px"><figcaption>Manage setup…</figcaption></figure>
 </div></section>
 
 <section id="mixer"><h2><span>10. The mixer</span></h2><div class="body">
   <div class="row">
-    <figure><img src="img/mixer.png" alt="The mixer panel with two strips, New Sound and Open Sound buttons, and the Main Level fader." width="540" height="1250" style="width:270px"></figure>
+    <figure><img src="img/mixer.png" alt="The mixer panel with three strips, two of them grouped, the New Sound and Open Sound buttons, and the Main Level footer with its mute box." width="540" height="664" style="width:270px"></figure>
     <div style="flex:1; min-width: 260px">
       <p>The mixer has <strong>one strip per window</strong>, in numbered slots, in the window's colour. Press <kbd>1</kbd> to <kbd>0</kbd> to select a slot.</p>
       <ul>
@@ -405,12 +412,13 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
     <li>Choose a sound in the <strong>Sound</strong> menu. The pad keeps the sound's <em>mixer slot number</em>: if you reorder the mixer, the note drives whichever sound is then in that slot.</li>
     <li>Choose what happens <strong>at note start</strong> (Play, Stop or Pause) and <strong>at note end</strong> (Stop, Pause or Play). A note that starts with Stop or Pause ends with Play.</li>
   </ol>
+  <figure><img src="img/midi-mapping.png" alt="The MIDI Mapping panel: twelve note pads, three of them assigned, the Sound menu and the note start and end choices." width="540" height="522" style="width:270px"><figcaption>The MIDI Mapping panel.</figcaption></figure>
   <p>Assigned pads wear their sound's colour, and turn dark while their note comes in. One sound may be on several notes: the latest note wins. A mapped note acts like pressing the sound's own button, so it also drives that sound's <a href="#group">group</a>. The mapping is saved with the canvas.</p>
 </div></section>
 
 <section id="tape"><h2><span>13. The Magnetophon</span></h2><div class="body">
   <div class="row">
-    <figure><img src="img/magnetophon.png" alt="The Magnetophon panel: two tape reels, a take list and its own transport." width="540" height="550" style="width:270px"></figure>
+    <figure><img src="img/magnetophon.png" alt="The Magnetophon panel: two tape reels, a take list and its own transport." width="540" height="548" style="width:270px"></figure>
     <div style="flex:1; min-width: 260px">
       <p>The Magnetophon is a reel-to-reel tape recorder under the mixer. It is a quick way to capture what the canvas is doing.</p>
       <ul>
@@ -423,6 +431,7 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
       <div class="warn"><b>The tape is not saved.</b> It lives for the session. Use Send to keep a take. Closing a canvas warns you while takes are unsent.</div>
     </div>
   </div>
+  <figure><img src="img/popup-send-to-canvas.png" alt="The Send to Canvas dialog, listing the takes." width="286" height="318" style="width:286px"><figcaption>Send to Canvas.</figcaption></figure>
 </div></section>
 
 <section id="files"><h2><span>14. Saving and files</span></h2><div class="body">
@@ -435,6 +444,10 @@ footer { font-size: 13px; color: var(--muted); padding: 0 4px; }
     <tr><td>Open Sound</td><td><kbd>⌘</kbd><kbd>O</kbd></td><td>Reads a WAV or AIFF file into a new window. Stereo arrives as two tracks.</td></tr>
     <tr><td>Export Sound… / Import Sound…</td><td></td><td>Move a single sound between canvases. Export also writes a <strong>WAV stereo mixdown</strong> (the sound as its mixer strip plays it: routing, volume and balance, without Main Level) or <strong>WAV mono stems</strong> (one file per track, before the fader).</td></tr>
   </table>
+  <div class="row">
+    <figure><img src="img/popup-export-sound.png" alt="The Export Sound dialog." width="356" height="107" style="width:356px"><figcaption>Export Sound…</figcaption></figure>
+    <figure><img src="img/alert-revert.png" alt="The alert shown before Revert Canvas." width="356" height="140" style="width:356px"><figcaption>An alert, here before Revert Canvas.</figcaption></figure>
+  </div>
   <p><strong>Audio/Midi Setup</strong> (in the app, not the plug-ins) sets the output and input devices and channels, sample rate, buffer size and MIDI inputs, with a Test button and a switch that mutes the audio input.</p>
   <p>The app also keeps your last canvas for you: it is written to its settings file when you quit, and opens again at launch. Do not rely on this as your only copy.</p>
   <figure><img src="img/app-menu-file.png" alt="The File menu." width="181" height="216" style="width:271px"><figcaption>The File menu.</figcaption></figure>
