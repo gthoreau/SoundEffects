@@ -725,10 +725,11 @@ void WindowComponent::paintTitle (Graphics& g, const se::SoundDocument& d, bool 
     const auto bar = titleBar();
     const auto close = closeBox(), mute = muteBox(), solo = soloBox();
 
-    // Stripes only on the active (selected) Window, as on the Mac. They start 24 px
+    // Stripes only on an active Window (selected, or in the multi-selection), as on
+    // the Mac. They start 24 px
     // in and stop 8 px short of M.
     os8::paintTitleBar (g, bar, nameEditor != nullptr ? juce::String() : juce::String (d.name),
-                        selected, close.getRight() + 7 - bar.getX(), bar.getRight() - mute.getX() + 8);
+                        selected || grouped, close.getRight() + 7 - bar.getX(), bar.getRight() - mute.getX() + 8);
 
     os8::paintTitleBarBox (g, close.getPosition(), false, os8::TitleBox::close);
     os8::paintTitleBarBox (g, mute.getPosition(), muted, os8::TitleBox::mute);
@@ -1186,10 +1187,11 @@ void WindowComponent::invalidateWaveform()
     repaint();
 }
 
-void WindowComponent::setSelected (bool shouldBeSelected)
+void WindowComponent::setSelection (bool primary, bool inGroup)
 {
-    if (selected == shouldBeSelected) return;
-    selected = shouldBeSelected;
+    if (selected == primary && grouped == inGroup) return;
+    selected = primary;
+    grouped = inGroup;
     repaint();
 }
 
@@ -1755,7 +1757,7 @@ se::PlayOptions WindowComponent::playButtonOptions() const
 void WindowComponent::beginNameEdit()
 {
     auto* d = doc();
-    if (d == nullptr || nameEditor != nullptr) return;
+    if (d == nullptr || nameEditor != nullptr || grouped) return;   // no renaming in a multi-selection
 
     draggingTitle = false;   // the double-click's own mouseDown armed a title drag
 
@@ -1882,7 +1884,9 @@ bool WindowComponent::canPerform (Action a) const
                                         return viewSpanFrac < 1.0;
         case Action::fitSelection:      return d->maxTrackSize() > 0 && d->selEnd > d->selSt;
         case Action::playPause: case Action::stop:
-        case Action::selectAll: case Action::rename:
+        case Action::rename:
+            return ! grouped;
+        case Action::selectAll:
         case Action::leaveSilence:
             return true;
     }

@@ -73,21 +73,22 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     // The Keyboard follows the SAME selection. That is what makes it an always-on
     // effect rather than a dialog: it is aimed at whatever Window is selected at the
     // moment you press a key, so clicking between Windows re-aims it.
+    // In a multi-selection the primary is what all of that acts on; the Mixer lights
+    // every member's strip.
     canvas.onSelectionChanged = [this]
     {
         effects.setTargetWindow (canvas.selectedWindowId());
-        mixer.setSelectedWindow (canvas.selectedWindowId());
+        mixer.setSelectedWindows (canvas.soundSelection().members());
         keyboard.setTargetWindow (canvas.selectedWindowId());
     };
-    effects.setTargetWindow (canvas.selectedWindowId());
-    mixer.setSelectedWindow (canvas.selectedWindowId());
-    keyboard.setTargetWindow (canvas.selectedWindowId());
+    canvas.onSelectionChanged();
 
     // The mixer is a list OF the Windows: clicking a channel selects its Window and
     // brings it to the front — and, if it had been scrolled off the board, back into
     // view. Selection flows the other way through onSelectionChanged above, so the
     // framed strip and the framed Window are always the same one.
     mixer.onChannelClicked = [this] (uint64_t id) { canvas.focusWindow (id); };
+    mixer.onChannelShiftClicked = [this] (uint64_t id) { canvas.shiftClickWindow (id); };
 
     // An effect rewrites the audio IN PLACE, so the Window's cached waveform peaks
     // — keyed on track length — cannot tell anything happened. Drop them
@@ -269,8 +270,11 @@ void SoundEffectsAudioProcessorEditor::getCommandInfo (juce::CommandID id, juce:
         case cmd::crop:          active = can (WindowComponent::Action::crop); break;
         case cmd::insertSilence: active = can (WindowComponent::Action::insertSilence); break;
 
-        case cmd::soundColour:   active = engineWindow != nullptr && os8::colorThemeShown(); break;
-        case cmd::rename:        active = w != nullptr; break;
+        // Colour and name are one Sound's own: greyed while two or more are selected.
+        case cmd::soundColour:
+            active = engineWindow != nullptr && os8::colorThemeShown() && ! canvas.soundSelection().isGroup();
+            break;
+        case cmd::rename:        active = can (WindowComponent::Action::rename); break;
         case cmd::selectAudioSource: active = can (WindowComponent::Action::selectAudioSource); break;
         case cmd::armRecord:     active = can (WindowComponent::Action::record); r.setTicked (w != nullptr && w->isArmed()); break;
         case cmd::directRecording: active = can (WindowComponent::Action::directRecord); break;
@@ -606,7 +610,8 @@ juce::PopupMenu::Item SoundEffectsAudioProcessorEditor::colourRow()
     juce::PopupMenu::Item row ("Color: " + os8::themeName (w->tint));
     // With the Color Theme hidden the row stays, named and with the colour that
     // will come back, but greyed and with no submenu (the spec's note).
-    if (os8::colorThemeShown())
+    // In a multi-selection too (its Sounds keep their colours).
+    if (os8::colorThemeShown() && ! canvas.soundSelection().isGroup())
         row.subMenu = std::make_unique<juce::PopupMenu> (colourMenu());
     else
         row.setEnabled (false);
@@ -620,7 +625,7 @@ bool SoundEffectsAudioProcessorEditor::showColourMenu()
     // ⌘T: the Color submenu, dropped down under the selected Window's title bar.
     auto* w = targetWindow();
     if (w == nullptr || processorRef.engine().windowById (canvas.selectedWindowId()) == nullptr
-        || ! os8::colorThemeShown())
+        || ! os8::colorThemeShown() || canvas.soundSelection().isGroup())
         return false;
     auto menu = colourMenu();
     menu.setLookAndFeel (&Os8AppMenuLookAndFeel::instance());

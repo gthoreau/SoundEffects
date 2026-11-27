@@ -34,6 +34,17 @@ CanvasComponent::CanvasComponent (se::Engine& e) : engine (e)
     addAndMakeVisible (world);
     world.setBounds (0, 0, kWorldSize, kWorldSize);
     addAndMakeVisible (rightPan);   // above the world, so it is asked first
+    addAndMakeVisible (shiftClicks);
+    shiftClicks.soundAt = [this] (juce::Point<int> p) -> uint64_t
+    {
+        if (panMode) return 0;   // the board is one drag handle then
+        auto* c = world.getComponentAt (world.getLocalPoint (this, p));
+        if (ShiftClickLayer::inFocusedTextField (c)) return 0;
+        for (; c != nullptr; c = c->getParentComponent())
+            if (auto* wc = dynamic_cast<WindowComponent*> (c)) return wc->windowId();
+        return 0;
+    };
+    shiftClicks.onShiftClick = [this] (uint64_t id) { shiftClickWindow (id); };
     pan = originPan();
     applyViewTransform();
 
@@ -171,15 +182,17 @@ void CanvasComponent::refresh()
 
     if (mosaicEnabled && (newCount > 0 || removedAny)) layoutGrid();
 
+    // A closed Window leaves the selection — leaving it dangling would let the
+    // effects panel offer to apply to something that no longer exists.
+    bool left = false;
+    for (const uint64_t id : std::vector<uint64_t> (selection.members()))
+        if (find (id) == nullptr) left = selection.close (id) || left;
+    if (left) selectionChanged();
+
     // A Window you just made or just opened is the one you mean — selecting it
     // saves a click, and matches where your attention already is.
     if (newCount > 0)
         selectWindow (windows.back()->windowId());
-
-    // A closed Window takes the selection with it — leaving it dangling would let
-    // the effects panel offer to apply to something that no longer exists.
-    if (selectedId != 0 && find (selectedId) == nullptr)
-        selectWindow (0);
 
     // Refresh each (transport state / playhead / repaint), and keep each one's
     // colour and mixer slot in step: both can change from elsewhere (Sound ▸ Color,
@@ -215,11 +228,25 @@ void CanvasComponent::setRecording (se::Recorder* r, std::function<bool (uint64_
 
 void CanvasComponent::selectWindow (uint64_t id)
 {
-    if (selectedId == id) return;
-    selectedId = id;
+    if (selection.click (id)) selectionChanged();
+}
 
+void CanvasComponent::shiftClickWindow (uint64_t id)
+{
+    auto* wc = find (id);
+    if (wc == nullptr) return;
+    // Out of a name field or a number being typed: they commit, as on any click.
+    grabKeyboardFocus();
+    if (! selection.shiftClick (id)) return;
+    selectionChanged();
+    if (selection.contains (id)) reveal (*wc);
+}
+
+void CanvasComponent::selectionChanged()
+{
     for (auto& w : windows)
-        w->setSelected (w->windowId() == id);
+        w->setSelection (w->windowId() == selection.primary(),
+                         selection.isGroup() && selection.contains (w->windowId()));
 
     updateBackground();
     if (onSelectionChanged) onSelectionChanged();
@@ -231,7 +258,13 @@ void CanvasComponent::focusWindow (uint64_t id)
     if (wc == nullptr) return;
 
     selectWindow (id);   // no-op if it was already the selected one...
-    wc->toFront (true);  // ...but raising and revealing are worth repeating
+    reveal (*wc);        // ...but raising and revealing are worth repeating
+}
+
+void CanvasComponent::reveal (WindowComponent& window)
+{
+    auto* wc = &window;
+    wc->toFront (true);
 
     // Reveal: the Window's bounds are in world coordinates, so put them through the
     // view transform to find where they actually are on screen. Only pan by as much
@@ -801,6 +834,7 @@ bool CanvasComponent::keyPressed (const juce::KeyPress& k)
 void CanvasComponent::resized()
 {
     rightPan.setBounds (getLocalBounds());
+    shiftClicks.setBounds (getLocalBounds());
     if (mosaicEnabled) layoutGrid();
     setPan (pan);   // re-clamp against the new viewport
 }
@@ -814,7 +848,7 @@ void CanvasComponent::paint (juce::Graphics& g)
 
 void CanvasComponent::updateBackground()
 {
-    const auto c = os8::canvasColourFor (selectedId != 0 ? engine.windowById (selectedId) : nullptr);
+    const auto c = os8::canvasColourFor (selection.primary() != 0 ? engine.windowById (selection.primary()) : nullptr);
     if (c == background) return;
     background = c;
     repaint();

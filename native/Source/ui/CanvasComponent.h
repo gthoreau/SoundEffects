@@ -33,8 +33,10 @@
 
 #include "Os8.h"
 #include "Reorder.h"
+#include "ShiftClickLayer.h"
 #include "WindowComponent.h"
 #include "engine/Engine.h"
+#include "engine/SoundGroup.h"
 
 #include <functional>
 #include <memory>
@@ -89,14 +91,21 @@ public:
     /** Fired when zoom / pan mode / mosaic mode change, so the toolbar can update. */
     std::function<void()> onViewChanged;
 
-    /** The Window the effects panel acts on: the last one clicked, 0 for none.
-        Deliberately NOT keyboard focus — a panel with clickable controls takes
-        focus, and what a panel operates on must survive that. */
-    uint64_t selectedWindowId() const noexcept { return selectedId; }
+    /** The Window the effects panel acts on: the last one clicked (the primary of a
+        multi-selection), 0 for none. Deliberately NOT keyboard focus — a panel with
+        clickable controls takes focus, and what a panel operates on must survive
+        that. */
+    uint64_t selectedWindowId() const noexcept { return selection.primary(); }
     /** The selected Window's component — what the application menus act on. */
-    WindowComponent* selectedWindowComponent() const { return find (selectedId); }
+    WindowComponent* selectedWindowComponent() const { return find (selection.primary()); }
     WindowComponent* windowComponentFor (uint64_t id) const { return find (id); }
+    /** The selection and the multi-selection (se::SoundGroup). */
+    const se::SoundGroup& soundSelection() const noexcept { return selection; }
+    /** A plain click on a Sound, or on the empty canvas (0). */
     void selectWindow (uint64_t id);
+    /** ⇧-click on a Sound or its strip: into the multi-selection, or out of it. A
+        Sound that joins is raised and revealed, as a plain click on its strip does. */
+    void shiftClickWindow (uint64_t id);
 
     /** Select a Window AND put it in front of you: raised above its neighbours (the
         visible part of that in free placement, where Windows overlap) and panned
@@ -108,7 +117,7 @@ public:
     /** Something rewrote a Window's audio from outside (the effects panel) — make
         it redraw its waveform rather than its cached peaks. Pass 0 for all. */
     void invalidateWaveform (uint64_t id);
-    /** Selection changed, or the selected Window closed. */
+    /** The selection or the multi-selection changed, or a selected Window closed. */
     std::function<void()> onSelectionChanged;
     /** A Window's Source button was clicked (or Select Audio Source chosen): the editor
         shows the popup for that Window. */
@@ -250,7 +259,12 @@ private:
     std::unique_ptr<se::SoundDocument> clipboard;   // shared across windows (⌘X/C/V)
     int cascade = 0;
 
-    uint64_t selectedId = 0;
+    se::SoundGroup selection;
+    /** Push the selection to the Windows, the background and whoever listens. */
+    void selectionChanged();
+    /** Raise a Window and pan until it is in view. */
+    void reveal (WindowComponent&);
+    ShiftClickLayer shiftClicks;
 
     /** What paint() fills with, and the call that brings it up to date (on a
         selection change and on every refresh tick). */

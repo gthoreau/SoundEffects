@@ -40,8 +40,10 @@
 
 #include "Os8Widgets.h"
 #include "Reorder.h"
+#include "ShiftClickLayer.h"
 #include "engine/Engine.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -61,7 +63,8 @@ public:
         is on. Repaints only when something changed. */
     void refreshState (bool soloFilterOn);
 
-    /** The canvas's selected Window is the Active strip here. */
+    /** The canvas's selected Windows (the multi-selection included) are Active
+        strips here. */
     void setSelected (bool shouldBeSelected);
     bool isSelected() const noexcept { return selected; }
 
@@ -166,12 +169,14 @@ public:
     void resized() override;
     bool keyPressed (const juce::KeyPress&) override;
 
-    /** Mark which Window the canvas has selected, so the matching strip is Active. */
-    void setSelectedWindow (uint64_t id);
+    /** Mark which Windows the canvas has selected, so their strips are Active. */
+    void setSelectedWindows (const std::vector<uint64_t>&);
 
     std::function<void()> onNew, onOpen;
     /** A channel was clicked: focus its Window on the canvas. */
     std::function<void (uint64_t)> onChannelClicked;
+    /** A strip was ⇧-clicked: add its Window to the multi-selection, or remove it. */
+    std::function<void (uint64_t)> onChannelShiftClicked;
 
     /** The New Sound / Open Sound bar ("new-open" 636:10150). */
     static constexpr int kBarHeight = 44;
@@ -224,7 +229,9 @@ private:
     } drag;
 
     se::Engine& engine;
-    uint64_t selectedId = 0;
+    std::vector<uint64_t> selectedIds;
+    bool isSelectedWindow (uint64_t id) const
+    { return std::find (selectedIds.begin(), selectedIds.end(), id) != selectedIds.end(); }
 
     Os8Button newButton  { "New Sound",  os8::ButtonKind::primary };
     Os8Button openButton { "Open Sound", os8::ButtonKind::primary };
@@ -240,6 +247,7 @@ private:
     void refreshMainLevel();
 
     juce::Viewport viewport;
+    ShiftClickLayer shiftClicks;   // over the viewport
     SlotList       list { *this };
     std::vector<std::unique_ptr<MixerStrip>> strips;
 

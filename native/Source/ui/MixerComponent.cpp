@@ -482,6 +482,15 @@ MixerComponent::MixerComponent (se::Engine& e) : engine (e)
     viewport.setViewedComponent (&list, false);
     viewport.setScrollBarsShown (false, false, true, false);
     addAndMakeVisible (viewport);
+    addAndMakeVisible (shiftClicks);
+    shiftClicks.soundAt = [this] (juce::Point<int> p) -> uint64_t
+    {
+        const auto at = list.getLocalPoint (&shiftClicks, p);
+        for (auto& s : strips)
+            if (s->getBounds().contains (at)) return s->windowId();
+        return 0;
+    };
+    shiftClicks.onShiftClick = [this] (uint64_t id) { if (onChannelShiftClicked) onChannelShiftClicked (id); };
 
     // Escape puts a carried strip back; the panel takes focus while one is held.
     setWantsKeyboardFocus (true);
@@ -527,8 +536,8 @@ void MixerComponent::refresh()
         auto strip = std::make_unique<MixerStrip> (engine, id);
         strip->onFocusRequested = [this] (uint64_t wid)
         {
-            setSelectedWindow (wid);                          // Active here immediately...
-            if (onChannelClicked) onChannelClicked (wid);     // ...and raised there
+            // The canvas selects and raises it, and hands the selection straight back.
+            if (onChannelClicked) onChannelClicked (wid);
         };
         strip->onDragStart = [this] (MixerStrip& s, juce::Point<int> grab) { beginDrag (s, grab); };
         strip->onDragMove  = [this] (MixerStrip&) { if (carrying() && ! drag.landing) followPointer(); };
@@ -538,7 +547,7 @@ void MixerComponent::refresh()
             if (carrying() && ! drag.landing)
                 land (getScreenBounds().contains (juce::Desktop::getMousePosition()));
         };
-        strip->setSelected (id == selectedId);
+        strip->setSelected (isSelectedWindow (id));
         list.addAndMakeVisible (*strip);
         strips.push_back (std::move (strip));
         changed = true;
@@ -608,12 +617,17 @@ void MixerComponent::refreshMainLevel()
     mainLevel.setLevels (level (engine.masterMeterLeft()), level (engine.masterMeterRight()));
 }
 
-void MixerComponent::setSelectedWindow (uint64_t id)
+void MixerComponent::setSelectedWindows (const std::vector<uint64_t>& ids)
 {
-    if (selectedId == id) return;
-    selectedId = id;
-    for (auto& s : strips) s->setSelected (s->windowId() == id);
-    layoutRows();   // the Active strip is 2 px taller: the rows below move down
+    selectedIds = ids;
+    bool changed = false;
+    for (auto& s : strips)
+    {
+        const bool now = isSelectedWindow (s->windowId());
+        changed = changed || now != s->isSelected();
+        s->setSelected (now);
+    }
+    if (changed) layoutRows();   // an Active strip is 2 px taller: the rows below move down
 }
 
 int MixerComponent::rowHeight (const MixerStrip& s) noexcept
@@ -865,6 +879,7 @@ void MixerComponent::resized()
 
     // Head and foot stay put; only the strips between them scroll.
     viewport.setBounds (getLocalBounds().withTrimmedTop (kBarHeight).withTrimmedBottom (kFooterHeight));
+    shiftClicks.setBounds (viewport.getBounds());
     mainLevel.setBounds (119, footerBounds().getY() + 13, 141, os8::kSliderHeight);
     layoutRows();
 }

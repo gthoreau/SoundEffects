@@ -1072,7 +1072,7 @@ private:
         panel.setTitleRule (true);
         panel.setSize (SidePanel::kWidth, 320);
         mixer.refresh();
-        mixer.setSelectedWindow (ex[2]);
+        mixer.setSelectedWindows ({ ex[2] });
         mixer.refresh();
         ok = shoot (panel, dir.getChildFile ("panel.png")) && ok;
         return ok;

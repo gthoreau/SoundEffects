@@ -77,8 +77,11 @@ public:
     /** The mixer slot shown in the status row's little box. */
     void setSlotNumber (int n) { if (slot != n) { slot = n; repaint(); } }
 
-    /** Canvas selection state — what the effects panel acts on. */
-    void setSelected (bool shouldBeSelected);
+    /** Canvas selection state: `primary` = what the effects panel acts on;
+        `inGroup` = a member of a multi-selection (se::SoundGroup). Both are drawn
+        active (the title bar's stripes); the primary keeps the heavy frame. A
+        member cannot be renamed. */
+    void setSelection (bool primary, bool inGroup);
     bool isSelected() const noexcept { return selected; }
 
     /** The audio was rewritten under us — drop the cached peaks.
@@ -341,6 +344,7 @@ private:
 
     bool hovered = false;
     bool selected = false;
+    bool grouped = false;
 
     // last drawn state, so refresh() can skip idle repaints
     bool   lastPlaying = false, lastMuted = false, lastSoloed = false, lastSilenced = false;
