@@ -81,6 +81,9 @@ void AppPrefs::setMagnetophonCollapsed (bool v) { setBool (kMagnetophonCollapsed
 bool AppPrefs::effectsCollapsed() const   { return getBool (kEffectsCollapsed, false); }
 void AppPrefs::setEffectsCollapsed (bool v) { setBool (kEffectsCollapsed, v); }
 
+bool AppPrefs::alertHidden (const juce::String& key) const { return getBool (("hideAlert." + key).toRawUTF8(), false); }
+void AppPrefs::setAlertHidden (const juce::String& key)     { setBool (("hideAlert." + key).toRawUTF8(), true); }
+
 std::unique_ptr<juce::XmlElement> AppPrefs::getXml (const juce::String& key) const
 {
     return props->getXmlValue (key);

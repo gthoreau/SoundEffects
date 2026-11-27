@@ -45,6 +45,11 @@ public:
     bool magnetophonCollapsed() const;
     void setMagnetophonCollapsed (bool);
 
+    /** An alert the user answered with "Don't show again" (0.6.0 step 5.2), one
+        per question. There is no way back in the app. */
+    bool alertHidden (const juce::String& key) const;
+    void setAlertHidden (const juce::String& key);
+
     /** A whole XML tree under `key` — for structured preferences such as a module's
         named setups. Returns nullptr when nothing is stored. */
     std::unique_ptr<juce::XmlElement> getXml (const juce::String& key) const;

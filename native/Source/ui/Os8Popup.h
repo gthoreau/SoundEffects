@@ -30,7 +30,9 @@ public:
               int contentWidth = kContentW, int inset = kInset);
     ~Os8Popup() override;
 
-    /** The buttons row, right to left as the design lays it out: the primary button at
+    /** An empty `secondary` leaves the primary button alone on the row.
+
+        The buttons row, right to left as the design lays it out: the primary button at
         the right edge, then the secondary one 10 px to its left. */
     /** Escape (and ⌘.) answers `escapeResult`: the secondary button's 0 when that is
         Cancel, 1 when Cancel is the primary one (a destructive question). */
@@ -59,6 +61,10 @@ public:
                    os8::TextStyle = os8::TextStyle::headline);
 
     int contentWidth() const noexcept { return contentW; }
+
+    /** The alerts' frame (1340:8550): dark grey around the light content area, the
+        title in white. */
+    void setAlertLook() { alert = true; repaint(); }
 
     /** The frame the design draws, without its outline and shadow, in the popup's
         own coordinates. */
@@ -92,7 +98,7 @@ private:
     void layoutButtons();
     void keepInside (juce::Point<int> wanted);
     juce::Point<int> dragFrom;      // the popup's position when the title was pressed
-    bool dragging = false;
+    bool dragging = false, alert = false;
 
     std::unique_ptr<Os8Button> primary, secondary;
     std::vector<std::unique_ptr<juce::Component>> parts;

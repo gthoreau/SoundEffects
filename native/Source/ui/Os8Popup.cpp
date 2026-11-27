@@ -31,11 +31,16 @@ Os8Button& Os8Popup::setButtons (const juce::String& secondaryText, const juce::
     escapeAnswer = escapeResult;
     primary = std::make_unique<Os8Button> (primaryText, os8::ButtonKind::primary);
     primary->onClick = [this] { dismiss (1); };
-    secondary = std::make_unique<Os8Button> (secondaryText, os8::ButtonKind::secondary);
-    secondary->onClick = [this] { dismiss (0); };
+    secondary.reset();
+    if (secondaryText.isNotEmpty())
+    {
+        secondary = std::make_unique<Os8Button> (secondaryText, os8::ButtonKind::secondary);
+        secondary->onClick = [this] { dismiss (0); };
+    }
 
     for (auto* b : { primary.get(), secondary.get() })
     {
+        if (b == nullptr) continue;
         b->setWantsKeyboardFocus (false);
         b->setMouseClickGrabsKeyboardFocus (false);
         addAndMakeVisible (*b);
@@ -58,6 +63,7 @@ void Os8Popup::layoutButtons()
     const int rowY = kStroke + kRowsTop + rowsHeight + kBottomSpacer;
     const int pw = buttonWidth (primary->getButtonText(), os8::ButtonKind::primary);
     primary->setBounds (kStroke + inset + contentW - pw, rowY + 4, pw, os8::buttonHeight (os8::ButtonKind::primary));
+    if (secondary == nullptr) return;
     const int sw = buttonWidth (secondary->getButtonText(), os8::ButtonKind::secondary);
     secondary->setBounds (primary->getX() - 10 - sw, rowY + 6, sw, os8::buttonHeight (os8::ButtonKind::secondary));
 }
@@ -81,7 +87,14 @@ void Os8Popup::showOver (juce::Component& over, juce::Point<int> topLeft)
     top->addAndMakeVisible (this);
     keepInside (at);
     toFront (true);
-    enterModalState (true, nullptr, false);
+    // Anything that ends the modal state from outside (a quit cancels every modal
+    // component) answers as Escape would, so no popup is left on screen unanswered.
+    enterModalState (true, juce::ModalCallbackFunction::create (
+                               [safe = juce::Component::SafePointer<Os8Popup> (this)] (int)
+                               {
+                                   if (safe != nullptr) safe->dismiss (safe->escapeAnswer);
+                               }),
+                     false);
 }
 
 void Os8Popup::dismiss (int result)
@@ -139,15 +152,18 @@ void Os8Popup::paint (juce::Graphics& g)
     g.fillRect (outline.translated (kShadow, kShadow));
     g.setColour (colour::black);
     g.fillRect (outline);
-    g.setColour (colour::gray000);
+    g.setColour (alert ? colour::gray500 : colour::gray000);
     g.fillRect (frame);
 
-    os8::paintTitleBar (g, frame.withHeight (os8::kTitleBarHeight), title, true, 6, 6);
+    os8::paintTitleBar (g, frame.withHeight (os8::kTitleBarHeight), title, true, 6, 6,
+                        alert ? colour::white : colour::black);
 
-    // The content area's 1 px rule, outside a box 4 px in from the sides and foot.
+    // The content area: 4 px in from the sides and foot, ruled in black outside it.
+    const auto area = frame.withTrimmedTop (os8::kTitleBarHeight).reduced (4, 0).withTrimmedBottom (kFoot);
+    g.setColour (colour::gray000);
+    g.fillRect (area);
     g.setColour (colour::black);
-    g.drawRect (frame.withTrimmedTop (os8::kTitleBarHeight).reduced (4, 0)
-                     .withTrimmedBottom (kFoot).expanded (1), 1);
+    g.drawRect (area.expanded (1), 1);
 
     const float left = (float) (kStroke + inset), rowsTop = (float) (kStroke + kRowsTop);
     for (const auto& l : labels)

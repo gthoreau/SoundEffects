@@ -935,12 +935,12 @@ void paintTitleStripes (juce::Graphics& g, juce::Rectangle<int> area)
 }
 
 void paintTitleBar (juce::Graphics& g, juce::Rectangle<int> bar, const juce::String& title,
-                    bool active, int leftInset, int rightInset)
+                    bool active, int leftInset, int rightInset, juce::Colour titleColour)
 {
     const int titleW = widthOf (title, TextStyle::headline);
     const int titleX = bar.getCentreX() - titleW / 2;
 
-    g.setColour (colour::black);
+    g.setColour (titleColour);
     drawText (g, title, TextStyle::headline,
               { (float) titleX, (float) bar.getY() + 4.5f, (float) titleW, 12.0f });
 

@@ -87,6 +87,7 @@ target_sources(SoundEffects PRIVATE
     Source/ui/Os8Gallery.cpp
     Source/ui/Os8Widgets.cpp
     Source/ui/Os8Popup.cpp
+    Source/ui/Os8Alert.cpp
     Source/ui/EditPopups.cpp
     Source/ui/FilePopups.cpp
     Source/ui/Os8Icons.cpp

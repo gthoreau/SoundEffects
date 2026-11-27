@@ -5,6 +5,7 @@
 #include "engine/Project.h"
 #include "ui/AppPrefs.h"
 #include "ui/FilePopups.h"
+#include "ui/Os8Alert.h"
 #include "ui/TapePopups.h"
 #include "ui/Os8Icons.h"
 
@@ -924,15 +925,6 @@ void SoundEffectsAudioProcessorEditor::openFile()
     });
 }
 
-namespace {
-
-void showFileFailure (const juce::String& title, const juce::String& message)
-{
-    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, title, message);
-}
-
-} // namespace
-
 void SoundEffectsAudioProcessorEditor::exportSound()
 {
     const auto id = canvas.selectedWindowId();
@@ -953,14 +945,14 @@ void SoundEffectsAudioProcessorEditor::exportSound()
         safe->chooser->launchAsync (juce::FileBrowserComponent::saveMode
                                         | juce::FileBrowserComponent::canSelectFiles
                                         | juce::FileBrowserComponent::warnAboutOverwriting,
-                                    [sound] (const juce::FileChooser& fc)
+                                    [safe, sound] (const juce::FileChooser& fc)
         {
             const auto file = fc.getResult();
-            if (file == juce::File()) return;
+            if (file == juce::File() || safe == nullptr) return;
 
             std::string err;
             if (! se::writeSoundExport (file.getFullPathName().toStdString(), *sound, err))
-                showFileFailure ("Couldn't export the Sound", err);
+                os8alert::tell (*safe, "Couldn't export the Sound", err);
         });
     };
     auto* raw = popup.release();
@@ -984,7 +976,7 @@ void SoundEffectsAudioProcessorEditor::importSound()
         std::string err;
         if (! se::readSefx (file.getFullPathName().toStdString(), *state, err))
         {
-            showFileFailure ("Couldn't import from " + file.getFileName(), err);
+            os8alert::tell (*safe, "Couldn't import from " + file.getFileName(), err);
             return;
         }
 
@@ -995,7 +987,7 @@ void SoundEffectsAudioProcessorEditor::importSound()
                 se::EngineState chosen;
                 for (size_t i : picked) chosen.windows.push_back (std::move (state->windows[i]));
                 if (! safe->processorRef.importState (chosen))
-                    showFileFailure ("Couldn't import every Sound", "The canvas has no room for them all.");
+                    os8alert::tell (*safe, "Couldn't import every Sound", "The canvas has no room for them all.");
             });
         auto* raw = popup.release();
         raw->showOver (safe->canvas, { (safe->canvas.getWidth() - raw->getWidth()) / 2,
@@ -1154,6 +1146,6 @@ void SoundEffectsAudioProcessorEditor::sendTape (bool whole, const std::vector<i
         }
     }
     if (! ok)
-        showFileFailure ("Couldn't send every take", "The canvas has no room for them all.");
+        os8alert::tell (*this, "Couldn't send every take", "The canvas has no room for them all.");
     canvas.refresh();
 }

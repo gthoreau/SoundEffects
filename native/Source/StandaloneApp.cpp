@@ -42,6 +42,7 @@
 #include "ui/AppMenuBar.h"
 #include "ui/EditPopups.h"
 #include "ui/MacWindowChrome.h"
+#include "ui/Os8Alert.h"
 #include "ui/Os8Gallery.h"
 #include "engine/Import.h"
 #include "engine/Project.h"
@@ -133,11 +134,12 @@ public:
         pluginHolder = nullptr;
     }
 
-    /** Red traffic light. One window, so closing it is quitting. */
+    /** Red traffic light. One window, so closing it is quitting, by the same road
+        as ⌘Q: it saves the canvas and asks about the tape. */
     void closeButtonPressed() override
     {
-        pluginHolder->savePluginState();
-        juce::JUCEApplicationBase::quit();
+        if (auto* app = juce::JUCEApplicationBase::getInstance())
+            app->systemRequestedQuit();
     }
 
     // ============================ commands ==================================
@@ -250,25 +252,28 @@ public:
     void openCanvasAsking (const juce::File& file)
     {
         if (! tapeUnsent()) { loadCanvasFile (file); return; }
-        askThenDo ("Open " + file.getFileName() + "?",
-                   "The Magnetophon's tape holds takes not sent to the canvas. Opening another canvas "
-                   "throws the tape away. This cannot be undone.",
-                   "Open", [this, file] { loadCanvasFile (file); });
+        ask ({ "Open " + file.getFileName() + "?",
+               utf8 ("The Magnetophon\xe2\x80\x99s tape holds takes not sent to the canvas. Opening "
+                     "another canvas throws the tape away.\nThis cannot be undone."),
+               "Open canvas", "openCanvas" },
+             [this, file] { loadCanvasFile (file); });
     }
 
     /** Quit, asking first when the tape holds unsent takes. */
     void quitAsking (std::function<void()> quit)
     {
         if (! tapeUnsent()) { quit(); return; }
-        askThenDo ("Quit SoundEffects?",
-                   "The Magnetophon's tape holds takes not sent to the canvas. Quitting throws the "
-                   "tape away. This cannot be undone.",
-                   "Quit", std::move (quit));
+        ask ({ "Quit SoundEffects?",
+               utf8 ("The Magnetophon\xe2\x80\x99s tape holds takes not sent to the canvas. Quitting "
+                     "throws the tape away.\nThis cannot be undone."),
+               "Quit", "quit" },
+             std::move (quit));
     }
 
     juce::String tapeLostNote() const
     {
-        return tapeUnsent() ? juce::String (" The Magnetophon's takes not sent to the canvas will be lost too.") : juce::String();
+        return tapeUnsent() ? utf8 ("\nThe Magnetophon\xe2\x80\x99s takes not sent to the canvas will be lost too.")
+                            : juce::String();
     }
 
     /** Empty canvas, no file, back to "Untitled Canvas".
@@ -280,14 +285,15 @@ public:
         nothing, because one Window is cheap to remake. */
     void newCanvas()
     {
-        askThenDo ("Start a new canvas?",
-                   "The Windows on the canvas will be thrown away. This cannot be undone." + tapeLostNote(),
-                   "New Canvas",
-                   [this]
-                   {
-                       resetToDefaultState();
-                       setCanvasFile (juce::File());
-                   });
+        ask ({ "Start a new canvas?",
+               utf8 ("All sounds on the canvas and the Magnetophon\xe2\x80\x99s tape will be thrown away.\n"
+                     "This cannot be undone."),
+               "New canvas", "newCanvas" },
+             [this]
+             {
+                 resetToDefaultState();
+                 setCanvasFile (juce::File());
+             });
     }
 
     /** Back to the last saved version, throwing away everything since. */
@@ -298,11 +304,11 @@ public:
 
         const auto file = canvasFile;
 
-        askThenDo ("Revert to the last saved canvas?",
-                   "Everything changed since " + file.getFileName()
-                       + " was last saved will be thrown away. This cannot be undone." + tapeLostNote(),
-                   "Revert",
-                   [this, file] { loadCanvasFile (file); });
+        ask ({ "Revert to the last saved canvas?",
+               "All unsaved changes in " + file.getFileName() + " will be thrown away. This cannot be undone."
+                   + tapeLostNote(),
+               "Revert Canvas", "revertCanvas" },
+             [this, file] { loadCanvasFile (file); });
     }
 
     /** Put a .sefx on screen, from wherever it came from — the Open item, a file
@@ -392,11 +398,11 @@ private:
             return;
         }
 
-        askThenDo ("Replace the project \"" + name + "\"?",
-                   "The folder " + dir.getFileName() + " already holds a canvas with that name. "
-                   "Saving replaces it. This cannot be undone.",
-                   "Replace",
-                   [this, dir, name] { writeProject (dir, name); });
+        ask ({ "Replace the project \"" + name + "\"?",
+               "The folder " + dir.getFileName() + " already holds a canvas with that name. "
+               "Saving replaces it.\nThis cannot be undone.",
+               "Replace" },
+             [this, dir, name] { writeProject (dir, name); });
     }
 
     void writeProject (const juce::File& dir, const juce::String& name)
@@ -494,15 +500,20 @@ private:
         return s + juce::String::fromUTF8 ("\xE2\x80\xA6");
     }
 
-    /** Confirm, then act — on OK only. Async, like every other dialog here. */
-    template <typename Fn>
-    void askThenDo (const juce::String& title, const juce::String& message,
-                    const juce::String& okText, Fn&& action)
+    static juce::String utf8 (const char* s) { return juce::String::fromUTF8 (s); }
+
+    /** Confirm, then act (os8alert::ask). A second question replaces the first,
+        which counts as cancelled. */
+    void ask (const os8alert::Question& q, std::function<void()> go)
     {
-        messageBox = juce::AlertWindow::showScopedAsync (
-            juce::MessageBoxOptions::makeOptionsOkCancel (juce::MessageBoxIconType::WarningIcon,
-                                                          title, message, okText, "Cancel"),
-            [onOk = std::forward<Fn> (action)] (int result) { if (result == 1) onOk(); });
+        closeAlert();
+        alert = os8alert::ask (*this, q, std::move (go));
+    }
+
+    void closeAlert()
+    {
+        // 1 is Cancel on a question and OK on a failure.
+        if (alert != nullptr) alert->dismiss (1);
     }
 
     SoundEffectsAudioProcessorEditor* ourEditor() const
@@ -512,10 +523,8 @@ private:
 
     void showFailure (const juce::String& title, const juce::String& message)
     {
-        messageBox = juce::AlertWindow::showScopedAsync (
-            juce::MessageBoxOptions::makeOptionsOk (juce::MessageBoxIconType::WarningIcon,
-                                                    title, message),
-            nullptr);
+        closeAlert();
+        alert = os8alert::tell (*this, title, message);
     }
 
     void resetToDefaultState()
@@ -592,12 +601,12 @@ private:
     /** The file this canvas came from, empty until it has been saved once. */
     juce::File canvasFile;
 
-    // Both outlive the call that raises them: launchAsync returns immediately and
-    // the panel calls back later, and an async alert is dismissed by the user, not
-    // by us. Holding one of each means a second Save while a Save panel is up
-    // replaces it rather than stacking, which is the behaviour the stock holder had.
+    // Outlives the call that raises it: launchAsync returns immediately and the
+    // panel calls back later. Holding one means a second Save while a Save panel is
+    // up replaces it rather than stacking, which is the behaviour the stock holder
+    // had. The alert on screen, if any, deletes itself once answered.
     std::unique_ptr<juce::FileChooser> fileChooser;
-    juce::ScopedMessageBox messageBox;
+    juce::Component::SafePointer<Os8Popup> alert;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)
 };
@@ -881,6 +890,25 @@ private:
         shoot (editpopups::selectExactly (doc, {}), "popup-select-exactly");   // a caret: "the insertion point."
         doc.selEnd = 100;                                                       // a selection: "the selection" radio
         shoot (editpopups::selectPeak (doc, {}), "popup-select-peak");
+
+        // The alerts with the design's placeholder canvas name (1340:8550).
+        const auto alert = [&ok, &dir] (const os8alert::Question& q, const char* name)
+        {
+            auto p = os8alert::make (q, {});
+            ok = writePng (p->createComponentSnapshot (p->getLocalBounds(), true, 1.0f),
+                           dir.getChildFile (juce::String (name) + ".png")) && ok;
+        };
+        alert ({ "Revert to the last saved canvas?",
+                 "All unsaved changes in [canvas-name].sefx will be thrown away. This cannot be undone.",
+                 "Revert Canvas", "revertCanvas" }, "alert-revert");
+        alert ({ "Open [canvas-name].sefx?",
+                 juce::String::fromUTF8 ("The Magnetophon\xe2\x80\x99s tape holds takes not sent to the canvas. "
+                                         "Opening another canvas throws the tape away.\nThis cannot be undone."),
+                 "Open canvas", "openCanvas" }, "alert-open");
+        alert ({ "Start a new canvas?",
+                 juce::String::fromUTF8 ("All sounds on the canvas and the Magnetophon\xe2\x80\x99s tape will be "
+                                         "thrown away.\nThis cannot be undone."),
+                 "New canvas", "newCanvas" }, "alert-new");
         return ok;
     }
 

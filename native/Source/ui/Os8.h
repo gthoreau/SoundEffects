@@ -316,7 +316,8 @@ void paintTitleStripes (juce::Graphics&, juce::Rectangle<int> area);
     px kept clear at the ends for buttons. Inactive bars have no stripes, as on the
     Mac. */
 void paintTitleBar (juce::Graphics&, juce::Rectangle<int> bar, const juce::String& title,
-                    bool active, int leftInset, int rightInset);
+                    bool active, int leftInset, int rightInset,
+                    juce::Colour titleColour = colour::black);
 
 /** An 11 x 11 title-bar box ("window-button" 203:4347, revised 2026-10-31):
     bevelled face, 1 px black stroke outside it, drawn with its face's top-left at
