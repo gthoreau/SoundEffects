@@ -755,6 +755,7 @@ void SoundEffectsAudioProcessorEditor::openSourcePopup (uint64_t window,
     ctx.owner = this;
     ctx.window = window;
     ctx.numInputChannels = numInputChannels();
+    ctx.liveInputChannels = [this] { return numInputChannels(); };
     ctx.dawAvailable = isPluginHost();
     if (onShowAudioSettings) ctx.openAudioSettings = [this] { onShowAudioSettings(); };
 
@@ -785,6 +786,7 @@ void SoundEffectsAudioProcessorEditor::openTapeSourcePopup (std::optional<audios
     ctx.window = 0;   // every Sound is a source for the tape
     ctx.offersClean = false;
     ctx.numInputChannels = numInputChannels();
+    ctx.liveInputChannels = [this] { return numInputChannels(); };
     ctx.dawAvailable = isPluginHost();
     if (onShowAudioSettings) ctx.openAudioSettings = [this] { onShowAudioSettings(); };
 

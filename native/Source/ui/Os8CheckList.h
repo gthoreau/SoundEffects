@@ -21,8 +21,12 @@ public:
         bool ticked = false;
     };
 
+    /** The rows' pitch in Import Sound and Send to Canvas; Audio/Midi Setup's lists
+        are set closer. */
+    static constexpr float kPitch = 70.0f / 3.0f;
+
     /** `factRights` gives each fact column's right edge, from the list's left. */
-    Os8CheckList (std::vector<Item>, std::vector<int> factRights);
+    Os8CheckList (std::vector<Item>, std::vector<int> factRights, float rowPitch = kPitch);
     ~Os8CheckList() override;
 
     int size() const noexcept { return (int) rows.size(); }
@@ -34,6 +38,7 @@ public:
 
     /** A row was clicked. */
     std::function<void()> onChange;
+    std::function<void (int row)> onRowClicked;
 
     /** The height that shows `rows` rows whole, no more than `maximum`. */
     static int heightFor (int rows, int maximum) noexcept;
@@ -54,6 +59,7 @@ private:
 
     juce::Component clip;                // inside the field's frame
     std::vector<std::unique_ptr<Row>> rows;
+    float pitch = kPitch;
     float scroll = 0.0f, dragFrom = 0.0f;
     bool draggingThumb = false;
 

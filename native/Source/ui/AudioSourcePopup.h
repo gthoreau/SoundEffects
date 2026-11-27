@@ -60,6 +60,9 @@ struct Context
     /** Whose engine `engine` is: the popup's VU leaves the engine alone once this has
         gone (a plug-in window closed under an open popup). */
     juce::Component* owner = nullptr;
+    /** The input channels there are now: when Audio/Midi Setup has changed their
+        number, the popup is shown again with the new list. */
+    std::function<int()> liveInputChannels {};
     std::function<void()> openAudioSettings;   // standalone only; the button is hidden when null
 };
 

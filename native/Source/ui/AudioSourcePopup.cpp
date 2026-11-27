@@ -58,6 +58,9 @@ public:
         }
     }
 
+    /** Called with each meter reading, while the engine is there. */
+    std::function<void()> onTick;
+
     void setGain (double percent)
     {
         if (auto* e = live()) e->setProbeGain ((float) (percent / 100.0));
@@ -80,6 +83,7 @@ private:
             return (half + pos * (wdt - 2.0f * half)) / wdt;
         };
         setLevels (bar (e->probeMeterLeft()), bar (e->probeMeterRight()));
+        if (onTick) onTick();
     }
 
     se::Engine* engine;
@@ -279,6 +283,13 @@ Built build (const Context& ctx, const SourceChoice& current,
     }
 
     sl->listenTo (captureOf (ctx, *choice), choice->gainPercent);
+    if (ctx.liveInputChannels != nullptr)
+        sl->onTick = [answering, live = ctx.liveInputChannels, shown = ctx.numInputChannels]
+        {
+            // Not under the setup itself: once it has gone, 2 asks to be shown again.
+            if (live() != shown && ! answering->isCurrentlyBlockedByAnotherModalComponent())
+                answering->dismiss (2);
+        };
 
     p.setButtons ("Cancel", "Apply");
     p.onDismiss = [choice, apply, reopen] (int result)

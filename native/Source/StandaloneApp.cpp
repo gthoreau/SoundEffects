@@ -40,6 +40,7 @@
 #include "PluginEditor.h"
 #include "ui/AppCommands.h"
 #include "ui/AppMenuBar.h"
+#include "ui/AudioSetupPopup.h"
 #include "ui/AudioSourcePopup.h"
 #include "ui/EditPopups.h"
 #include "ui/FilePopups.h"
@@ -63,7 +64,8 @@ class MainWindow;
     than just a running program: which file it came from. That is what the title
     bar shows, what Save writes to without asking, and what Revert goes back to. */
 class MainWindow final : public juce::DocumentWindow,
-                         public juce::ApplicationCommandTarget
+                         public juce::ApplicationCommandTarget,
+                         private juce::ChangeListener
 {
 public:
     MainWindow (const juce::String& title, juce::Colour background,
@@ -79,6 +81,7 @@ public:
         setUsingNativeTitleBar (true);
 
         pluginHolder = std::make_unique<juce::StandalonePluginHolder> (settingsToUse, false);
+        pluginHolder->deviceManager.addChangeListener (this);
         attachEditor();
 
         // Fill the screen. userArea is precisely the rectangle macOS leaves between
@@ -132,6 +135,7 @@ public:
 
     ~MainWindow() override
     {
+        pluginHolder->deviceManager.removeChangeListener (this);
         pluginHolder->stopPlaying();
         detachEditor();
         pluginHolder = nullptr;
@@ -179,7 +183,7 @@ public:
             case cmd::saveCanvas:    saveCanvas();                           return true;
             case cmd::saveCanvasAs:  saveCanvasAs();                         return true;
             case cmd::revertCanvas:  revertCanvas();                         return true;
-            case cmd::audioSettings: pluginHolder->showAudioSettingsDialog(); return true;
+            case cmd::audioSettings: showAudioSetup();                       return true;
             default: break;
         }
 
@@ -503,6 +507,40 @@ private:
         return s + juce::String::fromUTF8 ("\xE2\x80\xA6");
     }
 
+    /** Audio/Midi Setup over the window, once. What it changes is saved when it
+        closes, to the settings file JUCE's own dialog wrote. */
+    void showAudioSetup()
+    {
+        if (audioSetup != nullptr) { audioSetup->toFront (true); return; }
+        auto popup = audiosetup::build (pluginHolder->deviceManager, pluginHolder->getMuteInputValue(),
+                                        getHeight(), [this] { pluginHolder->saveAudioDeviceState(); });
+        auto* p = popup.release();
+        p->showOver (*this, { (getWidth() - p->getWidth()) / 2, (getHeight() - p->getHeight()) / 2 });
+        audioSetup = p;
+    }
+
+    /** JUCE's player picks the processor's channels from the ones it last had, so
+        once an input has gone (set to None, its channels unticked) the next one
+        would be given none until a restart. Give the processor its stereo input
+        back and let the player choose again. */
+    void changeListenerCallback (juce::ChangeBroadcaster*) override
+    {
+        auto* device = pluginHolder->deviceManager.getCurrentAudioDevice();
+        auto* p = pluginHolder->processor.get();
+        if (device == nullptr || p == nullptr || p->getTotalNumInputChannels() > 0
+            || device->getActiveInputChannels().isZero())
+            return;
+
+        pluginHolder->stopPlaying();
+        auto layout = p->getBusesLayout();
+        if (! layout.inputBuses.isEmpty())
+        {
+            layout.inputBuses.getReference (0) = juce::AudioChannelSet::stereo();
+            p->setBusesLayout (layout);
+        }
+        pluginHolder->startPlaying();
+    }
+
     static juce::String utf8 (const char* s) { return juce::String::fromUTF8 (s); }
 
     /** Confirm, then act (os8alert::ask). A second question replaces the first,
@@ -558,7 +596,7 @@ private:
         // the record button is simply grey and inert — which is correct there.
         if (auto* ours = dynamic_cast<SoundEffectsAudioProcessorEditor*> (editor.get()))
         {
-            ours->onShowAudioSettings = [this] { pluginHolder->showAudioSettingsDialog(); };
+            ours->onShowAudioSettings = [this] { showAudioSetup(); };
 
             // Polled by the editor's 30 Hz timer rather than pushed by a listener:
             // the editor is already refreshing everything else on that tick, and a
@@ -609,7 +647,7 @@ private:
     // up replaces it rather than stacking, which is the behaviour the stock holder
     // had. The alert on screen, if any, deletes itself once answered.
     std::unique_ptr<juce::FileChooser> fileChooser;
-    juce::Component::SafePointer<Os8Popup> alert;
+    juce::Component::SafePointer<Os8Popup> alert, audioSetup;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MainWindow)
 };

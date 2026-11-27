@@ -7,7 +7,6 @@ namespace colour = os8::colour;
 namespace {
 // 1447:9162: the rows start 5 px in, 23⅓ px apart; the thumb sits 10 px in from the
 // right edge, 5 px wide, in a track 5 px short of the top and 5 px of the foot.
-constexpr float kPitch = 70.0f / 3.0f;
 constexpr int kPad = 5, kRowHeight = 19, kThumbW = 5, kThumbRight = 10;
 const juce::Colour kThumb { 0xff333399 };
 }
@@ -58,7 +57,8 @@ private:
     std::vector<int> factRights;
 };
 
-Os8CheckList::Os8CheckList (std::vector<Item> items, std::vector<int> factRights)
+Os8CheckList::Os8CheckList (std::vector<Item> items, std::vector<int> factRights, float rowPitch)
+    : pitch (rowPitch)
 {
     setMouseClickGrabsKeyboardFocus (false);
     clip.setInterceptsMouseClicks (false, true);
@@ -68,7 +68,12 @@ Os8CheckList::Os8CheckList (std::vector<Item> items, std::vector<int> factRights
     {
         rows.push_back (std::make_unique<Row> (item, factRights));
         auto* r = rows.back().get();
-        r->onClick = [this] { if (onChange) onChange(); };
+        const int index = (int) rows.size() - 1;
+        r->onClick = [this, index]
+        {
+            if (onRowClicked) onRowClicked (index);
+            if (onChange) onChange();
+        };
         // The wheel over a row scrolls the list.
         r->addMouseListener (this, false);
         clip.addAndMakeVisible (*r);
@@ -111,7 +116,11 @@ int Os8CheckList::heightFor (int n, int maximum) noexcept
     return std::min (maximum, 2 * kPad + (int) std::ceil ((float) n * kPitch));
 }
 
-float Os8CheckList::contentHeight() const noexcept { return 2.0f * kPad + (float) size() * kPitch; }
+float Os8CheckList::contentHeight() const noexcept
+{
+    // The last row's own height, not its whole pitch, closes the list.
+    return 2.0f * kPad + (float) std::max (0, size() - 1) * pitch + (float) kRowHeight;
+}
 
 float Os8CheckList::maxScroll() const noexcept
 {
@@ -145,7 +154,7 @@ void Os8CheckList::resized()
     // Rows stop short of the thumb, so a press on it is the list's.
     const int w = clip.getWidth() - (maxScroll() > 0.0f ? kThumbRight + 3 : 0);
     for (int i = 0; i < size(); ++i)
-        rows[(size_t) i]->setBounds (0, juce::roundToInt ((float) kPad + (float) i * kPitch - scroll) - 1,
+        rows[(size_t) i]->setBounds (0, juce::roundToInt ((float) kPad + (float) i * pitch - scroll) - 1,
                                      w, kRowHeight);
 }
 
@@ -166,8 +175,8 @@ void Os8CheckList::mouseDown (const juce::MouseEvent& e)
     if (e.eventComponent != this || thumb().isEmpty()) return;
     const auto p = e.position;
     if (p.x < (float) (getWidth() - kThumbRight - 3)) return;
-    if (p.y < thumb().getY())            scrollTo (scroll - (float) getHeight() + kPitch);
-    else if (p.y > thumb().getBottom())  scrollTo (scroll + (float) getHeight() - kPitch);
+    if (p.y < thumb().getY())            scrollTo (scroll - (float) getHeight() + pitch);
+    else if (p.y > thumb().getBottom())  scrollTo (scroll + (float) getHeight() - pitch);
     else                                 draggingThumb = true;
     dragFrom = scroll;
 }
