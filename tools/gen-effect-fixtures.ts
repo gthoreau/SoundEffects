@@ -346,6 +346,20 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
       params: { delay: 24, strength: 70, onlyOn: true, onlyCount: 3 },
       extend: true,
     },
+    // "Only N" [NATIVE]: N = 1 and 3, both extension answers. It must differ from
+    // the unchecked box even when the sound may not get longer.
+    {
+      shape: "mono16",
+      sel: "mid",
+      params: { delay: 24, strength: 70, onlyOn: true, onlyCount: 3 },
+      extend: false,
+    },
+    { shape: "mono8", sel: "mid", params: { delay: 24, strength: 70, onlyOn: true, onlyCount: 1 }, extend: false },
+    { shape: "mono8", sel: "mid", params: { delay: 24, strength: 70, onlyOn: true, onlyCount: 1 }, extend: true },
+    // Loud echoes of an 8-bit shape over 100% strength: both rails, per-echo clamp.
+    { shape: "mono8", sel: "caret", params: { delay: 16, strength: 150, onlyOn: true, onlyCount: 4 }, extend: true },
+    // Past the 80-echo cap.
+    { shape: "mono8", sel: "mid", params: { delay: 2, strength: 99, onlyOn: true, onlyCount: 200 }, extend: true },
     // An ODD delay on a 16-bit shape. Every other case above is already
     // frame-aligned, so nothing tested the `delay - delay % frameSize` snap —
     // verified by mutation: dropping the alignment passed the whole suite.

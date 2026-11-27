@@ -19,6 +19,11 @@
  *
  * The decay curve you hear is an *emergent property of the recursion*, not of any
  * decay maths — Echo's `echoCount` loop below only sizes the buffer.
+ *
+ * `[NATIVE]` "Only N echoes" (0.6.0): 0.9.2 used N only to size the mix range of
+ * that same recursive pass, so the box did nothing when the sound could not get
+ * longer, and N was never the number of echoes heard. It now echoes the
+ * selection exactly N times (at most 80).
  */
 
 import { frameSizeFor, getSample, setSample } from "../samples.js";
@@ -109,10 +114,40 @@ export const Echo: EffectModule<EchoSettings> = {
     let maxSelEnd = 0;
 
     const result = runSkeleton(doc, host, { text: "Echoing…", canCancel: false }, (pass, progress) => {
-      let mixLimit = prefs.onlyOn
-        ? // "Only N echoes": a hard cap, no decay maths at all.
-          pass.end + prefs.onlyCount * delayBytes
-        : echoMixLimit(pass.end, delayBytes, prefs.strength);
+      if (prefs.onlyOn) {
+        const count = Math.max(0, Math.min(prefs.onlyCount, MAX_ECHOES));
+        let limit = doExtend ? pass.end + count * delayBytes : pass.end;
+        if (limit > pass.data.length) {
+          limit = Math.min(limit, growAndSilence(doc, pass.index, limit));
+        }
+        const buf = doc.channels[pass.index]!.data;
+        if (count === 0 || delayBytes <= 0 || limit <= pass.start + delayBytes) return;
+        if (limit > maxSelEnd) maxSelEnd = limit;
+
+        // Only the selection's own audio is echoed, N times over.
+        const echo: number[] = [];
+        for (let p = pass.start; p < pass.end; p += frameSize) {
+          echo.push(getSample(buf, p, doc.bps));
+        }
+        const span = Math.floor((limit - pass.start) / frameSize);
+        const delayFrames = delayBytes / frameSize;
+        const sum = new Array<number>(span).fill(0);
+        for (let k = 1; k <= count && k * delayFrames < span; k++) {
+          const offset = k * delayFrames;
+          for (let i = 0; i < echo.length; i++) {
+            echo[i] = Math.max(min, Math.min(max, Math.trunc((echo[i]! * prefs.strength) / 100)));
+            if (offset + i < span) sum[offset + i]! += echo[i]!;
+          }
+        }
+        for (let f = delayFrames; f < span; f++) {
+          const p = pass.start + f * frameSize;
+          setSample(buf, p, Math.max(min, Math.min(max, getSample(buf, p, doc.bps) + sum[f]!)), doc.bps);
+          if (progress.tick()) return kModNoError;
+        }
+        return;
+      }
+
+      let mixLimit = echoMixLimit(pass.end, delayBytes, prefs.strength);
 
       // If extension is off, the decay is confined to the selection's own overlap.
       if (!doExtend) mixLimit = pass.end;

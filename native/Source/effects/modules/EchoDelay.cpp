@@ -26,6 +26,7 @@
 #include "engine/SampleFormat.h"
 
 #include <algorithm>
+#include <vector>
 
 namespace se::modules {
 
@@ -70,6 +71,84 @@ size_t alignedDelayBytes (int64_t raw, size_t frameSize) noexcept
 {
     if (raw < 0) raw = 0;
     return static_cast<size_t> (raw) - static_cast<size_t> (raw) % frameSize;
+}
+
+/**
+ * "Only N echoes" — [NATIVE], 0.6.0 step 1.1.
+ *
+ * 0.9.2 only used N to size the mix range (`end + N·D`) and then ran the same
+ * recursive forward pass as "until it decays". That made the box a no-op whenever
+ * the sound may not get longer (the range is clamped back to `end`), and inside the
+ * selection the recursion still echoed every early sample over and over, so the
+ * count was never what you heard. The recovered behaviour stays documented in
+ * SoundEffects-0.9.2-SPEC.md §8 #9 and disassembly/Echo-Delay.md.
+ *
+ * Here N means N: every sample of the selection is heard again at D, 2D … N·D,
+ * echo k at trunc(echo k−1 · strength/100), the same truncating chain the recursion
+ * applies. Only the selection's own audio is echoed (never audio past it). With
+ * extension the range reaches `end + N·D`; without it the echoes that would land
+ * past the selection are dropped, exactly as "until it decays" drops its tail.
+ * The echoes are summed first and mixed in once, so the clamp applies to the
+ * result rather than to each partial sum. N is capped at the recovered 80.
+ */
+ModResult onlyEchoes (SoundDocument& doc, const TrackPass& pass, Progress& progress,
+                      size_t delayBytes, int64_t strength, int64_t onlyCount, bool doExtend,
+                      const Host::Limits& limits, size_t& maxSelEnd)
+{
+    const size_t frameSize = static_cast<size_t> (doc.frameSize());
+    const int    bps = doc.bps;
+    const size_t count = static_cast<size_t> (std::min<int64_t> (onlyCount, kMaxEchoes));
+
+    size_t mixLimit = doExtend ? pass.end + count * delayBytes : pass.end;
+
+    if (mixLimit > pass.size)
+        mixLimit = std::min (mixLimit, growAndSilence (doc, pass.index, mixLimit));
+
+    uint8_t* buf = doc.tracks[static_cast<size_t> (pass.index)].data.data();
+
+    if (count == 0 || delayBytes == 0 || mixLimit <= pass.start + delayBytes) return kModNoError;
+    if (mixLimit > maxSelEnd) maxSelEnd = mixLimit;
+
+    const size_t frames = (pass.end - pass.start) / frameSize;
+    const size_t span = (mixLimit - pass.start) / frameSize;
+    const size_t delayFrames = delayBytes / frameSize;
+
+    std::vector<int64_t> echo (frames);
+    for (size_t i = 0; i < frames; ++i)
+        echo[i] = getSample (buf, pass.start + i * frameSize, bps);
+
+    std::vector<int64_t> sum (span, 0);
+
+    for (size_t k = 1; k <= count && k * delayFrames < span; ++k)
+    {
+        bool any = false;
+        const size_t offset = k * delayFrames;
+        const size_t reach = std::min (frames, span - offset);
+
+        for (size_t i = 0; i < frames; ++i)
+        {
+            // Clamped as the recursion would be, which also bounds a strength over 100.
+            echo[i] = std::clamp<int64_t> ((echo[i] * strength) / 100,   // integer, truncating
+                                           limits.min, limits.max);
+            if (echo[i] != 0) any = true;
+            if (i < reach) sum[offset + i] += echo[i];
+        }
+        if (! any) break;
+    }
+
+    for (size_t f = delayFrames; f < span; ++f)
+    {
+        const size_t pos = pass.start + f * frameSize;
+        int64_t v = getSample (buf, pos, bps) + sum[f];
+
+        if (v < limits.min) v = limits.min;
+        else if (v > limits.max) v = limits.max;
+
+        setSample (buf, pos, static_cast<int32_t> (v), bps);
+
+        if (progress.tick()) return kModNoError;
+    }
+    return kModNoError;
 }
 
 SettingsSchema durationSchema (bool withOnlyCount)
@@ -134,10 +213,11 @@ EffectModule makeEcho()
         const ModResult result = runSkeleton (doc, host, { "Echoing…", false },
                                               [&] (const TrackPass& pass, Progress& progress) -> ModResult
         {
-            size_t mixLimit = onlyOn
-                // "Only N echoes": a hard cap, no decay maths at all.
-                ? pass.end + static_cast<size_t> (onlyCount) * delayBytes
-                : echoMixLimit (pass.end, delayBytes, strength);
+            if (onlyOn)
+                return onlyEchoes (doc, pass, progress, delayBytes, strength, onlyCount,
+                                   doExtend, limits, maxSelEnd);
+
+            size_t mixLimit = echoMixLimit (pass.end, delayBytes, strength);
 
             // If extension is off, the decay is confined to the selection's own
             // overlap.
