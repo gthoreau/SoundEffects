@@ -519,6 +519,20 @@ int main()
                "master: opening a canvas restores the gain");
         check (! again.masterMuted(), "main mute: a canvas opens unmuted");
 
+        // A canvas with no Sound (a new one, 0.6.0) round-trips and empties the
+        // canvas it is opened over.
+        {
+            se::Engine none;
+            const auto blobNone = se::serializeEngine (none);
+            se::EngineState backNone;
+            check (se::parseEngineState (blobNone.data(), blobNone.size(), backNone) && backNone.windows.empty(),
+                   "empty canvas: parses with no Sound");
+            se::Engine full;
+            full.addWindow (std::make_unique<se::SoundDocument> (se::newSoundInit()));
+            check (se::applyEngineState (full, backNone) && full.numWindows() == 0 && full.windowIds().empty(),
+                   "empty canvas: opening it leaves no Sound");
+        }
+
         // Opening a canvas saved at unity puts a lowered one back to unity.
         se::Engine lowered;
         lowered.setMasterGain (0.2f);

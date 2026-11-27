@@ -9,9 +9,7 @@ SoundEffectsAudioProcessor::SoundEffectsAudioProcessor()
           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true))
 {
-    // Seed the desktop with one window so there is something to hear/see. The UI
-    // will let the user spawn, move, mosaic and trash windows on the canvas.
-    engineImpl.addWindow (std::make_unique<se::SoundDocument> (se::newSoundInit()));
+    // A new canvas is empty, no Sound at all (0.6.0); File ▸ New Sound makes one.
 
     // Reclaim Windows the audio thread retires (deletes happen here, msg thread).
     startTimerHz (30);   // retired Windows, and the recorder drains the capture ring

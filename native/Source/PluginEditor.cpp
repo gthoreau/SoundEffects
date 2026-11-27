@@ -535,7 +535,7 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::getMenuForIndex (int index, co
                 addWithIcon (zoom, cmd::zoomSoundOut, os8::icon::Id::zoomOut);
                 addWithIcon (zoom, cmd::fitWindow, os8::icon::Id::zoomReset);
                 zoom.addCommandItem (&commandManager, cmd::fitSelection);
-                m.addSubMenu ("Zoom Sound", zoom);
+                m.addSubMenu ("Zoom Sound", zoom, targetWindow() != nullptr);
             }
             break;
 

@@ -2859,6 +2859,25 @@ void masterLevelTests()
     renderBlocks (e, 1);
 }
 
+// --- a canvas with no Sound (0.6.0 step 1.5) ---------------------------------
+// A new canvas is empty: the mix, the keys, solo and mute all meet no Window.
+void emptyCanvasTests()
+{
+    se::Engine e;
+    e.prepare (48000.0, 512);
+    check (renderLevel (e) == 0.0f && e.numWindows() == 0, "empty canvas: renders silence");
+
+    se::KeyboardVoice keys (e);
+    check (keys.target() == 0 && ! keys.hasTarget() && keys.baseNote() == 60, "empty canvas: the keys have no target");
+    keys.strike (60);
+    keys.release();
+    e.clickSolo (0, true);
+    e.unmuteAll();
+    e.clearAllSolos();
+    check (! e.anyWindowSoloed() && e.highestSlot() < 0 && renderLevel (e) == 0.0f,
+           "empty canvas: keys, solo and mute do nothing");
+}
+
 // --- Main Mute (0.6.0 step 1.4) ----------------------------------------------
 void mainMuteTests()
 {
@@ -3755,6 +3774,7 @@ int main()
     transportButtonsTests();
     masterLevelTests();
     mainMuteTests();
+    emptyCanvasTests();
     directionTests();
     loopOnPinTests();
     playOnceSelectionTests();
