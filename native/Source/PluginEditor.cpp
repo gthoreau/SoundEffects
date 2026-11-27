@@ -1034,24 +1034,30 @@ void SoundEffectsAudioProcessorEditor::resized()
         panel.setBounds (left ? area.removeFromLeft (w) : area.removeFromRight (w));
     };
 
+    // The Magnetophon while it floats over the canvas: the palettes keep clear of it.
+    juce::Rectangle<int> floating;
+
     if (panels)
     {
-        // The left column: the Mixer, the Magnetophon under it (274 px, or its title
-        // bar when shaded). A shaded Mixer gives the canvas the column: both then
-        // float over its top-left corner, the Magnetophon hanging under the Mixer's bar.
-        const int magH = magnetophonPanel.isCollapsed() ? SidePanel::kCollapsedHeight
-                                                       : MagnetophonComponent::kContentHeight + SidePanel::kCollapsedHeight;
-        if (mixerPanel.isCollapsed())
+        // The left column: the Mixer's title bar at the top, the Magnetophon (274 px,
+        // or its title bar when shaded) pegged to the bottom, the Mixer's list in what
+        // is left. A shaded Mixer gives the canvas the column: its bar and the
+        // Magnetophon then float over the canvas's two left corners.
+        const bool shaded = mixerPanel.isCollapsed();
+        auto left = shaded ? area.withWidth (w) : area.removeFromLeft (w);
+
+        // Pegged to the bottom, lowest first; none may cover the Mixer's title bar.
+        // The MIDI Mapping panel takes the slot above the Magnetophon (0.6.0 step 8).
+        const auto peg = [&left] (SidePanel& panel, int expandedHeight)
         {
-            column (mixerPanel, true);
-            magnetophonPanel.setBounds (area.getX(), area.getY() + SidePanel::kCollapsedHeight, w, magH);
-        }
-        else
-        {
-            auto left = area.removeFromLeft (w);
-            magnetophonPanel.setBounds (left.removeFromBottom (std::min (magH, left.getHeight() - SidePanel::kCollapsedHeight)));
-            mixerPanel.setBounds (left);
-        }
+            const int h = panel.isCollapsed() ? SidePanel::kCollapsedHeight : expandedHeight;
+            panel.setBounds (left.removeFromBottom (juce::jlimit (0, h, left.getHeight() - SidePanel::kCollapsedHeight)));
+        };
+        peg (magnetophonPanel, MagnetophonComponent::kContentHeight + SidePanel::kCollapsedHeight);
+
+        mixerPanel.setBounds (shaded ? left.removeFromTop (SidePanel::kCollapsedHeight) : left);
+        if (shaded) floating = magnetophonPanel.getBounds();
+
         column (effectsPanel, false);
     }
 
@@ -1061,10 +1067,11 @@ void SoundEffectsAudioProcessorEditor::resized()
     effectsPanel.toFront (false);
     palette.toFront (false);
     keyboard.toFront (false);
-    layoutPalettes (area);
+    layoutPalettes (area, floating);
 }
 
-void SoundEffectsAudioProcessorEditor::layoutPalettes (juce::Rectangle<int> area)
+void SoundEffectsAudioProcessorEditor::layoutPalettes (juce::Rectangle<int> area,
+                                                       juce::Rectangle<int> floating)
 {
     // The palette hangs over the canvas — centred on the VIEWPORT, not on the
     // editor, so it stays over the board it drives rather than drifting under a
@@ -1079,20 +1086,28 @@ void SoundEffectsAudioProcessorEditor::layoutPalettes (juce::Rectangle<int> area
     // palette lands exactly where it always did.
     int floor = area.getBottom() - kPaletteBottomGap;
 
+    // Centred, unless that would lay a palette over the floating Magnetophon: then
+    // it moves right, as far as the viewport's edge allows.
+    const auto place = [area, floating] (int width, int y, int height)
+    {
+        juce::Rectangle<int> r (area.getCentreX() - width / 2, y, width, height);
+        if (r.intersects (floating))
+            r.setX (juce::jmax (r.getX(), juce::jmin (floating.getRight() + kPaletteSideGap,
+                                                      area.getRight() - kPaletteSideGap - width)));
+        return r;
+    };
+
     if (keyboard.isVisible())
     {
         // The Keyboard is a fixed width — it is a picture of a keyboard, and a
         // keyboard that has been squeezed is a different instrument. On a canvas
         // too narrow for it, it overhangs rather than distorts.
-        keyboard.setBounds (area.getCentreX() - KeyboardPalette::kWidth / 2,
-                            floor - KeyboardPalette::kHeight,
-                            KeyboardPalette::kWidth, KeyboardPalette::kHeight);
+        keyboard.setBounds (place (KeyboardPalette::kWidth, floor - KeyboardPalette::kHeight,
+                                   KeyboardPalette::kHeight));
         floor -= KeyboardPalette::kHeight + kPaletteStackGap;
     }
 
-    palette.setBounds (area.getCentreX() - paletteW / 2,
-                       floor - ViewPalette::kHeight,
-                       paletteW, ViewPalette::kHeight);
+    palette.setBounds (place (paletteW, floor - ViewPalette::kHeight, ViewPalette::kHeight));
 }
 
 void SoundEffectsAudioProcessorEditor::openSendPopup()

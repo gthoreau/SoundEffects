@@ -150,8 +150,9 @@ private:
     juce::PopupMenu::Item colourRow();
     /** ⌘T: drop colourMenu() down under the selected Window's title bar. */
     bool showColourMenu();
-    /** The floating palette stack, over the canvas's `area`. */
-    void layoutPalettes (juce::Rectangle<int> area);
+    /** The floating palette stack, over the canvas's `area`, clear of a side panel
+        `floating` over it. */
+    void layoutPalettes (juce::Rectangle<int> area, juce::Rectangle<int> floating);
     /** Show or hide the Keyboard palette, and re-lay the floating stack. */
     void setKeyboardShown (bool shown);
 
@@ -168,7 +169,7 @@ private:
     SidePanel             mixerPanel   { "Mixer", mixer };      // the frames around them
     SidePanel             effectsPanel { "Effects", effects };
     MagnetophonComponent  magnetophon { processorRef.engine(), processorRef.tapeDeck() };
-    SidePanel             magnetophonPanel { "Magnetophon", magnetophon };   // under the Mixer
+    SidePanel             magnetophonPanel { "Magnetophon", magnetophon };   // at the column's bottom
     ViewPalette           palette;    // floats OVER the canvas, so it is added last
     KeyboardPalette       keyboard;   // ...and hangs directly below the palette
 
