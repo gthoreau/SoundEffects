@@ -16,6 +16,9 @@
 //   - release() frees the chunks: only once the audio thread has confirmed it is not
 //     playing (Engine::tapePlaying() false for the latest command), which the
 //     TapeDeck waits for.
+//   - The fade-out of a stop or a jump is copied aside as the command is applied
+//     (Engine::fadeOutTape), so it reads nothing once that command is acknowledged,
+//     and nothing a following take could be writing.
 
 #pragma once
 

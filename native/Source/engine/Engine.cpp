@@ -32,6 +32,10 @@ void Engine::prepare (double rate, int maxBlockSize)
     scratchR.assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
     for (auto* v : { &capL, &capR, &tapL, &tapR, &exL, &exR, &tcapL, &tcapR, &ttapL, &ttapR, &tplayL, &tplayR })
         v->assign (static_cast<size_t> (std::max (1, maxBlockSize)), 0.0f);
+    // Room for any fade-out the tape is asked for (kDeclickMs, with room to tune it).
+    for (auto* v : { &tfadeL, &tfadeR, &tsnapL, &tsnapR })
+        v->assign (static_cast<size_t> (declickFrames (rate, 50.0)), 0.0f);
+    tfadeAt = tfadeEnd = 0;
     live.reserve (kMaxWindows);
     scrubVelCoeff  = 1.0 - std::exp (-1.0 / (rate * 0.010));   // the tape's speed settles in ~10 ms
     scrubGainCoeff = 1.0 - std::exp (-1.0 / (rate * 0.005));   // its level in ~5 ms
@@ -448,6 +452,41 @@ void Engine::retire (size_t i) noexcept
     retiredWins.push (w);
 }
 
+/** The tape's last frames ramp to zero, so a playback that runs out does not cut. */
+static float tapeEndGain (size_t frame, size_t length, int ramp) noexcept
+{
+    if (ramp <= 0) return 1.0f;
+    const size_t after = frame + 1 < length ? length - frame - 1 : 0;
+    return std::min (1.0f, static_cast<float> (after) / static_cast<float> (ramp));
+}
+
+void Engine::fadeOutTape() noexcept
+{
+    const float from = tapeLevel;
+    const int ramp = declickFrames (deviceRate, declickMs);
+    tapeLevel = ramp > 0 ? 0.0f : 1.0f;
+    const size_t n = std::min (static_cast<size_t> (ramp), tfadeL.size());
+    if (! tapePlayActive || from <= 0.0f || n == 0) return;
+
+    // A fade still being heard carries on underneath.
+    const size_t held = tfadeEnd - tfadeAt;
+    for (auto* v : { &tfadeL, &tfadeR })
+    {
+        std::copy (v->begin() + static_cast<std::ptrdiff_t> (tfadeAt), v->begin() + static_cast<std::ptrdiff_t> (tfadeEnd), v->begin());
+        std::fill (v->begin() + static_cast<std::ptrdiff_t> (held), v->end(), 0.0f);
+    }
+    const size_t len = tape.length();
+    const size_t got = tape.read (tapePos, tsnapL.data(), tsnapR.data(), n);
+    for (size_t k = 0; k < got; ++k)
+    {
+        const float g = from * static_cast<float> (n - k) / static_cast<float> (n) * tapeEndGain (tapePos + k, len, ramp);
+        tfadeL[k] += tsnapL[k] * g;
+        tfadeR[k] += tsnapR[k] * g;
+    }
+    tfadeAt = 0;
+    tfadeEnd = std::max (held, got);
+}
+
 void Engine::drainCommands() noexcept
 {
     Command c;
@@ -541,6 +580,7 @@ void Engine::drainCommands() noexcept
                 break;
 
             case Command::Kind::TapePlay:
+                fadeOutTape();
                 tapePos = c.seekBytes;
                 tapePlayActive = true;
                 scrubActive = false;
@@ -550,12 +590,14 @@ void Engine::drainCommands() noexcept
                 break;
 
             case Command::Kind::TapeStop:
+                fadeOutTape();
                 tapePlayActive = false;
                 tapePlayingFlag.store (scrubActive, std::memory_order_release);
                 tapeAck.store (c.gen, std::memory_order_release);
                 break;
 
             case Command::Kind::TapeScrub:
+                fadeOutTape();
                 if (! scrubActive) { scrubPos = (double) c.seekBytes; scrubVel = 0.0; scrubGain = 0.0f; }
                 scrubActive = true;
                 scrubReleasing = false;
@@ -817,11 +859,15 @@ void Engine::render (float* left, float* right, int frames,
     if (tapePlayActive && tplayL.size() >= scratchL.size())
     {
         const size_t want = static_cast<size_t> (cap_);
+        const size_t len = tape.length();
         const size_t got = tape.read (tapePos, tplayL.data(), tplayR.data(), want);
+        const float rise = ramp > 0 ? 1.0f / static_cast<float> (ramp) : 1.0f;
         for (size_t k = 0; k < got; ++k)
         {
-            left[k]  += tplayL[k] * masterAt (k);
-            right[k] += tplayR[k] * masterAt (k);
+            const float g = tapeLevel * tapeEndGain (tapePos + k, len, ramp) * masterAt (k);
+            left[k]  += tplayL[k] * g;
+            right[k] += tplayR[k] * g;
+            tapeLevel = std::min (1.0f, tapeLevel + rise);
         }
         tapePos += got;
         tapePlayPos.store (tapePos, std::memory_order_relaxed);
@@ -831,6 +877,13 @@ void Engine::render (float* left, float* right, int frames,
             tapePlayActive = false;
             tapePlayingFlag.store (scrubActive, std::memory_order_release);
         }
+    }
+
+    // What a stop or a jump left fading out.
+    for (size_t k = 0; tfadeAt < tfadeEnd && k < static_cast<size_t> (cap_); ++k, ++tfadeAt)
+    {
+        left[k]  += tfadeL[tfadeAt] * masterAt (k);
+        right[k] += tfadeR[tfadeAt] * masterAt (k);
     }
 
     // Scrub: the read point chases the dragged target, varispeed and interpolated;

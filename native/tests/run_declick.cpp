@@ -11,6 +11,7 @@
 #include "engine/Engine.h"
 #include "engine/KeyboardVoice.h"
 #include "engine/SampleFormat.h"
+#include "engine/Tape.h"
 
 #include <algorithm>
 #include <cmath>
@@ -331,6 +332,87 @@ float faderJump (Signal s)   { return gainEvent (s, nothing, [] (Rig&, se::Windo
 float balanceJump (Signal s) { return gainEvent (s, nothing, [] (Rig&, se::Window& w, se::Window&) { w.balance = 1.0f; }); }
 float mainJump (Signal s)    { return gainEvent (s, nothing, [] (Rig& r, se::Window&, se::Window&) { r.engine.setMasterGain (0.0f); }); }
 
+// The Magnetophon: a tape recorded from the input, then played.
+struct Reel
+{
+    Rig r;
+    se::TapeDeck deck { r.engine };
+
+    Reel (Signal s, size_t frames)
+    {
+        se::TapeSource in;
+        in.kind = se::AudioSourceKind::external;
+        in.stereo = false;
+        deck.setSource (in);
+        deck.record();
+        std::vector<float> x ((size_t) kBlock), l ((size_t) kBlock), rr ((size_t) kBlock);
+        for (size_t done = 0; done < frames;)
+        {
+            const size_t n = std::min ((size_t) kBlock, frames - done);
+            for (size_t i = 0; i < n; ++i)
+                x[i] = s == Signal::dc ? 0.5f
+                     : (float) std::sin (6.283185307179586 * (double) (done + i) / (double) kPeriod);
+            const float* ins[1] = { x.data() };
+            r.engine.render (l.data(), rr.data(), (int) n, ins, 1);
+            deck.service();
+            done += n;
+        }
+        deck.stop();
+        for (int i = 0; i < 100 && deck.finishing(); ++i) { r.run (kBlock); deck.service(); }
+        deck.tape().seek (0);
+        r.left.clear(); r.right.clear();
+        r.run (kBlock);
+    }
+};
+
+float tapeStart (Signal s)
+{
+    Reel t (s, 48000);
+    t.deck.seek (kPeak);
+    return t.r.across (kBlock, [&] { t.deck.play(); });
+}
+
+float tapeHalt (Signal s)
+{
+    Reel t (s, 48000);
+    t.deck.play();
+    return t.r.across (kToPeak, [&] { t.deck.stop(); });
+}
+
+float tapeJump (Signal s)
+{
+    Reel t (s, 48000);
+    t.deck.play();
+    return t.r.across (kToPeak, [&] { t.deck.seek (10 * kPeriod + 3 * kPeak); });
+}
+
+float tapeRunsOut (Signal s)
+{
+    Reel t (s, kOffZero);
+    return t.r.across (kBlock, [&] { t.deck.play(); });
+}
+
+float tapeCleared (Signal s)
+{
+    Reel t (s, 48000);
+    t.deck.play();
+    return t.r.across (kToPeak, [&] { t.deck.clear(); });
+}
+
+float tapePunchIn (Signal s)
+{
+    Reel t (s, 48000);
+    t.deck.play();
+    return t.r.across (kToPeak, [&] { t.deck.record(); });
+}
+
+float tapeGrabbed (Signal s)
+{
+    Reel t (s, 48000);
+    t.deck.play();
+    return t.r.across (kToPeak, [&] { t.deck.scrubBegin(); });
+}
+
 struct Scenario
 {
     const char* name;
@@ -368,6 +450,13 @@ const Scenario kScenarios[] = {
     { "fader jump",                   faderJump },
     { "balance jump",                 balanceJump },
     { "Main Level jump",              mainJump },
+    { "tape play",                    tapeStart },
+    { "tape stop",                    tapeHalt },
+    { "tape jump while playing",      tapeJump },
+    { "tape runs out",                tapeRunsOut },
+    { "tape cleared while playing",   tapeCleared },
+    { "tape record over playback",    tapePunchIn },
+    { "tape grabbed while playing",   tapeGrabbed },
 };
 
 // ---- what the fades do ----------------------------------------------------------
@@ -611,6 +700,47 @@ void gainShapes()
     expect (j < kThreshold, "mute, fader, balance and Main hammered together: no click");
 }
 
+// ---- the tape's fades -----------------------------------------------------------
+
+void tapeShapes()
+{
+    {
+        Reel t (Signal::dc, 48000);
+        t.deck.play();
+        t.r.run (1000);
+        const size_t at = t.r.left.size();
+        t.deck.stop();
+        t.r.run (1024);
+        expect (std::fabs (t.r.left[at + kRamp5ms / 2] - 0.25f) < 0.003f && t.r.left[at + kRamp5ms - 1] > 0.0f
+                && t.r.left[at + kRamp5ms] == 0.0f, "a tape stop fades out over 5 ms");
+    }
+    {
+        Reel t (Signal::dc, 48000);
+        t.deck.play();
+        t.r.run (1000);
+        t.deck.clear();
+        t.r.run (1024);
+        t.deck.service();
+        expect (t.r.engine.tapeStore().reservedFrames() == 0 && t.r.engine.tapeStore().length() == 0,
+                "a cleared tape is freed once its fade has been copied aside");
+    }
+    {
+        // Jumps and stops faster than the fades, in uneven blocks.
+        Reel t (Signal::sine, 48000);
+        t.deck.play();
+        t.r.run (1000);
+        const size_t from = t.r.left.size();
+        for (int i = 0; i < 400; ++i)
+        {
+            if (i % 4 == 2)      t.deck.stop();
+            else if (i % 4 == 3) t.deck.play();
+            else                 t.deck.seek ((size_t) (i * 331 % 40000));
+            t.r.run (11 + i % 83);
+        }
+        expect (t.r.jumpFrom (from) < kThreshold, "the tape hammered with jumps and stops: no click");
+    }
+}
+
 } // namespace
 
 int declickTests()
@@ -620,6 +750,7 @@ int declickTests()
     wrapShapes();
     retriggerShapes();
     gainShapes();
+    tapeShapes();
     int failures = 0;
     for (const auto& sc : kScenarios)
         for (Signal s : { Signal::dc, Signal::sine })

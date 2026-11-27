@@ -3471,7 +3471,7 @@ static void tapeScrubTests()
 // while render() runs. For TSan.
 static void tapeConcurrencyTests()
 {
-    se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
+    se::Engine e; e.prepare (kRate, kBlock);
     const uint64_t a = e.addWindow (dcDocument (30, "a"));
     se::PlayOptions loopAll; loopAll.loop = true;
     e.play (a, loopAll);
@@ -3509,6 +3509,7 @@ static void tapeConcurrencyTests()
     for (int i = 0; i < 200 && d.finishing(); ++i) { std::this_thread::sleep_for (std::chrono::microseconds (200)); d.service(); }
     done = true;
     audio.join();
+    renderBlocks (e, 16);   // a last Clear is the audio thread's to let go of
     d.service();
     check (sane.load(), "tape stress: output finite and in range");
     check (! d.finishing() && d.tape().mode() != se::Tape::Mode::recording, "tape stress: the deck settles");

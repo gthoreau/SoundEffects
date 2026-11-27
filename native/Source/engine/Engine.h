@@ -293,6 +293,8 @@ public:
     // is added after every capture: the tape never re-records itself, and neither
     // does the Recorder's Main Mix. Tape playback goes through Main Level too.
     // The TapeDeck (Tape.h) drives all of this.
+    // Its playback fades in, out and across every jump like a Sound's (Declick.h);
+    // the capture is never ramped.
     bool tapeCaptureStart (const TapeSource& source);
     bool tapeCaptureStop();
     /** The audio thread's acknowledgement, as captureRunning() is the Recorder's. */
@@ -419,6 +421,10 @@ private:
     void drainCommands() noexcept;
     /** Hand the live Window at `index` back to the message thread. Audio thread. */
     void retire (size_t index) noexcept;
+    /** The tape's playback is about to stop or jump: what it would have played next
+        is copied aside, fading out, so nothing reads the tape afterwards (a take may
+        be about to record over it, or Clear to free it). Audio thread. */
+    void fadeOutTape() noexcept;
     Window* liveById (uint64_t id) noexcept;
     void applyTransport (Window& w, const Command& c) noexcept;
 
@@ -466,6 +472,11 @@ private:
     bool tapeCapActive = false;     // audio thread
     bool tapePlayActive = false;    // audio thread
     size_t tapePos = 0;             // audio thread: next frame to play
+    float  tapeLevel = 0.0f;        // audio thread: the playback's gain, rising to 1
+    // audio thread: the fade-out copied aside by fadeOutTape(), [tfadeAt, tfadeEnd)
+    // still to be heard; tsnap is its reading room.
+    std::vector<float> tfadeL, tfadeR, tsnapL, tsnapR;
+    size_t tfadeAt = 0, tfadeEnd = 0;
     bool   scrubActive = false, scrubReleasing = false;   // audio thread
     double scrubPos = 0.0, scrubVel = 0.0;                 // frames, frames per output frame
     float  scrubGain = 0.0f;

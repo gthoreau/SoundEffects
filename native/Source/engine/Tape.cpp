@@ -301,7 +301,8 @@ void TapeDeck::clear()
     }
     if (model.mode() == Tape::Mode::playing) engine.tapeStop (++gen);
     model.clear();
-    engine.tapeStore().setLength (0);   // nothing more is read; the memory goes once the audio thread lets go
+    // The audio thread may still be fading the playback out: the store keeps its
+    // audio until it has let go (service()).
     dirtyFrom = static_cast<size_t> (-1); dirtyTo = 0;
     clearPending = true;
     service();
