@@ -100,7 +100,8 @@ public:
     static constexpr int kHeight = kFrameH + kShadow;
 
     /**
-     * The Window the keyboard is aimed at — the canvas's selection, pushed in on
+     * The Windows the keyboard is aimed at — the canvas's selection, the primary
+     * first, then the rest of its multi-selection — pushed in on
      * every change. 0 for none, which greys Apply and stops the keys sounding.
      *
      * This is the whole difference from the original: the target is not captured
@@ -108,7 +109,7 @@ public:
      * key. Playing note-by-note across two Windows is a matter of clicking between
      * them.
      */
-    void setTargetWindow (uint64_t windowId);
+    void setTargets (const std::vector<uint64_t>& windowIds);
 
     /** Re-derive what the target looks like now. Driven by the editor's timer, so
         Apply greys the moment the audio it would eat goes away. */

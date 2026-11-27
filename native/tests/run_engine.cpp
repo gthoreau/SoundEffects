@@ -4093,6 +4093,112 @@ static void batchConcurrencyTests()
     check (apart.load() == 0, "batch: threaded, the group is never a block apart");
 }
 
+// --- multi-selection (0.6.0 step 7.4): the Keyboard plays the group ---------
+
+static void keyboardGroupTests()
+{
+    std::printf ("keyboard voice, multi-selection\n");
+    se::Engine e;
+    e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
+    const auto make = [&e] (int base)
+    {
+        auto d = loopDocument();
+        d->baseFreq = base;
+        return e.addWindow (std::move (d));
+    };
+    const uint64_t a = make (60), b = make (72), c = make (60), empty = e.addWindow ([]
+    {
+        auto d = dcDocument (0, "empty");
+        d->tracks[0].data.clear();
+        return d;
+    }());
+    renderBlocks (e, 1);
+    se::KeyboardVoice v (e);
+
+    const auto state = [&e] (uint64_t id) { return e.windowById (id)->transport->uiState(); };
+    const auto on = [&] (uint64_t id) { return state (id) == se::TransportState::playing; };
+    const auto head = [&e] (uint64_t id) { return static_cast<double> (e.windowById (id)->transport->uiPlayhead()); };
+    /** Frames each of `ids` moves over eight blocks. */
+    const auto speed = [&] (uint64_t id)
+    {
+        const double from = head (id);
+        renderBlocks (e, 8);
+        return (head (id) - from) / (8.0 * kBlock);
+    };
+    const auto near = [] (double got, double want) { return std::abs (got - want) < 0.01; };
+
+    v.setTargets ({ a, b, empty });
+    check (v.target() == a && v.baseNote() == 60, "group keys: the primary gives the dot");
+    v.strike (72);
+    renderBlocks (e, 1);
+    check (on (a) && on (b) && ! on (c) && ! on (empty), "group keys: a key strikes every member with audio");
+    check (near (speed (a), 2.0) && near (speed (b), 1.0), "group keys: one pitch, each from its own base note");
+    v.strike (60);
+    renderBlocks (e, 1);
+    check (near (speed (a), 1.0) && near (speed (b), 0.5), "group keys: a glissando moves them all");
+    v.release();
+    renderBlocks (e, 1);
+    check (! on (a) && ! on (b), "group keys: letting go stops them together");
+
+    v.setTargets ({ b, a, empty });
+    v.strike (72);
+    renderBlocks (e, 1);
+    v.setTargets ({ c, b, a, empty });
+    renderBlocks (e, 2);
+    check (on (a) && on (b) && ! on (c) && v.heldNote() == 72, "group keys: a Sound that joins waits for the next key");
+    v.strike (60);
+    renderBlocks (e, 1);
+    check (on (c) && near (speed (c), 1.0) && near (speed (a), 1.0), "group keys: and plays from then on");
+    v.setTargets ({ c, b });
+    renderBlocks (e, 1);
+    check (! on (a) && on (b) && on (c) && v.heldNote() == 60, "group keys: one that leaves is let go, the rest hold");
+    v.setTargets ({ b, c });
+    renderBlocks (e, 1);
+    check (on (b) && on (c) && v.heldNote() == 60, "group keys: another primary changes nothing that sounds");
+    v.setTargets ({ a });
+    renderBlocks (e, 1);
+    check (! on (b) && ! on (c) && v.heldNote() == -1, "group keys: leaving the group ends the note");
+
+    // The primary empty: the others still play.
+    v.setTargets ({ empty, a });
+    v.strike (60);
+    renderBlocks (e, 1);
+    check (on (a) && v.heldNote() == 60 && ! v.hasTarget(), "group keys: an empty primary does not mute the group");
+    v.release();
+    renderBlocks (e, 1);
+
+    // MIDI and MPE: struck, slid and released together; a rolling member is borrowed.
+    se::PlayOptions loop;
+    loop.loop = true;
+    e.play (c, loop);
+    renderBlocks (e, 1);
+    v.setTargets ({ a, c });
+    v.midiNoteOn (1000, 60, 0.0);
+    renderBlocks (e, 1);
+    v.midiBend (1000, 12.0);
+    renderBlocks (e, 1);
+    check (near (speed (a), 2.0) && near (speed (c), 2.0), "group keys: a pitch slide retunes every member");
+    v.midiNoteOn (64, 72, 0.0);
+    v.midiNoteOff (64);
+    renderBlocks (e, 1);
+    check (on (a) && on (c) && near (speed (a), 2.0), "group keys: the earlier key comes back for all");
+    v.midiNoteOff (1000);
+    renderBlocks (e, 1);
+    check (! on (a) && on (c) && near (speed (c), 1.0),
+           "group keys: release stops what was started and hands back what was rolling");
+
+    v.setTargets ({ a, b });
+    v.midiNoteOn (60, 60, 0.0);
+    renderBlocks (e, 1);
+    e.removeWindow (b);
+    v.setTargets ({ a });
+    renderBlocks (e, 2);
+    check (on (a), "group keys: a member closed under a held key leaves the others sounding");
+    v.midiAllOff();
+    renderBlocks (e, 1);
+    check (! on (a), "group keys: all notes off");
+}
+
 int main()
 {
     se::Engine engine;
@@ -4358,6 +4464,7 @@ int main()
     groupMuteSoloTests();
     batchTests();
     batchConcurrencyTests();
+    keyboardGroupTests();
     transportButtonsTests();
     masterLevelTests();
     mainMuteTests();

@@ -62,14 +62,16 @@ juce::Colour KeyboardPalette::targetTint() const
     return os8::themeColourFor (w);
 }
 
-void KeyboardPalette::setTargetWindow (uint64_t windowId)
+void KeyboardPalette::setTargets (const std::vector<uint64_t>& windowIds)
 {
-    if (targetId == windowId) return;
-
     // A note the keyboard is holding does not carry over to a new target — it was
     // played on the old one. Anything else the old Window was doing is left alone.
-    voice.setTarget (windowId);
-    targetId = windowId;
+    voice.setTargets (windowIds);
+
+    // What is drawn, and what Apply writes to, is the primary's.
+    const uint64_t primary = windowIds.empty() ? 0 : windowIds.front();
+    if (targetId == primary) return;
+    targetId = primary;
     updateApplyState();
     repaint();
 }

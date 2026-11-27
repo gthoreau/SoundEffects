@@ -79,7 +79,7 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     {
         effects.setTargetWindow (canvas.selectedWindowId());
         mixer.setSelectedWindows (canvas.soundSelection().members());
-        keyboard.setTargetWindow (canvas.selectedWindowId());
+        keyboard.setTargets (canvas.shareTargets (canvas.selectedWindowId()));   // every member plays
     };
     canvas.onSelectionChanged();
 

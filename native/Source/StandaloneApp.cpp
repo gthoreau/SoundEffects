@@ -897,7 +897,7 @@ private:
 
         se::KeyboardVoice voice (engine);
         KeyboardPalette keys (engine, voice);
-        keys.setTargetWindow (id);
+        keys.setTargets ({ id });
         keys.setSize (KeyboardPalette::kWidth, KeyboardPalette::kHeight);
         ok = writePng (keys.createComponentSnapshot ({ 0, 0, KeyboardPalette::kWidth, KeyboardPalette::kHeight }, true, 1.0f),
                        dir.getChildFile ("palette-keyboard.png")) && ok;

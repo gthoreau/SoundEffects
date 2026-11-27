@@ -4,6 +4,11 @@
 // plug-in's window is closed, so the voice lives with the processor and the palette
 // is only a view of it (and a mouse source for it). JUCE-free; message thread.
 //
+// In a multi-selection (0.6.0 step 7.4) a key strikes every member at that pitch, in
+// one engine batch, each measured from its own base note; letting go ends them
+// together. A Sound that joins while a key is down waits for the next one; one that
+// leaves is let go at once.
+//
 // How a key sounds is unchanged (see KeyboardPalette.h): a stopped Window is started
 // looping at the pitch and stopped on release; a rolling Window is re-pitched in place
 // and handed back at its own rate on release. The pitch is
@@ -19,6 +24,7 @@
 #include "MidiNotes.h"
 
 #include <cstdint>
+#include <vector>
 
 namespace se {
 
@@ -31,15 +37,20 @@ public:
 
     explicit KeyboardVoice (Engine& e) : engine (e) {}
 
-    /** The Window the keys are aimed at (the canvas selection, pushed by the editor).
-        0 for none. Until an editor has ever set it, the first Window stands in, so a
+    /** The Windows the keys are aimed at (the canvas selection, pushed by the
+        editor): the primary first, then the rest of its multi-selection. Empty for
+        none. Until an editor has ever set it, the first Window stands in, so a
         plug-in played before its window was opened still sounds. */
-    void setTarget (uint64_t windowId);
+    void setTargets (const std::vector<uint64_t>& windowIds);
+    /** One Window alone, or none (0). */
+    void setTarget (uint64_t windowId) { setTargets (windowId != 0 ? std::vector<uint64_t> { windowId }
+                                                                   : std::vector<uint64_t> {}); }
+    /** The primary: what the palette draws and Apply writes to. */
     uint64_t target() const;
 
-    /** The note the sound's own pitch is measured from (the dot on the keyboard). */
+    /** The note the primary's own pitch is measured from (the dot on the keyboard). */
     int baseNote() const;
-    /** Is there a Window with audio in it to play? */
+    /** Is the primary a Window with audio in it? */
     bool hasTarget() const;
 
     // --- the voice (mouse and MIDI share it) ---
@@ -62,16 +73,22 @@ public:
     void forgetLastNote() noexcept { last = -1; }
 
 private:
-    const SoundDocument* doc() const;
+    /** The document of Window `id`, or null. */
+    const SoundDocument* doc (uint64_t id) const;
+    /** Every Window a key reaches, the primary first. */
+    std::vector<uint64_t> reach() const;
     double soundingBend() const;
     void retune();
 
     Engine& engine;
-    uint64_t targetId = 0;
+    std::vector<uint64_t> targets;   // the primary first
     bool targetSet = false;
 
-    uint64_t voiceId = 0;        // the Window being driven, 0 when idle
-    bool startedVoice = false;   // started (stop on release) or borrowed (hand back)
+    /** A Window being driven: started (stopped on release) or borrowed (handed back). */
+    struct Voice { uint64_t id; bool started; };
+    std::vector<Voice> voices;       // empty when idle
+    /** End what is being driven on one Window. */
+    void letGo (const Voice&);
     int held = -1;
     int last = -1;
     double sounding = 0.0;
