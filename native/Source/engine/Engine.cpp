@@ -178,21 +178,55 @@ void Engine::clearAllSolos() noexcept
     for (const auto& kv : registry) kv.second->soloed.store (false, std::memory_order_relaxed);
 }
 
-void Engine::clickSolo (uint64_t id, bool command) noexcept
+void Engine::clickSolo (uint64_t id, bool command, const std::vector<uint64_t>& group) noexcept
 {
     auto* w = windowById (id);
     if (w == nullptr) return;
     const bool lit = w->soloed.load (std::memory_order_relaxed);
 
-    if (! command) { w->soloed.store (! lit, std::memory_order_relaxed); return; }
-    if (lit)       { clearAllSolos(); return; }
+    if (command && lit) { clearAllSolos(); return; }
 
-    // The new solo goes on BEFORE the others go off, so no audio block can see the
+    const bool on = command || ! lit;
+    const auto inGroup = [&group, id] (uint64_t other)
+    { return other == id || std::find (group.begin(), group.end(), other) != group.end(); };
+
+    // The new solos go on BEFORE the others go off, so no audio block can see the
     // filter off and let every Window through.
-    w->soloed.store (true, std::memory_order_relaxed);
     for (const auto& kv : registry)
-        if (kv.second != w) kv.second->soloed.store (false, std::memory_order_relaxed);
+        if (inGroup (kv.first)) kv.second->soloed.store (on, std::memory_order_relaxed);
+    if (! command) return;
+    for (const auto& kv : registry)
+        if (! inGroup (kv.first)) kv.second->soloed.store (false, std::memory_order_relaxed);
     setTapeSoloed (false);
+}
+
+void Engine::clickMute (uint64_t id, bool command, const std::vector<uint64_t>& group) noexcept
+{
+    auto* w = windowById (id);
+    if (w == nullptr) return;
+    const bool lit = w->muted.load (std::memory_order_relaxed);
+
+    if (command && lit) { unmuteAll(); return; }
+
+    w->muted.store (! lit, std::memory_order_relaxed);
+    for (const uint64_t other : group)
+        if (auto* o = windowById (other)) o->muted.store (! lit, std::memory_order_relaxed);
+}
+
+void Engine::sendBatch() noexcept
+{
+    if (batched.empty()) return;
+    if (! incoming.pushAll (batched.data(), batched.size()))
+    {
+        // The queue is full (the audio thread is not running): none of it goes.
+        for (const Command& c : batched)
+        {
+            if (c.kind == Command::Kind::SwapDoc) delete c.doc;
+            if (c.kind == Command::Kind::Transport && (c.tx == Command::Tx::Play || c.tx == Command::Tx::Stop))
+                if (auto* w = windowById (c.id)) --w->playStopSent;
+        }
+    }
+    batched.clear();
 }
 
 void Engine::clickTapeSolo (bool command) noexcept

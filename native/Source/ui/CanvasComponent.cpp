@@ -169,6 +169,8 @@ void CanvasComponent::refresh()
                 land (getScreenBounds().contains (juce::Desktop::getMousePosition()));
         };
         wc->onSelected = [this] (uint64_t wid) { selectWindow (wid); };
+        wc->onShared = [this] (uint64_t wid, const WindowComponent::SharedPress& p) { share (wid, p); };
+        wc->shareTargets = [this] (uint64_t wid) { return shareTargets (wid); };
         wc->onSourceRequested = [this] (uint64_t wid) { if (onSourceRequested) onSourceRequested (wid); };
         wc->recordReady = recordReady;
         world.addAndMakeVisible (*wc);
@@ -181,6 +183,15 @@ void CanvasComponent::refresh()
     if ((newCount > 0 || removedAny) && carrying()) abortCarry();
 
     if (mosaicEnabled && (newCount > 0 || removedAny)) layoutGrid();
+
+    // A Window closed with Fast Forward held on it: its release can no longer come.
+    for (auto it = fastHolds.begin(); it != fastHolds.end();)
+        if (find (it->first) == nullptr)
+        {
+            const auto source = (it++)->first;
+            share (source, { WindowComponent::SharedPress::Kind::fastForward, false });
+        }
+        else ++it;
 
     // A closed Window leaves the selection — leaving it dangling would let the
     // effects panel offer to apply to something that no longer exists.
@@ -240,6 +251,32 @@ void CanvasComponent::shiftClickWindow (uint64_t id)
     if (! selection.shiftClick (id)) return;
     selectionChanged();
     if (selection.contains (id)) reveal (*wc);
+}
+
+void CanvasComponent::share (uint64_t source, const WindowComponent::SharedPress& press)
+{
+    auto reach = selection.targets (source);
+    if (press.kind == WindowComponent::SharedPress::Kind::fastForward)
+    {
+        if (press.on) fastHolds[source] = reach;
+        else
+        {
+            // The hold pressed on `source`, else the one that took it along (the
+            // menu's second pick, with another member primary by then).
+            auto held = fastHolds.find (source);
+            for (auto it = fastHolds.begin(); held == fastHolds.end() && it != fastHolds.end(); ++it)
+                if (std::find (it->second.begin(), it->second.end(), source) != it->second.end()) held = it;
+            if (held != fastHolds.end())
+            {
+                reach = held->second;
+                fastHolds.erase (held);
+            }
+        }
+    }
+
+    const se::Engine::Batch together (engine);   // one audio block for all of them
+    for (const uint64_t id : reach)
+        if (auto* wc = find (id)) wc->receive (press);
 }
 
 void CanvasComponent::selectionChanged()

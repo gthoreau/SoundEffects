@@ -70,6 +70,8 @@ public:
 
     /** Clicked anywhere — the panel asks the canvas to focus this Window. */
     std::function<void (uint64_t)> onFocusRequested;
+    /** The Windows a click on this strip's M or S box reaches (the multi-selection). */
+    std::function<std::vector<uint64_t> (uint64_t)> shareTargets;
     /** Dragged by the handle or the name: lifted once the pointer has travelled
         (with where in the strip it was grabbed), every move after that, and the
         release. The panel works out where the strip goes from the pointer. */
@@ -177,6 +179,8 @@ public:
     std::function<void (uint64_t)> onChannelClicked;
     /** A strip was ⇧-clicked: add its Window to the multi-selection, or remove it. */
     std::function<void (uint64_t)> onChannelShiftClicked;
+    /** The Windows a click on a strip's M or S box reaches (the multi-selection). */
+    std::function<std::vector<uint64_t> (uint64_t)> shareTargets;
 
     /** The New Sound / Open Sound bar ("new-open" 636:10150). */
     static constexpr int kBarHeight = 44;

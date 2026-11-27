@@ -402,18 +402,18 @@ void MixerStrip::mouseDown (const juce::MouseEvent& e)
     if (w == nullptr) return;
 
     // ⌘-click on a lit box clears that box on every Window; on an unlit S it swaps
-    // the solo to this channel.
+    // the solo to this channel (and its multi-selection).
     const bool clearAll = e.mods.isCommandDown();
+    const auto group = shareTargets ? shareTargets (id) : std::vector<uint64_t> {};
     if (muteBox().expanded (2).contains (e.getPosition()))
     {
-        if (clearAll && w->muted.load (std::memory_order_relaxed)) engine.unmuteAll();
-        else w->muted.store (! w->muted.load (std::memory_order_relaxed), std::memory_order_relaxed);
+        engine.clickMute (id, clearAll, group);
         refreshState (engine.anySoloed());
         return;
     }
     if (soloBox().expanded (2).contains (e.getPosition()))
     {
-        engine.clickSolo (id, clearAll);
+        engine.clickSolo (id, clearAll, group);
         refreshState (engine.anySoloed());   // the OTHER strips catch up on the next tick
         return;
     }
@@ -539,6 +539,8 @@ void MixerComponent::refresh()
             // The canvas selects and raises it, and hands the selection straight back.
             if (onChannelClicked) onChannelClicked (wid);
         };
+        strip->shareTargets = [this] (uint64_t wid)
+        { return shareTargets ? shareTargets (wid) : std::vector<uint64_t> {}; };
         strip->onDragStart = [this] (MixerStrip& s, juce::Point<int> grab) { beginDrag (s, grab); };
         strip->onDragMove  = [this] (MixerStrip&) { if (carrying() && ! drag.landing) followPointer(); };
         strip->onDragEnd   = [this] (MixerStrip&)

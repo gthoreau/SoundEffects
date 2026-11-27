@@ -37,6 +37,20 @@ public:
         return true;
     }
 
+    /** Producer side: all of `values` or none. The consumer sees them appear at
+        once, so a drain that finds one of them finds every one. */
+    bool pushAll (const T* values, size_t count) noexcept
+    {
+        const size_t t = tail.load (std::memory_order_relaxed);
+        const size_t h = head.load (std::memory_order_acquire);
+        if (count > ((h - t - 1) & mask))
+            return false;                       // no room for the lot
+        for (size_t i = 0; i < count; ++i)
+            buffer[(t + i) & mask] = values[i];
+        tail.store ((t + count) & mask, std::memory_order_release);
+        return true;
+    }
+
     /** Consumer side. Returns false if the queue is empty. */
     bool pop (T& out) noexcept
     {

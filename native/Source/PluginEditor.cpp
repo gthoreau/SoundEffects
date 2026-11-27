@@ -89,6 +89,7 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     // framed strip and the framed Window are always the same one.
     mixer.onChannelClicked = [this] (uint64_t id) { canvas.focusWindow (id); };
     mixer.onChannelShiftClicked = [this] (uint64_t id) { canvas.shiftClickWindow (id); };
+    mixer.shareTargets = [this] (uint64_t id) { return canvas.shareTargets (id); };
 
     // An effect rewrites the audio IN PLACE, so the Window's cached waveform peaks
     // — keyed on track length — cannot tell anything happened. Drop them
@@ -416,14 +417,16 @@ bool SoundEffectsAudioProcessorEditor::perform (const InvocationInfo& info)
         case cmd::playPingPong:  return act (WindowComponent::Action::playPingPong);
         case cmd::flipDirection: return act (WindowComponent::Action::cycleDirection);
 
+        // The selected Sound's box toggled, its multi-selection following it.
         case cmd::mute:
-            if (engineWindow == nullptr) return false;
-            engineWindow->muted.store (! engineWindow->muted.load (std::memory_order_relaxed), std::memory_order_relaxed);
-            return true;
         case cmd::solo:
+        {
             if (engineWindow == nullptr) return false;
-            engineWindow->soloed.store (! engineWindow->soloed.load (std::memory_order_relaxed), std::memory_order_relaxed);
+            const auto sid = canvas.selectedWindowId();
+            if (info.commandID == cmd::mute) processorRef.engine().clickMute (sid, false, canvas.shareTargets (sid));
+            else                             processorRef.engine().clickSolo (sid, false, canvas.shareTargets (sid));
             return true;
+        }
 
         case cmd::toggleColourTheme:
             // Every themed element and the canvas read it through os8::themeColourFor

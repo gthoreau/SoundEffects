@@ -78,15 +78,16 @@ WindowComponent::WindowComponent (se::Engine& e, uint64_t wid)
     sourceButton.onClick = [this] { perform (Action::selectAudioSource); };
     stopButton.onClick = [this] { perform (Action::stop); };
     stopButton.addMouseListener (&stopDoubleClick, false);
-    playButton.onPlay = [this] { applyCues (buttons.pressPlay()); };
+    playButton.onPlay = [this] { send (SharedPress::Kind::play); };
     playButton.onDirectionChange = [this] (Os8ComboPlay::Direction d)
     {
-        setDirection (d == Os8ComboPlay::Direction::backward ? se::PlayDirection::backward
-                      : d == Os8ComboPlay::Direction::pingPong ? se::PlayDirection::pingPong
-                                                               : se::PlayDirection::forward);
+        send (SharedPress::Kind::direction, true,
+              d == Os8ComboPlay::Direction::backward ? se::PlayDirection::backward
+              : d == Os8ComboPlay::Direction::pingPong ? se::PlayDirection::pingPong
+                                                       : se::PlayDirection::forward);
     };
     recordButton.onClick = [this] { perform (Action::record); };
-    pauseButton.onClick = [this] { applyCues (buttons.pressPause()); };
+    pauseButton.onClick = [this] { send (SharedPress::Kind::pause); };
     fastForwardButton.addMouseListener (&fastForwardHold, false);   // momentary: see FastForwardHold
     loopButton.onClick = [this] { perform (Action::toggleLoop); };
     updateTransportButtons();
@@ -1346,7 +1347,39 @@ void WindowComponent::caretToStart()
 void WindowComponent::fastForward (bool down)
 {
     if (down && ! canPerform (Action::toggleAdvance)) return;
-    applyCues (down ? buttons.ffDown() : buttons.ffUp());
+    send (SharedPress::Kind::fastForward, down);
+}
+
+void WindowComponent::send (SharedPress::Kind kind, bool on, se::PlayDirection d)
+{
+    const SharedPress press { kind, on, d };
+    if (onShared) onShared (id, press);
+    else          receive (press);
+}
+
+void WindowComponent::receive (const SharedPress& p)
+{
+    switch (p.kind)
+    {
+        case SharedPress::Kind::play:  applyCues (buttons.pressPlay());  break;
+        case SharedPress::Kind::pause: applyCues (buttons.pressPause()); break;
+        case SharedPress::Kind::stop:  applyCues (buttons.pressStop());  break;
+        case SharedPress::Kind::loop:
+            if (buttons.loopEnabled() && buttons.loopOn() != p.on)
+            {
+                buttons.toggleLoop();
+                updateTransportButtons();
+                repaint();
+            }
+            break;
+        case SharedPress::Kind::fastForward:
+            if (! p.on)                                    applyCues (buttons.ffUp());
+            else if (canPerform (Action::toggleAdvance))   applyCues (buttons.ffDown());
+            break;
+        case SharedPress::Kind::direction:
+            if (buttons.directionEnabled() && ! isRecording()) setDirection (p.direction);
+            break;
+    }
 }
 
 void WindowComponent::takeFinished()
@@ -1465,16 +1498,15 @@ void WindowComponent::mouseDown (const juce::MouseEvent& e)
     if (const int icon = selectionIconAt (p); icon >= 0) { clickSelectionIcon (icon); return; }
     if (muteBox().expanded (1).contains (p) || soloBox().expanded (1).contains (p))
     {
-        if (auto* w = engineWindow())
+        if (engineWindow() != nullptr)
         {
             // ⌘-click on a lit box clears that box on every Window; on an unlit S
-            // it swaps the solo to this one.
+            // it swaps the solo to this one (and its multi-selection).
+            const auto group = shareTargets ? shareTargets (id) : std::vector<uint64_t> {};
             if (! muteBox().expanded (1).contains (p))
-                engine.clickSolo (id, e.mods.isCommandDown());
-            else if (e.mods.isCommandDown() && w->muted.load (std::memory_order_relaxed))
-                engine.unmuteAll();
+                engine.clickSolo (id, e.mods.isCommandDown(), group);
             else
-                w->muted.store (! w->muted.load (std::memory_order_relaxed), std::memory_order_relaxed);
+                engine.clickMute (id, e.mods.isCommandDown(), group);
         }
         repaint();
         return;
@@ -1883,9 +1915,9 @@ bool WindowComponent::canPerform (Action a) const
         case Action::zoomOut: case Action::fitWindow:
                                         return viewSpanFrac < 1.0;
         case Action::fitSelection:      return d->maxTrackSize() > 0 && d->selEnd > d->selSt;
-        case Action::playPause: case Action::stop:
         case Action::rename:
             return ! grouped;
+        case Action::playPause: case Action::stop:
         case Action::selectAll:
         case Action::leaveSilence:
             return true;
@@ -1900,20 +1932,24 @@ bool WindowComponent::perform (Action a)
 
     switch (a)
     {
-        case Action::playPause: applyCues (buttons.space()); return true;
-        case Action::stop:      applyCues (buttons.pressStop()); return true;
+        // Space is Pause while Play is on, else Play: decided here, shared as that.
+        case Action::playPause:
+            send (buttons.playOn() && ! buttons.ffHeld() ? SharedPress::Kind::pause : SharedPress::Kind::play);
+            return true;
+        case Action::stop:      send (SharedPress::Kind::stop); return true;
         case Action::selectAudioSource:
             onSourceRequested (id);
             return true;
         case Action::record:       applyCues (buttons.pressRecord()); return true;
         case Action::directRecord: applyCues (buttons.directRecord()); return true;
-        case Action::playForward:  setDirection (se::PlayDirection::forward);  return true;
-        case Action::playBackward: setDirection (se::PlayDirection::backward); return true;
-        case Action::playPingPong: setDirection (se::PlayDirection::pingPong); return true;
+        case Action::playForward:  send (SharedPress::Kind::direction, true, se::PlayDirection::forward);  return true;
+        case Action::playBackward: send (SharedPress::Kind::direction, true, se::PlayDirection::backward); return true;
+        case Action::playPingPong: send (SharedPress::Kind::direction, true, se::PlayDirection::pingPong); return true;
         case Action::cycleDirection:   // Forward -> Backward -> Ping-pong -> Forward
-            setDirection (static_cast<se::PlayDirection> ((static_cast<int> (direction()) + 1) % 3));
+            send (SharedPress::Kind::direction, true,
+                  static_cast<se::PlayDirection> ((static_cast<int> (direction()) + 1) % 3));
             return true;
-        case Action::toggleLoop: buttons.toggleLoop(); updateTransportButtons(); repaint(); return true;
+        case Action::toggleLoop: send (SharedPress::Kind::loop, ! buttons.loopOn()); return true;
         case Action::toggleAdvance:
             // The menu row cannot be held: it engages FF and the next one lets it go.
             fastForward (! buttons.ffHeld());

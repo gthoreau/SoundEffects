@@ -39,6 +39,7 @@
 #include "engine/SoundGroup.h"
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -106,6 +107,9 @@ public:
     /** ⇧-click on a Sound or its strip: into the multi-selection, or out of it. A
         Sound that joins is raised and revealed, as a plain click on its strip does. */
     void shiftClickWindow (uint64_t id);
+    /** The Sounds a shared function used on `id` reaches (the multi-selection, or
+        `id` alone). */
+    std::vector<uint64_t> shareTargets (uint64_t id) const { return selection.targets (id); }
 
     /** Select a Window AND put it in front of you: raised above its neighbours (the
         visible part of that in free placement, where Windows overlap) and panned
@@ -260,6 +264,12 @@ private:
     int cascade = 0;
 
     se::SoundGroup selection;
+    /** A shared transport function used on `source`: to every Sound it reaches, in
+        one engine batch, `source` first. */
+    void share (uint64_t source, const WindowComponent::SharedPress&);
+    /** Fast Forward held: which Sounds each press took with it, by the one it was
+        pressed on, so that letting go reaches the same ones. */
+    std::map<uint64_t, std::vector<uint64_t>> fastHolds;
     /** Push the selection to the Windows, the background and whoever listens. */
     void selectionChanged();
     /** Raise a Window and pan until it is in view. */

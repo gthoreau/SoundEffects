@@ -187,8 +187,13 @@ public:
     void     clearAllSolos() noexcept;
     /** A click on a Window's S box (Mixer strip, title bar). Plain: toggle it. With ⌘
         on a lit box: clear every solo. With ⌘ on an unlit box: the solo swap, which
-        leaves that Window as the only one soloed. */
-    void     clickSolo (uint64_t id, bool command) noexcept;
+        leaves that Window as the only one soloed. `group`, when not empty, is the
+        multi-selection the Window is in (itself included): its members take the same
+        resulting state, and a swap leaves all of them as the only ones soloed. */
+    void     clickSolo (uint64_t id, bool command, const std::vector<uint64_t>& group = {}) noexcept;
+    /** The same click on its M box: toggle it, the `group` following to the same
+        state; ⌘ on a lit box unmutes every Window. */
+    void     clickMute (uint64_t id, bool command, const std::vector<uint64_t>& group = {}) noexcept;
     /** The same click on the Magnetophon's S box. The tape is a solo source like a
         Window: any solo silences its playback and scrub unless it is soloed too, and
         its solo silences every unsoloed Window. What it records, and the monitoring
@@ -251,6 +256,22 @@ public:
         transport re-anchors every track's phase and carries on, no restart. */
     bool setDirection (uint64_t id, PlayDirection d);
     PlayDirection direction (uint64_t id) noexcept;
+
+    /** While one of these lives, the commands posted (transport, edits, recording)
+        are held back, and the last one to go hands them to the audio thread
+        together: they all take effect in the same audio block. What a
+        multi-selection's Play, Pause, Stop and the rest are sent in, so that loops
+        started together stay in phase. Message thread; may nest. */
+    class Batch
+    {
+    public:
+        explicit Batch (Engine& e) noexcept : engine (e) { ++engine.batchDepth; }
+        ~Batch() { if (--engine.batchDepth == 0) engine.sendBatch(); }
+        Batch (const Batch&) = delete;
+        Batch& operator= (const Batch&) = delete;
+    private:
+        Engine& engine;
+    };
 
     // --- message thread: recording ------------------------------------------
     // Record is also a Play: the transport plays what is already there (the tracks
@@ -432,7 +453,13 @@ private:
         uint32_t        gen = 0;            // TapePlay / TapeStop; Play / Stop
     };
 
-    bool post (const Command& c) noexcept { return incoming.push (c); }
+    bool post (const Command& c) noexcept
+    {
+        if (batchDepth == 0) return incoming.push (c);
+        batched.push_back (c);
+        return true;
+    }
+    void sendBatch() noexcept;
     bool postPlayStop (Command& c, bool isPlay) noexcept;
 
     void drainCommands() noexcept;
@@ -455,6 +482,8 @@ private:
     void compactSlots();
     uint64_t nextId = 1;
     uint32_t assetCounter = 1;
+    int batchDepth = 0;
+    std::vector<Command> batched; // a Batch's commands, until it closes
 
     // --- shared, lock-free --------------------------------------------------
     SpscQueue<Command, 1024>       incoming;    // message -> audio

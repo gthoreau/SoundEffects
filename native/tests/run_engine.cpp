@@ -3927,6 +3927,172 @@ static void soundGroupTests()
     check (g.close (6) && g.primary() == 0, "group: closing the last leaves nothing selected");
 }
 
+// --- multi-selection (0.6.0 step 7.3): shared functions ---------------------
+
+static void groupMuteSoloTests()
+{
+    se::Engine e;
+    e.prepare (kRate, kBlock);
+    const auto a = e.addWindow (dcDocument (10, "a"));
+    const auto b = e.addWindow (dcDocument (10, "b"));
+    const auto c = e.addWindow (dcDocument (10, "c"));
+    const auto muted  = [&e] (uint64_t id) { return e.windowById (id)->muted.load(); };
+    const auto soloed = [&e] (uint64_t id) { return e.windowById (id)->soloed.load(); };
+    const std::vector<uint64_t> ab { a, b };
+
+    e.windowById (b)->muted.store (true);
+    e.clickMute (a, false, ab);
+    check (muted (a) && muted (b) && ! muted (c), "group mute: the resulting state, not a toggle each");
+    e.clickMute (b, false, ab);
+    check (! muted (a) && ! muted (b), "group mute: off from any member");
+    e.clickMute (c, false);
+    check (muted (c) && ! muted (a), "group mute: a Sound alone mutes alone");
+    e.clickMute (a, false, ab);
+    e.clickMute (c, true, {});
+    check (! muted (a) && ! muted (b) && ! muted (c), "group mute: command on a lit box unmutes everything");
+
+    e.windowById (b)->soloed.store (true);
+    e.clickSolo (a, false, ab);
+    check (soloed (a) && soloed (b) && ! soloed (c), "group solo: both take the resulting state");
+    e.clickSolo (a, false, ab);
+    check (! soloed (a) && ! soloed (b), "group solo: and leave it together");
+    e.clickSolo (c, false);
+    e.clickTapeSolo (false);
+    e.clickSolo (b, true, ab);
+    check (soloed (a) && soloed (b) && ! soloed (c) && ! e.tapeSoloed(), "group solo: a swap leaves only the group");
+    e.clickSolo (a, true, ab);
+    check (! e.anySoloed(), "group solo: command on a lit box clears everything");
+}
+
+/** A looping Sound of its own ramp, so a position can be heard. */
+static std::unique_ptr<se::SoundDocument> loopDocument()
+{
+    auto d = dcDocument (0, "loop");
+    auto& data = d->tracks[0].data;
+    for (size_t i = 0; i < data.size(); ++i)
+        se::setSample (data.data(), i, static_cast<int> (i % 100) - 50, 8);
+    return d;
+}
+
+static bool inStep (se::Engine& e, const std::vector<uint64_t>& ids)
+{
+    auto& first = *e.windowById (ids.front())->transport;
+    size_t p0 = 0, p = 0;
+    const bool has0 = first.uiTrackPosition (0, p0);
+    for (const auto id : ids)
+    {
+        auto& t = *e.windowById (id)->transport;
+        const bool has = t.uiTrackPosition (0, p);
+        if (t.uiState() != first.uiState() || t.uiPlayhead() != first.uiPlayhead()
+            || t.uiDirection() != first.uiDirection() || has != has0 || (has && p != p0))
+            return false;
+    }
+    return true;
+}
+
+static void batchTests()
+{
+    se::SpscQueue<int, 8> q;
+    const int five[] = { 1, 2, 3, 4, 5 };
+    check (q.pushAll (five, 5) && ! q.pushAll (five, 3), "queue: all of a batch or none of it");
+    int v = 0, n = 0;
+    while (q.pop (v)) ++n;
+    check (n == 5 && q.pushAll (five, 5), "queue: the refused batch left nothing behind");
+
+    se::Engine e;
+    e.prepare (kRate, kBlock);
+    std::vector<uint64_t> ids;
+    for (int i = 0; i < 3; ++i) ids.push_back (e.addWindow (loopDocument()));
+    renderBlocks (e, 1);
+    se::PlayOptions loop;
+    loop.loop = true;
+
+    {
+        const se::Engine::Batch outer (e);
+        {
+            const se::Engine::Batch inner (e);
+            e.play (ids[0], loop);
+            e.play (ids[1], loop);
+        }
+        renderBlocks (e, 3);
+        check (e.windowById (ids[0])->transport->uiState() == se::TransportState::stopped,
+               "batch: nothing reaches the audio thread while it is open");
+        check (e.isRolling (ids[0]), "batch: a held Play already counts as rolling");
+        e.play (ids[2], loop);
+    }
+    renderBlocks (e, 1);
+    check (e.windowById (ids[2])->transport->uiState() == se::TransportState::playing && inStep (e, ids),
+           "batch: all start in the same block");
+    renderBlocks (e, 37);
+    check (inStep (e, ids), "batch: loops started together stay in phase");
+
+    const auto all = [&e, &ids] (auto&& what)
+    {
+        { const se::Engine::Batch together (e); for (const auto id : ids) what (id); }
+        bool ok = true;
+        for (int i = 0; i < 20; ++i) { renderBlocks (e, 1); ok = ok && inStep (e, ids); }
+        return ok;
+    };
+    check (all ([&e] (uint64_t id) { e.pause (id); }), "batch: Pause together, still in phase");
+    check (all ([&e] (uint64_t id) { e.pause (id); }), "batch: resume together");
+    check (all ([&e] (uint64_t id) { e.setDirection (id, se::PlayDirection::pingPong); }), "batch: Direction together");
+    check (all ([&e] (uint64_t id) { e.advance (id); }), "batch: Fast Forward together");
+    check (all ([&e] (uint64_t id) { e.normalSpeed (id); }), "batch: and let go together");
+    check (all ([&e] (uint64_t id) { e.stop (id); }), "batch: Stop together");
+    check (! e.isRolling (ids[0]), "batch: stopped");
+}
+
+/** The same with the audio thread running: it looks after every block, so a command
+    that landed a block early or late for one Window would be seen. */
+static void batchConcurrencyTests()
+{
+    se::Engine e;
+    e.prepare (kRate, kBlock);
+    std::vector<uint64_t> ids;
+    for (int i = 0; i < 4; ++i) ids.push_back (e.addWindow (loopDocument()));
+    renderBlocks (e, 1);
+
+    std::atomic<bool> done { false };
+    std::atomic<int> apart { 0 }, blocks { 0 };
+    std::thread audio ([&]
+    {
+        std::vector<float> l ((size_t) kBlock), r ((size_t) kBlock);
+        while (! done.load())
+        {
+            e.render (l.data(), r.data(), kBlock);
+            if (! inStep (e, ids)) apart.fetch_add (1);
+            blocks.fetch_add (1);
+        }
+    });
+
+    se::PlayOptions loop;
+    loop.loop = true;
+    for (int i = 0; i < 600; ++i)
+    {
+        const int seen = blocks.load();
+        {
+            const se::Engine::Batch together (e);
+            for (const auto id : ids)
+            {
+                switch (i % 6)
+                {
+                    case 0: e.play (id, loop); break;
+                    case 1: e.advance (id); break;
+                    case 2: e.pause (id); break;
+                    case 3: e.setDirection (id, (i / 6) % 2 ? se::PlayDirection::forward : se::PlayDirection::backward); break;
+                    case 4: e.pause (id); break;
+                    default: e.stop (id); break;
+                }
+                std::this_thread::yield();   // let the audio thread in between the posts
+            }
+        }
+        while (blocks.load() < seen + 2) std::this_thread::yield();
+    }
+    done.store (true);
+    audio.join();
+    check (apart.load() == 0, "batch: threaded, the group is never a block apart");
+}
+
 int main()
 {
     se::Engine engine;
@@ -4189,6 +4355,9 @@ int main()
     midiNoteTests();
     keyboardVoiceTests();
     soundGroupTests();
+    groupMuteSoloTests();
+    batchTests();
+    batchConcurrencyTests();
     transportButtonsTests();
     masterLevelTests();
     mainMuteTests();

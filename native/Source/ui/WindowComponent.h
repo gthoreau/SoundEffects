@@ -133,6 +133,25 @@ public:
     /** Would perform() do anything? Drives the menus' greying. */
     bool canPerform (Action) const;
 
+    /** A press of a function a multi-selection shares (0.6.0 step 7.3), as the
+        state it leads to: Play, Pause, Stop, Loop on or off, Fast Forward held or let
+        go, a Direction. */
+    struct SharedPress
+    {
+        enum class Kind { play, pause, stop, loop, fastForward, direction };
+        Kind kind = Kind::play;
+        bool on = true;                                        // loop, fastForward
+        se::PlayDirection direction = se::PlayDirection::forward;
+    };
+    /** A shared function used on this Window: the canvas takes it to every Sound it
+        reaches (this one included). Without it, it stays here. */
+    std::function<void (uint64_t, const SharedPress&)> onShared;
+    /** Do it to this Window, as far as it can: one whose Record is armed ignores what
+        Record disables (Direction, Fast Forward, Loop). */
+    void receive (const SharedPress&);
+    /** The Windows a click on this one's M or S box reaches (the multi-selection). */
+    std::function<std::vector<uint64_t> (uint64_t)> shareTargets;
+
     bool isPlaying() const;
     bool isLoopOn() const noexcept    { return buttons.loopOn(); }
     /** Record is armed or on (the Arm Record menu row's tick). */
@@ -273,6 +292,8 @@ private:
     void commitSelectionField (int which);   // 0 start, 1 length, 2 end
 
     // --- transport ----------------------------------------------------------------
+    /** A shared function was used here: out to the canvas (see onShared). */
+    void send (SharedPress::Kind, bool on = true, se::PlayDirection = se::PlayDirection::forward);
     /** Do what a press of the transport buttons cued (TransportButtons). */
     void applyCues (const se::TransportCues&);
     /** Back to the direction the Window had before a take forced Forward. */
