@@ -1,7 +1,6 @@
 #include "FilePopups.h"
 
 #include "Os8CheckList.h"
-#include "engine/SampleFormat.h"
 
 namespace filepopups {
 
@@ -19,28 +18,24 @@ juce::String fitted (juce::String text, int width, os8::TextStyle style)
 
 } // namespace
 
-juce::String summaryOf (const se::WindowState& s)
+std::unique_ptr<Os8Popup> exportSound (std::function<void (ExportFormat)> doExport)
 {
-    size_t longest = 0;
-    for (const auto& t : s.tracks) longest = std::max (longest, t.data.size());
-    const double seconds = s.rateHz > 0.0
-        ? (double) (longest / (size_t) std::max (1, se::frameSizeFor (s.bps))) / s.rateHz : 0.0;
-
-    return juce::String (s.tracks.size()) + (s.tracks.size() == 1 ? " track" : " tracks")
-         + juce::String::fromUTF8 (" \xC2\xB7 ") + juce::String (s.rateHz / 1000.0, 1) + " kHz"
-         + juce::String::fromUTF8 (" \xC2\xB7 ") + juce::String (s.bps) + " bit"
-         + juce::String::fromUTF8 (" \xC2\xB7 ") + juce::String (seconds, 2) + " s";
-}
-
-std::unique_ptr<Os8Popup> exportSound (const se::WindowState& sound)
-{
-    auto popup = std::make_unique<Os8Popup> ("Export Sound", 62);
+    constexpr int kContent = 322;
+    auto popup = std::make_unique<Os8Popup> ("Export Sound", 25, kContent);
     auto& p = *popup;
-    p.addLabel ("Save this Sound as a .sefx file of its own:", 0.0f, 4.0f, os8::TextStyle::smallLabel);
-    p.addLabel (fitted (juce::String (sound.name), Os8Popup::kContentW, os8::TextStyle::smallLabel), 0.0f, 22.0f, os8::TextStyle::smallLabel);
-    p.addLabel (summaryOf (sound), 0.0f, 36.0f, os8::TextStyle::smallLabel);
-    p.addLabel ("It opens like any canvas, audio included.", 0.0f, 50.0f, os8::TextStyle::smallLabel);
-    p.setButtons ("Cancel", juce::String::fromUTF8 ("Export\xE2\x80\xA6"));
+    p.addLabel ("Export format:", 0.0f, 6.0f);
+
+    auto menu = std::make_unique<Os8Dropdown> (Os8Dropdown::Style::standard);
+    menu->setItems ({ ".SEFX file", ".WAV stereo mixdown", ".WAV mono stems" });
+    menu->setSelectedIndex ((int) ExportFormat::mixdown);
+    menu->setWantsKeyboardFocus (false);
+    auto* format = p.addContent (std::move (menu), { 107, 4, 162, os8::kDropdownHeight });
+
+    p.setButtons ("Cancel", "Export...");
+    p.onDismiss = [format, doExport] (int result)
+    {
+        if (result == 1 && doExport) doExport ((ExportFormat) format->getSelectedIndex());
+    };
     return popup;
 }
 

@@ -940,6 +940,10 @@ private:
             shootPopup (*p, "popup-import-sound");
         }
         {
+            auto p = filepopups::exportSound ({});
+            shootPopup (*p, "popup-export-sound");
+        }
+        {
             se::Tape tape;
             for (double seconds : { 125.64, 62.29, 2.0, 32.23, 0.23, 0.23 })
             {

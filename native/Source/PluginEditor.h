@@ -22,6 +22,7 @@
 #include "ui/AudioSourcePopup.h"
 #include "ui/CanvasComponent.h"
 #include "ui/EffectsPanel.h"
+#include "ui/FilePopups.h"
 #include "ui/KeyboardPalette.h"
 #include "ui/MixerComponent.h"
 #include "ui/MagnetophonComponent.h"
@@ -60,7 +61,9 @@ public:
     void newWindow();
     /** Import an audio file into a new sound Window. */
     void openFile();
-    void exportSound();   // File > Export Sound...
+    void exportSound();
+    /** Ask where to write the export Export Sound was answered with, and write it. */
+    void chooseExportTarget (std::shared_ptr<se::WindowState>, filepopups::ExportFormat);   // File > Export Sound...
     void importSound();   // File > Import Sound...
     /** Throw the focused Window away. No-op when nothing is focused; there is no
         undo in this program, but a Window is cheap to remake and the close box has

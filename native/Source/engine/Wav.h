@@ -21,6 +21,11 @@ namespace se {
 /** The WAV for `track` at `bps` (1..32). `out` is replaced. */
 void encodeTrackWav (const Track& track, double rateHz, int bps, std::vector<uint8_t>& out);
 
+/** A stereo WAV from two Tracks, interleaved (the shorter one runs out into
+    silence). `out` is replaced. */
+void encodeStereoWav (const Track& left, const Track& right, double rateHz, int bps,
+                      std::vector<uint8_t>& out);
+
 /** Pull the audio bytes back out, in the Track's own layout. Refuses (false, `data`
     untouched) anything that is not 1-channel integer PCM whose container is exactly
     this depth's frame, or whose data chunk is not `expectedBytes` long. */

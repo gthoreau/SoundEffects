@@ -1,6 +1,7 @@
 #include "Project.h"
 
 #include "Wav.h"
+#include "Export.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -230,6 +231,36 @@ bool writeSoundExport (const fs::path& file, const WindowState& sound, std::stri
         err = "Nothing could be written to " + file.filename().string() + ". Check that the disk is not full and that the file is not locked.";
         return false;
     }
+    return true;
+}
+
+bool writeMixdown (const fs::path& file, const WindowState& sound, std::string& err)
+{
+    std::vector<uint8_t> wav;
+    encodeMixdownWav (renderMixdown (sound), sound.rateHz, sound.bps, wav);
+    if (! writeAtomic (file, wav))
+    {
+        err = "Nothing could be written to " + file.filename().string() + ". Check that the disk is not full and that the file is not locked.";
+        return false;
+    }
+    return true;
+}
+
+bool writeStems (const fs::path& dir, const WindowState& sound, std::string& err)
+{
+    std::error_code ec;
+    fs::create_directories (dir, ec);
+    if (ec || ! fs::is_directory (dir, ec))
+    {
+        err = "The folder " + dir.filename().string() + " could not be made. Check that no file has that name and that its place is not locked.";
+        return false;
+    }
+    for (const auto& stem : splitStems (sound))
+        if (! writeAtomic (dir / stem.fileName, stem.wav))
+        {
+            err = "Nothing could be written to " + stem.fileName + ". Check that the disk is not full and that the folder is not locked.";
+            return false;
+        }
     return true;
 }
 

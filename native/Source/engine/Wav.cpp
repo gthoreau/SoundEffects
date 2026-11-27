@@ -28,12 +28,17 @@ void swapFrames (uint8_t* d, size_t bytes, int fs)
 
 } // namespace
 
-void encodeTrackWav (const Track& track, double rateHz, int bps, std::vector<uint8_t>& out)
+namespace {
+
+/** The 44-byte header, then `data` (interleaved, in a Track's byte order) re-ordered
+    for the file and padded to an even length. */
+void encodeWav (const std::vector<uint8_t>& data, int channels, double rateHz, int fs,
+                std::vector<uint8_t>& out)
 {
-    const int fs = std::max (1, frameSizeFor (bps));
-    const size_t n = track.data.size();
+    const size_t n = data.size();
     const uint32_t rate = (uint32_t) std::max (1.0, std::min (4294967295.0, std::round (rateHz)));
     const size_t pad = n & 1;
+    const uint32_t block = (uint32_t) (fs * channels);
 
     out.clear();
     out.reserve (44 + n + pad);
@@ -43,17 +48,39 @@ void encodeTrackWav (const Track& track, double rateHz, int bps, std::vector<uin
     tag (out, "fmt ");
     put32 (out, 16);
     put16 (out, 1);                    // integer PCM
-    put16 (out, 1);                    // mono
+    put16 (out, (uint32_t) channels);
     put32 (out, rate);
-    put32 (out, rate * (uint32_t) fs);
-    put16 (out, (uint32_t) fs);
+    put32 (out, rate * block);
+    put16 (out, block);
     put16 (out, (uint32_t) fs * 8);
     tag (out, "data");
     put32 (out, (uint32_t) n);
 
-    out.insert (out.end(), track.data.begin(), track.data.end());
+    out.insert (out.end(), data.begin(), data.end());
     swapFrames (out.data() + 44, n, fs);
     if (pad) out.push_back (0);
+}
+
+} // namespace
+
+void encodeTrackWav (const Track& track, double rateHz, int bps, std::vector<uint8_t>& out)
+{
+    encodeWav (track.data, 1, rateHz, std::max (1, frameSizeFor (bps)), out);
+}
+
+void encodeStereoWav (const Track& left, const Track& right, double rateHz, int bps,
+                      std::vector<uint8_t>& out)
+{
+    const size_t fs = (size_t) std::max (1, frameSizeFor (bps));
+    const size_t frames = std::max (left.data.size(), right.data.size()) / fs;
+    std::vector<uint8_t> data (frames * fs * 2, silentByte (bps));
+    for (int c = 0; c < 2; ++c)
+    {
+        const auto& from = c == 0 ? left.data : right.data;
+        for (size_t f = 0; f < from.size() / fs; ++f)
+            std::memcpy (data.data() + (2 * f + (size_t) c) * fs, from.data() + f * fs, fs);
+    }
+    encodeWav (data, 2, rateHz, (int) fs, out);
 }
 
 bool decodeTrackWav (const uint8_t* wav, size_t size, int bps, uint64_t expectedBytes,

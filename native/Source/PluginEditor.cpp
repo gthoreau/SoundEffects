@@ -933,31 +933,45 @@ void SoundEffectsAudioProcessorEditor::exportSound()
     se::WindowState captured;
     if (wc == nullptr || ! se::captureWindowState (processorRef.engine(), id, captured)) return;
 
-    auto popup = filepopups::exportSound (captured);
-    popup->onDismiss = [safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this),
-                        sound = std::make_shared<se::WindowState> (std::move (captured))] (int result)
-    {
-        if (result != 1 || safe == nullptr) return;
-
-        const auto start = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-                               .getChildFile (juce::String (se::safeFileName (sound->name)) + se::kEngineStateFileSuffix);
-        safe->chooser = std::make_unique<juce::FileChooser> ("Export Sound", start,
-                                                             "*" + juce::String (se::kEngineStateFileSuffix));
-        safe->chooser->launchAsync (juce::FileBrowserComponent::saveMode
-                                        | juce::FileBrowserComponent::canSelectFiles
-                                        | juce::FileBrowserComponent::warnAboutOverwriting,
-                                    [safe, sound] (const juce::FileChooser& fc)
+    auto popup = filepopups::exportSound (
+        [safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this),
+         sound = std::make_shared<se::WindowState> (std::move (captured))] (filepopups::ExportFormat format)
         {
-            const auto file = fc.getResult();
-            if (file == juce::File() || safe == nullptr) return;
-
-            std::string err;
-            if (! se::writeSoundExport (file.getFullPathName().toStdString(), *sound, err))
-                os8alert::tell (*safe, "Couldn't export the Sound", err);
+            if (safe != nullptr) safe->chooseExportTarget (sound, format);
         });
-    };
     auto* raw = popup.release();
     raw->showOver (*wc, { (wc->getWidth() - raw->getWidth()) / 2, (wc->getHeight() - raw->getHeight()) / 2 });
+}
+
+void SoundEffectsAudioProcessorEditor::chooseExportTarget (std::shared_ptr<se::WindowState> sound,
+                                                           filepopups::ExportFormat format)
+{
+    using Format = filepopups::ExportFormat;
+    // The stems go into a new folder, named in the save panel like a file.
+    const juce::String suffix = format == Format::sefx    ? juce::String (se::kEngineStateFileSuffix)
+                              : format == Format::mixdown ? juce::String (".wav")
+                                                          : juce::String();
+    const auto name = juce::String::fromUTF8 (se::safeFileName (sound->name).c_str())
+                      + (format == Format::stems ? juce::String (" stems") : suffix);
+    chooser = std::make_unique<juce::FileChooser> (
+        "Export Sound", juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile (name),
+        suffix.isEmpty() ? juce::String() : "*" + suffix);
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [safe = juce::Component::SafePointer<SoundEffectsAudioProcessorEditor> (this), sound, format]
+                          (const juce::FileChooser& fc)
+    {
+        const auto file = fc.getResult();
+        if (file == juce::File() || safe == nullptr) return;
+
+        const std::filesystem::path path (file.getFullPathName().toStdString());
+        std::string err;
+        const bool ok = format == Format::sefx    ? se::writeSoundExport (path, *sound, err)
+                      : format == Format::mixdown ? se::writeMixdown (path, *sound, err)
+                                                  : se::writeStems (path, *sound, err);
+        if (! ok)
+            os8alert::tell (*safe, "Couldn't export the Sound", juce::String::fromUTF8 (err.c_str()));
+    });
 }
 
 void SoundEffectsAudioProcessorEditor::importSound()

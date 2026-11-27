@@ -15,6 +15,7 @@
 
 #include "engine/Project.h"
 #include "engine/Wav.h"
+#include "engine/Export.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -155,8 +156,120 @@ void checkRejects (const std::vector<uint8_t>& blob, const std::string& what)
 
 } // namespace
 
+/** Export Sound's two .WAV formats (0.6.0 step 5.5). */
+static void exportTests()
+{
+    const auto sample16 = [] (const std::vector<uint8_t>& d, size_t f) { return se::getSample (d.data(), f * 2, 16); };
+    const auto track = [] (std::initializer_list<int> values, int bps, bool l, bool r)
+    {
+        se::Track t;
+        const size_t fs = (size_t) se::frameSizeFor (bps);
+        t.data.resize (values.size() * fs);
+        size_t i = 0;
+        for (int v : values) se::setSample (t.data.data(), i++ * fs, v, bps);
+        t.outLeft = l;
+        t.outRight = r;
+        return t;
+    };
+
+    se::WindowState w;
+    w.name = "Mix/me";
+    w.bps = 16;
+    w.rateHz = 44100.0;
+    w.tracks = { track ({ 1000, 2000, 30000 }, 16, true, false),
+                 track ({ 10, 20, 30, 40, 50 }, 16, false, true),
+                 track ({ 100, -100, 10000 }, 16, true, true),
+                 track ({ 7, 7, 7, 7, 7, 7 }, 16, false, false) };
+
+    auto mix = se::renderMixdown (w);
+    check (mix.left.data.size() == 12 && mix.right.data.size() == 12,
+           "mixdown: as long as the longest track, routed or not");
+    check (sample16 (mix.left.data, 0) == 1100 && sample16 (mix.right.data, 0) == 110
+               && sample16 (mix.left.data, 1) == 1900 && sample16 (mix.right.data, 1) == -80,
+           "mixdown: each track on its own sides, summed");
+    check (sample16 (mix.left.data, 2) == 32767, "mixdown: clipped, not normalised");
+    check (sample16 (mix.left.data, 4) == 0 && sample16 (mix.right.data, 4) == 50,
+           "mixdown: a track past its end is silent");
+
+    w.gain = 0.5f;
+    w.balance = 0.5f;                       // towards the right: the left side halved
+    w.muted = true;
+    mix = se::renderMixdown (w);
+    check (sample16 (mix.left.data, 0) == 275 && sample16 (mix.right.data, 0) == 55,
+           "mixdown: through the strip's volume and balance, its mute ignored");
+    check (sample16 (mix.left.data, 2) == 8192, "mixdown: the sum clips before the fader, as the mix does");
+    w.gain = 2.0f;
+    w.balance = 0.0f;
+    mix = se::renderMixdown (w);
+    check (sample16 (mix.left.data, 2) == 32767, "mixdown: a fader above unity clips at full scale");
+    w.gain = 1.0f;
+    w.tracks[0].volume = 0x80;              // half
+    mix = se::renderMixdown (w);
+    check (sample16 (mix.left.data, 0) == 600, "mixdown: each track at its own level");
+
+    std::vector<uint8_t> wav;
+    se::encodeMixdownWav (mix, w.rateHz, w.bps, wav);
+    const auto le16 = [&wav] (size_t at) { return (int) wav[at] | ((int) wav[at + 1] << 8); };
+    const auto le32 = [&le16] (size_t at) { return (uint32_t) le16 (at) | ((uint32_t) le16 (at + 2) << 16); };
+    check (wav.size() == 44 + 24 && le16 (22) == 2 && le32 (24) == 44100 && le32 (28) == 176400
+               && le16 (32) == 4 && le16 (34) == 16 && le32 (40) == 24,
+           "mixdown: a stereo 16-bit WAV at the Sound's rate");
+    check ((int16_t) le16 (44) == 600 && (int16_t) le16 (46) == 110 && (int16_t) le16 (50) == -80,
+           "mixdown: little-endian, left then right");
+
+    // 8-bit: one track on both sides comes through byte for byte.
+    se::WindowState eight;
+    eight.bps = 8;
+    eight.rateHz = 22254.5454;
+    eight.tracks = { track ({ -128, -1, 0, 1, 127 }, 8, true, true) };
+    const auto m8 = se::renderMixdown (eight);
+    check (m8.left.data == eight.tracks[0].data && m8.right.data == eight.tracks[0].data,
+           "mixdown: unity leaves 8-bit audio as it was");
+    se::encodeMixdownWav (m8, eight.rateHz, 8, wav);
+    check (wav.size() == 54 && le16 (34) == 8 && le32 (24) == 22255 && wav[44] == 0 && wav[45] == 0,
+           "mixdown: 8-bit WAV, unsigned, the rate rounded");
+
+    // 12-bit lives in 16-bit frames with its low four bits at zero, and stays so.
+    se::WindowState twelve;
+    twelve.bps = 12;
+    twelve.tracks = { track ({ 16 * 101 }, 12, true, true) };
+    twelve.gain = 0.5f;
+    const auto m12 = se::renderMixdown (twelve);
+    check (m12.left.data.size() == 2 && se::getSample (m12.left.data.data(), 0, 12) % 16 == 0,
+           "mixdown: rounded to the Sound's depth");
+
+    const auto stems = se::splitStems (w);
+    check (stems.size() == 4 && stems[0].fileName == "Mix-me - track 1.wav"
+               && stems[3].fileName == "Mix-me - track 4.wav",
+           "stems: one per track, named after the Sound");
+    bool raw = true;
+    for (size_t i = 0; i < stems.size(); ++i)
+    {
+        std::vector<uint8_t> back;
+        raw = raw && se::decodeTrackWav (stems[i].wav.data(), stems[i].wav.size(), 16,
+                                         w.tracks[i].data.size(), back)
+                  && back == w.tracks[i].data;
+    }
+    check (raw, "stems: each track byte for byte, before level, routing and fader");
+
+    const auto dir = std::filesystem::temp_directory_path() / "se-export-test";
+    std::filesystem::remove_all (dir);
+    std::filesystem::create_directories (dir);
+    std::string err;
+    check (se::writeStems (dir / "Mix me stems", w, err)
+               && std::filesystem::exists (dir / "Mix me stems" / "Mix-me - track 2.wav"),
+           "stems: the folder is made and filled");
+    check (se::writeMixdown (dir / "mix.wav", w, err) && std::filesystem::file_size (dir / "mix.wav") == 68,
+           "mixdown: written to a file");
+    check (! se::writeStems (dir / "mix.wav", w, err) && ! err.empty(),
+           "stems: a file in the folder's place is reported");
+    std::filesystem::remove_all (dir);
+}
+
 int main()
 {
+    exportTests();
+
     // --- capture -> serialize -> parse -> apply, into a DIFFERENT engine ------
     std::vector<uint8_t> blob;
     {

@@ -44,6 +44,7 @@ target_sources(SoundEffects PRIVATE
     Source/engine/EngineState.cpp
     Source/engine/Project.cpp
     Source/engine/Wav.cpp
+    Source/engine/Export.cpp
     Source/engine/Import.cpp
     Source/engine/Edit.cpp
     Source/engine/Resample.cpp

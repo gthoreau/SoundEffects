@@ -37,6 +37,15 @@ bool writeProject (const std::filesystem::path& dir, const std::string& name,
 bool writeSoundExport (const std::filesystem::path& file, const WindowState& sound,
                        std::string& err);
 
+/** One Sound as a stereo .wav of its mixdown (Export.h). */
+bool writeMixdown (const std::filesystem::path& file, const WindowState& sound,
+                   std::string& err);
+
+/** One Sound's tracks as mono .wavs (Export.h) in the folder `dir`, which is made if
+    it is not there. Files of the same name are replaced; nothing else is touched. */
+bool writeStems (const std::filesystem::path& dir, const WindowState& sound,
+                 std::string& err);
+
 /** Read any .sefx. A project's assets are loaded from beside the file. */
 bool readSefx (const std::filesystem::path& file, EngineState& out, std::string& err);
 

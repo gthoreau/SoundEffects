@@ -1,9 +1,5 @@
-// FilePopups — the File menu's Export Sound... and Import Sound... dialogs, on the
-// Os8Popup frame.
-//
-// NOT in the design system (spec: "improvise and we'll iterate"), so these are a
-// first draft built from the vocabulary of the popups around them: Small Label rows,
-// the checkbox of the Select Audio Source popup, Cancel / primary at the foot.
+// FilePopups — the File menu's Export Sound... (1447:9154) and Import Sound...
+// (1447:9162) popups, on the Os8Popup frame.
 
 #pragma once
 
@@ -16,12 +12,13 @@
 
 namespace filepopups {
 
-/** "2 tracks · 44.1 kHz · 16 bit · 3.20 s" */
-juce::String summaryOf (const se::WindowState&);
+/** What Export Sound writes, in the format menu's order (1447:9002). */
+enum class ExportFormat { sefx, mixdown, stems };
 
-/** Export Sound: names the Sound and what will be written. The primary button
-    ("Export…") answers 1; the caller then asks for the file. */
-std::unique_ptr<Os8Popup> exportSound (const se::WindowState& sound);
+/** Export Sound: the format menu, opened on the stereo mixdown every time. When the
+    primary button ("Export...") is pressed `doExport` gets the format picked; the
+    caller then asks where to write. */
+std::unique_ptr<Os8Popup> exportSound (std::function<void (ExportFormat)> doExport);
 
 /** Import Sound (1447:9162): the Sounds found in the file, ticked in a list. `import`
     gets the indices ticked (in file order). A file holding a single Sound opens with
