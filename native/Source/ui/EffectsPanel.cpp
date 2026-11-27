@@ -542,7 +542,7 @@ void EffectsPanelComponent::effectClicked (Entry& e)
     }
 
     // An effect with something to ask opens its tray; one with nothing to ask applies
-    // at once — unless Auto-apply is off, when it opens the "Apply X." tray instead.
+    // at once — unless Auto-apply is off, when it opens the 1-click tray instead.
     if (e.module->schema || ! AppPrefs::get().autoApply())
     {
         openEffect (e.module);
@@ -896,11 +896,11 @@ void EffectsPanelComponent::buildTray()
 
     if (openIsOneClick)
     {
-        // "Activate Auto-Apply", at the left of the buttons row.
+        // "Auto-Apply", at the left of the buttons row (543:9781).
         int h = fxlayout::kTitleH;
         for (const auto& r : layout->rows) h += r.h;
         h += fxlayout::kSpacerH;
-        auto t = std::make_unique<Os8Toggle> ("Activate Auto-Apply", Os8Toggle::Shape::checkbox);
+        auto t = std::make_unique<Os8Toggle> ("Auto-Apply", Os8Toggle::Shape::checkbox);
         t->setSize (t->preferredWidth(), os8::kToggleSize);
         t->setWantsKeyboardFocus (false);
         t->setMouseClickGrabsKeyboardFocus (false);
@@ -1664,7 +1664,7 @@ void EffectsPanelComponent::Content::paintTray (Graphics& g)
 
     // The warning, a line to each of the blank rows reserved for it.
     g.setColour (colour::black);
-    const int warnTop = fxlayout::kTitleH + 14 + 18;
+    const int warnTop = fxlayout::kTitleH + fxlayout::kSpacerH;
     for (int i = 0; i < (int) owner.warningLines.size(); ++i)
         os8::drawText (g, owner.warningLines[(size_t) i], os8::TextStyle::smallLabel,
                        { (float) ox, (float) (oy + warnTop + i * 12), (float) fxlayout::kContentW, 10.0f });

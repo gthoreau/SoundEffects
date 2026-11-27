@@ -181,7 +181,7 @@ private:
     std::vector<std::function<void()>> trayRefreshers;
     se::SettingsSchema openSchema;
     fxlayout::Layout openLayout;             // where the open tray's controls sit
-    bool openIsOneClick = false;             // the "Apply X." tray of a parameterless effect
+    bool openIsOneClick = false;             // the 1-click tray of a parameterless effect
     std::vector<juce::String> warningLines;  // Weird Tempo's apology, wrapped to the tray
     std::set<std::string> presetKeys;        // keys the author's starting values (or last time's) set
     std::set<std::string> touchedKeys;       // fields the user set (typed, slid, a setup): the scope leaves them be

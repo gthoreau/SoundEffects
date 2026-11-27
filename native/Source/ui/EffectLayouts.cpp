@@ -364,9 +364,11 @@ const Layout* layoutFor (const std::string& moduleName)
 
 Layout oneClickLayout (const std::string& effectName, int warningLines)
 {
-    Layout l = make (effectName, { gap (14), row (18, { label (0, 4, "Apply " + effectName + ".") }) });
-    // Weird Tempo's own apology, a line at a time: the tray is the one place it can be
-    // read BEFORE the irreversible click.
+    Layout l = make (effectName, {});
+    // [NATIVE] Weird Tempo's own apology, a line at a time between the title and the
+    // buttons (the design draws none): the tray is the one place it can be read BEFORE
+    // the irreversible click.
+    if (warningLines > 0) l.rows.push_back (gap (kSpacerH));
     for (int i = 0; i < warningLines; ++i) l.rows.push_back (row (12));
     return l;
 }

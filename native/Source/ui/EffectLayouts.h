@@ -69,7 +69,6 @@ struct Layout
 {
     std::string title;
     std::vector<Row> rows;       // between the title row and the buttons row
-    /** Is there a Reset / Apply row? The 1-click tray swaps it for its own. */
     int contentHeight() const;   // title + rows + spacer + buttons
 };
 
@@ -77,7 +76,8 @@ struct Layout
     draws none (the panel then has nothing to show but Apply). */
 const Layout* layoutFor (const std::string& moduleName);
 
-/** The 1-click tray (543:9781) — a title, one sentence, and the buttons row. */
+/** The 1-click tray (543:9781) — a title and the buttons row, which the panel opens
+    with the Auto-Apply box. Weird Tempo's warning lines go between the two. */
 Layout oneClickLayout (const std::string& effectName, int warningLines);
 
 /**

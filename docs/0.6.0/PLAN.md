@@ -119,7 +119,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 - [x] 3.7 **Track L / R toggles** ramped while the Sound plays (same)
 
 ### 4. Effects
-- [ ] 4.1 **1-click trays** laid out per `543:9781` (title, Auto-Apply left, Cancel / Apply right)
+- [x] 4.1 **1-click trays** laid out per `543:9781` (title, Auto-Apply left, Cancel / Apply right)
 - [ ] 4.2 **Waveform Generator**: Wave dropdown (`507:5908`, `1447:9097`), new Triangle (default); fixture for Triangle; old setups load unchanged
 
 ### 5. Popups redesign
@@ -185,3 +185,4 @@ One line per finished sub-step: date · sub-step · what was verified · commit.
 - 2026-11-27 · 3.6 · The tape's playback fades in; stop, jump, take change, record-over and a grab by the scrub copy the next 5 ms aside as a fade-out (`Engine::fadeOutTape`), so nothing reads the tape afterwards; the end of the tape ramps out. Clear no longer shortens the store at once: it is freed when the audio thread has let go, so a playback or scrub fades. Seven tape scenarios ≤ 0.013 and a hammering test; tests, TSan, ASan pass; standalone builds. Not heard by the author yet. For 6.2: deleting audio under a playing tape must fade the same way. · (this commit)
 - 2026-11-27 · 3.7 · A track's L / R share is eased over 5 ms in the transport's mix (live voice and fading ones alike); with nothing sounding it applies at once, so a toggle made while stopped is in force from the first sample. Toggle scenarios ≤ 0.013 and a hammering test; tests, TSan, ASan pass; standalone builds. Not heard by the author yet. · (this commit)
 - 2026-11-27 · 3 · The author tried 3.6 and 3.7 in the dev build: all good. Step 3 complete; next is 4. · (this commit)
+- 2026-11-27 · 4.1 · The 1-click tray is the title, then one row: Auto-Apply left, Cancel / Apply right (78 px high, matching `543:9781` in an `--effects-snapshot` capture); the "Apply X." sentence is gone. `[NATIVE]` Weird Tempo keeps its warning between title and buttons (the design draws none). Tests pass; box (in step with the group's), Apply, Cancel, Return and the warning tray drive-tested in the standalone. · (this commit)
