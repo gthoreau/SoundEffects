@@ -222,8 +222,9 @@ void Engine::sendBatch() noexcept
         for (const Command& c : batched)
         {
             if (c.kind == Command::Kind::SwapDoc) delete c.doc;
-            if (c.kind == Command::Kind::Transport && (c.tx == Command::Tx::Play || c.tx == Command::Tx::Stop))
-                if (auto* w = windowById (c.id)) --w->playStopSent;
+            if (c.kind == Command::Kind::Transport
+                && (c.tx == Command::Tx::Play || c.tx == Command::Tx::Stop || c.tx == Command::Tx::Pause))
+                if (auto* w = windowById (c.id)) --w->rollSent;
         }
     }
     batched.clear();
@@ -284,28 +285,33 @@ bool Engine::commitMeta (uint64_t id)
 }
 
 bool Engine::play (uint64_t id, const PlayOptions& opts)
-{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Play; c.id=id; c.play=opts; return postPlayStop (c, true); }
+{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Play; c.id=id; c.play=opts; return postRoll (c, TransportState::playing); }
 bool Engine::stop (uint64_t id)
-{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Stop; c.id=id; return postPlayStop (c, false); }
-bool Engine::postPlayStop (Command& c, bool isPlay) noexcept
+{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Stop; c.id=id; return postRoll (c, TransportState::stopped); }
+bool Engine::pause (uint64_t id)
+{
+    Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Pause; c.id=id;
+    const auto now = rollState (id);   // the command toggles; a stopped one stays so
+    return postRoll (c, now == TransportState::playing ? TransportState::paused
+                        : now == TransportState::paused ? TransportState::playing : TransportState::stopped);
+}
+bool Engine::postRoll (Command& c, TransportState leadsTo) noexcept
 {
     auto* w = windowById (c.id);
     if (w == nullptr) return post (c);
-    c.gen = w->playStopSent + 1;
+    c.gen = w->rollSent + 1;
     if (! post (c)) return false;
-    w->playStopSent = c.gen;
-    w->lastSentPlay = isPlay;
+    w->rollSent = c.gen;
+    w->sentState = leadsTo;
     return true;
 }
-bool Engine::isRolling (uint64_t id) noexcept
+TransportState Engine::rollState (uint64_t id) noexcept
 {
     auto* w = windowById (id);
-    if (w == nullptr || w->transport == nullptr) return false;
-    if (w->playStopApplied.load (std::memory_order_acquire) != w->playStopSent) return w->lastSentPlay;
-    return w->transport->uiState() == TransportState::playing;
+    if (w == nullptr || w->transport == nullptr) return TransportState::stopped;
+    if (w->rollApplied.load (std::memory_order_acquire) != w->rollSent) return w->sentState;
+    return w->transport->uiState();
 }
-bool Engine::pause (uint64_t id)
-{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Pause; c.id=id; return post (c); }
 bool Engine::advance (uint64_t id)
 { Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Advance; c.id=id; return post (c); }
 bool Engine::normalSpeed (uint64_t id)
@@ -611,8 +617,8 @@ void Engine::drainCommands() noexcept
                 {
                     applyTransport (*w, c);
                     // After the state it published, so a reader that sees this sees that.
-                    if (c.tx == Command::Tx::Play || c.tx == Command::Tx::Stop)
-                        w->playStopApplied.store (c.gen, std::memory_order_release);
+                    if (c.tx == Command::Tx::Play || c.tx == Command::Tx::Stop || c.tx == Command::Tx::Pause)
+                        w->rollApplied.store (c.gen, std::memory_order_release);
                 }
                 break;
 

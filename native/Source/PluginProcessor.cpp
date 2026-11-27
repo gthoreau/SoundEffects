@@ -9,6 +9,16 @@ SoundEffectsAudioProcessor::SoundEffectsAudioProcessor()
           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true))
 {
+    // Mapped notes with no editor open: the group the Keyboard was last aimed at
+    // shares them, and a take in progress is left alone.
+    midiMapImpl.reach = [this] (uint64_t id)
+    {
+        const auto& group = keyboardVoiceImpl.aimedAt();
+        if (std::find (group.begin(), group.end(), id) == group.end()) return std::vector<uint64_t> { id };
+        return group;
+    };
+    midiMapImpl.busy = [this] (uint64_t id) { return recorder().active() && recorder().window() == id; };
+
     // A new canvas is empty, no Sound at all (0.6.0); File ▸ New Sound makes one.
 
     // Reclaim Windows the audio thread retires (deletes happen here, msg thread).

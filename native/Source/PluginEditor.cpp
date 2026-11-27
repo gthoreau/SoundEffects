@@ -90,6 +90,8 @@ SoundEffectsAudioProcessorEditor::SoundEffectsAudioProcessorEditor (SoundEffects
     mixer.onChannelClicked = [this] (uint64_t id) { canvas.focusWindow (id); };
     mixer.onChannelShiftClicked = [this] (uint64_t id) { canvas.shiftClickWindow (id); };
     mixer.shareTargets = [this] (uint64_t id) { return canvas.shareTargets (id); };
+    // Mapped MIDI notes press the Sound's buttons while this window is open.
+    p.midiMapRouter().perform = [this] (const se::MapCommand& c) { canvas.performMapped (c); };
 
     // An effect rewrites the audio IN PLACE, so the Window's cached waveform peaks
     // — keyed on track length — cannot tell anything happened. Drop them
@@ -679,6 +681,7 @@ juce::PopupMenu SoundEffectsAudioProcessorEditor::canvasMenu()
 
 SoundEffectsAudioProcessorEditor::~SoundEffectsAudioProcessorEditor()
 {
+    processorRef.midiMapRouter().perform = nullptr;
     stopTimer();
     processorRef.recorder().onChanged = nullptr;     // the take (if any) carries on without a UI
     processorRef.recorder().onFinished = nullptr;

@@ -19,12 +19,13 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 
-namespace se { class KeyboardVoice; }
+namespace se { class KeyboardVoice; class MidiMapRouter; }
 
 class MidiKeyboardInput : private juce::MPEInstrument::Listener
 {
 public:
-    explicit MidiKeyboardInput (se::KeyboardVoice& target);
+    /** Notes C0..B0 go to the MIDI mapping and never reach the Keyboard. */
+    MidiKeyboardInput (se::KeyboardVoice& target, se::MidiMapRouter& mapping);
     ~MidiKeyboardInput() override;
 
     void handle (const se::MidiEvent& event);
@@ -39,5 +40,6 @@ private:
     void noteReleased (juce::MPENote) override;
 
     se::KeyboardVoice& palette;
+    se::MidiMapRouter& map;
     juce::MPEInstrument mpe;
 };

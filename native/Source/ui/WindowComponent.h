@@ -138,7 +138,9 @@ public:
         go, a Direction. */
     struct SharedPress
     {
-        enum class Kind { play, pause, stop, loop, fastForward, direction };
+        /** `retrigger` is a mapped note starting on Play: a Sound already playing
+            starts again. */
+        enum class Kind { play, retrigger, pause, stop, loop, fastForward, direction };
         Kind kind = Kind::play;
         bool on = true;                                        // loop, fastForward
         se::PlayDirection direction = se::PlayDirection::forward;

@@ -9,6 +9,7 @@
 #include "engine/Edit.h"
 #include "engine/KeyboardVoice.h"
 #include "engine/MidiMap.h"
+#include "engine/MidiMapRouter.h"
 #include "engine/MidiNotes.h"
 #include "engine/Engine.h"
 #include "engine/RecordConvert.h"
@@ -4282,6 +4283,64 @@ static void midiMapTests()
     check (p.allOff().empty(), "map: and nothing is left held");
 }
 
+// --- MIDI mapping (0.6.0 step 8.2): the routing ------------------------------
+
+static void midiMapRouterTests()
+{
+    using A = se::MapAction;
+    using S = se::TransportState;
+    se::Engine e;
+    e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
+    const uint64_t a = e.addWindow (loopDocument()), b = e.addWindow (loopDocument());
+    renderBlocks (e, 1);
+    se::MidiMapRouter r (e);
+    e.midiMap().setSlot (0, 0);                          // C0: slot 1, Play / Stop
+    e.midiMap().setPad (1, { 0, A::pause, A::play });    // C#0: the same Sound, Pause / Play
+    const auto state = [&e] (uint64_t id) { return e.windowById (id)->transport->uiState(); };
+    const auto head  = [&e] (uint64_t id) { return e.windowById (id)->transport->uiPlayhead(); };
+
+    r.noteOn (12); renderBlocks (e, 4);
+    check (state (a) == S::playing && state (b) == S::stopped, "route: a note plays its slot's Sound");
+    r.noteOn (13); renderBlocks (e, 1);
+    check (state (a) == S::paused, "route: another note pauses it");
+    r.noteOff (13); renderBlocks (e, 1);
+    check (state (a) == S::playing && head (a) >= static_cast<size_t> (4 * kBlock), "route: and its end resumes where it was");
+    r.noteOff (12); renderBlocks (e, 1);
+    check (state (a) == S::stopped, "route: then the earlier note, latest again, ends it");
+    r.noteOn (12); renderBlocks (e, 2); r.noteOn (13); r.noteOff (12); renderBlocks (e, 1);
+    check (state (a) == S::paused, "route: an earlier note's end does not cut the later one off");
+    r.noteOff (13); renderBlocks (e, 1);
+    check (state (a) == S::playing, "route: which ends in its own time");
+
+    r.noteOn (13); r.noteOff (13);   // within one block
+    renderBlocks (e, 1);
+    check (state (a) == S::playing, "route: a pause and its resume in one block");
+
+    r.noteOn (12); renderBlocks (e, 1);
+    check (head (a) <= static_cast<size_t> (2 * kBlock), "route: a note starting on Play restarts a playing Sound");
+    r.noteOff (12); renderBlocks (e, 1);
+    check (state (a) == S::stopped, "route: and ends on Stop");
+
+    r.reach = [a, b] (uint64_t) { return std::vector<uint64_t> { a, b }; };
+    r.noteOn (12); renderBlocks (e, 3);
+    check (state (a) == S::playing && state (b) == S::playing && head (a) == head (b), "route: a group starts together");
+    r.allOff(); renderBlocks (e, 1);
+    check (state (a) == S::stopped && state (b) == S::stopped, "route: all notes off ends it");
+    r.busy = [b] (uint64_t id) { return id == b; };
+    r.noteOn (12); renderBlocks (e, 1);
+    check (state (a) == S::playing && state (b) == S::stopped, "route: a Sound taking is left alone");
+    r.noteOff (12); renderBlocks (e, 1);
+
+    std::vector<se::MapCommand> pressed;
+    r.perform = [&pressed] (const se::MapCommand& c) { pressed.push_back (c); };
+    r.noteOn (12); r.noteOff (12); renderBlocks (e, 1);
+    check (pressed.size() == 2 && state (a) == S::stopped, "route: with an editor, commands go to it alone");
+    r.noteOn (12);
+    e.removeWindow (a);
+    r.noteOff (12);
+    check (pressed.size() == 3, "route: a Sound closed under a held note gets nothing more");
+}
+
 int main()
 {
     se::Engine engine;
@@ -4549,6 +4608,7 @@ int main()
     batchConcurrencyTests();
     keyboardGroupTests();
     midiMapTests();
+    midiMapRouterTests();
     transportButtonsTests();
     masterLevelTests();
     mainMuteTests();

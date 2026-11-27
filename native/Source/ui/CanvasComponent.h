@@ -110,6 +110,8 @@ public:
     /** The Sounds a shared function used on `id` reaches (the multi-selection, or
         `id` alone). */
     std::vector<uint64_t> shareTargets (uint64_t id) const { return selection.targets (id); }
+    /** A mapped MIDI note: as a press of that Sound's button, selection untouched. */
+    void performMapped (const se::MapCommand&);
 
     /** Select a Window AND put it in front of you: raised above its neighbours (the
         visible part of that in free placement, where Windows overlap) and panned

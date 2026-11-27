@@ -45,6 +45,8 @@ public:
     /** One Window alone, or none (0). */
     void setTarget (uint64_t windowId) { setTargets (windowId != 0 ? std::vector<uint64_t> { windowId }
                                                                    : std::vector<uint64_t> {}); }
+    /** The targets as the editor last set them. */
+    const std::vector<uint64_t>& aimedAt() const noexcept { return targets; }
     /** The primary: what the palette draws and Apply writes to. */
     uint64_t target() const;
 

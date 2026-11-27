@@ -1362,6 +1362,12 @@ void WindowComponent::receive (const SharedPress& p)
     switch (p.kind)
     {
         case SharedPress::Kind::play:  applyCues (buttons.pressPlay());  break;
+        case SharedPress::Kind::retrigger:
+            if (buttons.playOn() && buttons.record() == se::RecordLight::off && engine.isRolling (id))
+                engine.play (id, playButtonOptions());
+            else
+                applyCues (buttons.pressPlay());
+            break;
         case SharedPress::Kind::pause: applyCues (buttons.pressPause()); break;
         case SharedPress::Kind::stop:  applyCues (buttons.pressStop());  break;
         case SharedPress::Kind::loop:
@@ -1403,7 +1409,7 @@ void WindowComponent::applyCues (const se::TransportCues& cues)
     for (const auto cue : cues)
     {
         auto* w = engineWindow();
-        const auto ts = w != nullptr ? w->transport->uiState() : se::TransportState::stopped;
+        const auto ts = w != nullptr ? engine.rollState (id) : se::TransportState::stopped;
         switch (cue)
         {
             case se::TransportCue::play:

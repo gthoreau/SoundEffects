@@ -27,6 +27,7 @@
 #pragma once
 
 #include "CaptureRing.h"
+#include "MidiMap.h"
 #include "SoundDocument.h"
 #include "SpscQueue.h"
 #include "TapeStore.h"
@@ -109,11 +110,12 @@ struct Window
     std::atomic<float> meterLeft  { 0.0f };
     std::atomic<float> meterRight { 0.0f };
 
-    // Play / Stop posted and applied, for Engine::isRolling(): `sent` and `lastPlay`
-    // are the message thread's, `applied` the audio thread's answer.
-    uint32_t playStopSent = 0;
-    bool     lastSentPlay = false;
-    std::atomic<uint32_t> playStopApplied { 0 };
+    // Play / Stop / Pause posted and applied, for Engine::rollState(): `sent` and
+    // `sentState` (what the last one leads to) are the message thread's, `applied`
+    // the audio thread's answer.
+    uint32_t rollSent = 0;
+    TransportState sentState = TransportState::stopped;
+    std::atomic<uint32_t> rollApplied { 0 };
 
     // Audio thread only: removed, kept until its sound has faded out.
     bool leaving = false;
@@ -208,6 +210,10 @@ public:
     uint32_t nextAssetId() const noexcept { return assetCounter; }
     void     setNextAssetId (uint32_t next) noexcept { assetCounter = next < 1 ? 1 : next; }
 
+    /** The canvas's MIDI mapping (0.6.0 step 8): message-thread data. */
+    MidiMap& midiMap() noexcept { return mapping; }
+    const MidiMap& midiMap() const noexcept { return mapping; }
+
     // --- message thread: mixer slots ----------------------------------------
     // Every Window sits in a numbered mixer slot (Window::slot), always 0..N-1 with
     // no gaps (decision of 2026-10-31): addWindow seats a new one last; removing a
@@ -242,10 +248,12 @@ public:
     // --- message thread: transport (applied on the audio thread, in order) ---
     bool play  (uint64_t id, const PlayOptions& opts = {});
     bool stop  (uint64_t id);
-    /** Message thread: is it playing, counting a Play or Stop the audio thread has
-        not applied yet? A key let go and struck again within one block must not take
-        its own stopping Window for a rolling one. */
-    bool isRolling (uint64_t id) noexcept;
+    /** Message thread: the transport's state, counting a Play, Stop or Pause the
+        audio thread has not applied yet. A key let go and struck again within one
+        block must not take its own stopping Window for a rolling one, nor a mapped
+        note's resume miss the pause just sent. */
+    TransportState rollState (uint64_t id) noexcept;
+    bool isRolling (uint64_t id) noexcept { return rollState (id) == TransportState::playing; }
     bool pause (uint64_t id);
     bool advance (uint64_t id);
     bool normalSpeed (uint64_t id);
@@ -450,7 +458,7 @@ private:
         int             refTrack = -1;      // RecordJoin
         DocMeta         meta {};            // SetMeta
         TapeSource      tape {};            // TapeCaptureStart
-        uint32_t        gen = 0;            // TapePlay / TapeStop; Play / Stop
+        uint32_t        gen = 0;            // TapePlay / TapeStop; Play / Stop / Pause
     };
 
     bool post (const Command& c) noexcept
@@ -460,7 +468,7 @@ private:
         return true;
     }
     void sendBatch() noexcept;
-    bool postPlayStop (Command& c, bool isPlay) noexcept;
+    bool postRoll (Command& c, TransportState leadsTo) noexcept;
 
     void drainCommands() noexcept;
     /** Hand the live Window at `index` back to the message thread. Audio thread. */
@@ -482,6 +490,7 @@ private:
     void compactSlots();
     uint64_t nextId = 1;
     uint32_t assetCounter = 1;
+    MidiMap mapping;
     int batchDepth = 0;
     std::vector<Command> batched; // a Batch's commands, until it closes
 

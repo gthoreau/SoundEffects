@@ -9,6 +9,7 @@
 
 #include "engine/Engine.h"
 #include "engine/KeyboardVoice.h"
+#include "engine/MidiMapRouter.h"
 #include "engine/MidiNotes.h"
 #include "ui/MidiKeyboardInput.h"
 #include "engine/EngineState.h"
@@ -72,6 +73,8 @@ public:
      * feeds them to the keyboard voice (`MidiKeyboardInput`), editor open or not.
      */
     /** The keyboard palette's voice, owned here so MIDI plays with the editor closed. */
+    /** Where mapped MIDI notes go (the editor plugs its transport path in). */
+    se::MidiMapRouter& midiMapRouter() noexcept { return midiMapImpl; }
     se::KeyboardVoice& keyboardVoice() noexcept { return keyboardVoiceImpl; }
 
     bool supportsMPE() const override { return true; }   // hosts then send per-note pitch bend
@@ -104,7 +107,8 @@ private:
     se::Recorder recorderImpl { engineImpl };
     se::TapeDeck tapeDeckImpl { engineImpl };
     se::KeyboardVoice keyboardVoiceImpl { engineImpl };
-    MidiKeyboardInput midiInput { keyboardVoiceImpl };
+    se::MidiMapRouter midiMapImpl { engineImpl };
+    MidiKeyboardInput midiInput { keyboardVoiceImpl, midiMapImpl };
     MidiPump midiPump { *this };
     juce::AudioBuffer<float> inputCopy;   // the input channels, aside from the output
 

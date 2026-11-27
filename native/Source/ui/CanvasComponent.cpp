@@ -279,6 +279,16 @@ void CanvasComponent::share (uint64_t source, const WindowComponent::SharedPress
         if (auto* wc = find (id)) wc->receive (press);
 }
 
+void CanvasComponent::performMapped (const se::MapCommand& c)
+{
+    if (find (c.sound) == nullptr) refresh();   // made since the last tick
+    using Kind = WindowComponent::SharedPress::Kind;
+    const Kind kind = c.action == se::MapAction::stop  ? Kind::stop
+                    : c.action == se::MapAction::pause ? Kind::pause
+                    : c.fromStart                      ? Kind::retrigger : Kind::play;
+    share (c.sound, { kind });
+}
+
 void CanvasComponent::selectionChanged()
 {
     for (auto& w : windows)
