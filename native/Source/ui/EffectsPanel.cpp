@@ -1098,6 +1098,7 @@ void EffectsPanelComponent::buildTray()
                     if (c.kind == Kind::notePick || c.kind == Kind::octavePick) dd->setDisabledItem (0);
                     auto* dp = static_cast<Os8Dropdown*> (add (std::move (dd), { x, y, c.w, os8::kDropdownHeight }));
                     const Kind kind = c.kind;
+                    const std::vector<int> values = c.values;
 
                     // Waveform Generator's pitch: the two popups name a note of A = 440 Hz equal
                     // temperament, and picking one sets the frequency the field shows.
@@ -1116,10 +1117,11 @@ void EffectsPanelComponent::buildTray()
                         return std::abs (hz - exact) <= exact * 1.0e-9 && oct >= 0 && oct <= 8;
                     };
 
-                    dp->onChange = [this, kind, key, midiNow] (int i)
+                    dp->onChange = [this, kind, key, midiNow, values] (int i)
                     {
                         if (kind == Kind::choice)
-                            working[key] = se::Value ((int64_t) (i + 1));
+                            working[key] = se::Value ((int64_t) (juce::isPositiveAndBelow (i, (int) values.size())
+                                                                     ? values[(size_t) i] : i + 1));
                         else if (kind == Kind::curvePreset && i >= 1)
                             working[key] = se::Value ((int64_t) (i == 1 ? 50 : i == 2 ? 100 : 200));
                         else if (kind == Kind::ratePreset && i < (int) std::size (kRates))
@@ -1137,11 +1139,16 @@ void EffectsPanelComponent::buildTray()
                         refreshTray();
                     };
 
-                    trayRefreshers.push_back ([this, dp, kind, key, gate, midiNow, isNote]
+                    trayRefreshers.push_back ([this, dp, kind, key, gate, midiNow, isNote, values]
                     {
                         int sel = 0;
                         if (kind == Kind::choice)
-                            sel = (int) se::getInt (working, key, 1) - 1;
+                        {
+                            const auto v = (int) se::getInt (working, key, 1);
+                            sel = v - 1;
+                            if (! values.empty())
+                                sel = (int) std::distance (values.begin(), std::find (values.begin(), values.end(), v));
+                        }
                         else if (kind == Kind::curvePreset)
                         {
                             const auto v = se::getInt (working, key, 100);

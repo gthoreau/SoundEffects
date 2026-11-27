@@ -120,7 +120,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done (see the journal).
 
 ### 4. Effects
 - [x] 4.1 **1-click trays** laid out per `543:9781` (title, Auto-Apply left, Cancel / Apply right)
-- [ ] 4.2 **Waveform Generator**: Wave dropdown (`507:5908`, `1447:9097`), new Triangle (default); fixture for Triangle; old setups load unchanged
+- [x] 4.2 **Waveform Generator**: Wave dropdown (`507:5908`, `1447:9097`), new Triangle (default); fixture for Triangle; old setups load unchanged
 
 ### 5. Popups redesign
 - [ ] 5.1 **The new frame** (`Os8Popup` reworked: title bar, movable, Headlines labels, placement as 0.5.0) and the four edit popups on it: Leave Silence, Shift Sound, Select Peak, Select Exactly
@@ -186,3 +186,4 @@ One line per finished sub-step: date · sub-step · what was verified · commit.
 - 2026-11-27 · 3.7 · A track's L / R share is eased over 5 ms in the transport's mix (live voice and fading ones alike); with nothing sounding it applies at once, so a toggle made while stopped is in force from the first sample. Toggle scenarios ≤ 0.013 and a hammering test; tests, TSan, ASan pass; standalone builds. Not heard by the author yet. · (this commit)
 - 2026-11-27 · 3 · The author tried 3.6 and 3.7 in the dev build: all good. Step 3 complete; next is 4. · (this commit)
 - 2026-11-27 · 4.1 · The 1-click tray is the title, then one row: Auto-Apply left, Cancel / Apply right (78 px high, matching `543:9781` in an `--effects-snapshot` capture); the "Apply X." sentence is gone. `[NATIVE]` Weird Tempo keeps its warning between title and buttons (the design draws none). Tests pass; box (in step with the group's), Apply, Cancel, Return and the warning tray drive-tested in the standalone. · (this commit)
+- 2026-11-27 · 4.2 · Wave is a dropdown (Triangle, Sawtooth, Sine, Square; 98 px, `507:5908` / `1447:9097`) that the panel opens on Triangle. `[NATIVE]` `kTriangle = 4`, in phase with the sine; 1–3 unchanged, so saved setups load as before; `defaults()` stays Sine as in the TS reference, changed with the C++. New fixture (215/215), npm 578, typecheck, engine and state tests pass; menu, all four waves applied at 5 Hz, and saving and recalling a setup drive-tested in the standalone. · (this commit)

@@ -579,6 +579,8 @@ const OVERRIDES: Record<string, CaseSpec[]> = {
       sel: "mid",
       params: { frequency: 4000, amplitude: 90, waveType: 2, length: 40, units: Unit.bytes },
     },
+    // Triangle over several cycles, so all three of its segments are sampled.
+    { shape: "mono16", sel: "mid", params: { frequency: 4000, amplitude: 90, waveType: 4 } },
   ],
   "Zero Crosser": [
     { shape: "mono8", sel: "mid", params: { action: 1, side: 3 } },

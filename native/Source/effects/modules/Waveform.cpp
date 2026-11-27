@@ -4,6 +4,10 @@
 // Synthesises into the selection: Length, Frequency (Hz), Amplitude (%), and a
 // Sine / Square / Sawtooth radio.
 //
+// [NATIVE]: Triangle is ours (0.9.2 has none). It is the fourth value, so the first
+// three keep their meaning in saved setups. The panel opens on it; defaults() stays
+// on Sine, as the TS reference's does.
+//
 // [INTERPRETED]: the DITL gives the fields; nothing gives the waveform
 // conventions. Sawtooth's direction and phase, whether the amplitude percentage is
 // of the bit depth's max or of 2^(bps−1) (Dither uses the latter, and is off by one
@@ -23,7 +27,7 @@ namespace se::modules {
 
 namespace {
 
-constexpr int64_t kSine = 1, kSquare = 2, kSawtooth = 3;
+constexpr int64_t kSine = 1, kSquare = 2, kSawtooth = 3, kTriangle = 4;
 
 /** One cycle of the chosen wave at phase `p` (0..1), in −1..1. */
 double waveSample (int64_t waveType, double p) noexcept
@@ -35,6 +39,8 @@ double waveSample (int64_t waveType, double p) noexcept
         case kSquare:   return p < 0.5 ? 1.0 : -1.0;
         // Rising ramp −1 → 1, reset. Direction is inference.
         case kSawtooth: return 2.0 * p - 1.0;
+        // In phase with the sine: from 0 up to 1, down to −1, back to 0.
+        case kTriangle: return p < 0.25 ? 4.0 * p : p < 0.75 ? 2.0 - 4.0 * p : 4.0 * p - 4.0;
         default:        return 0.0;
     }
 }
@@ -66,7 +72,7 @@ EffectModule makeWaveformGenerator()
             staticText ("Hz"),
             numberField ("amplitude", "Amplitude:"),
             staticText ("%"),
-            radioGroup ("waveType", { "Sine", "Square", "Sawtooth" }),
+            radioGroup ("waveType", { "Sine", "Square", "Sawtooth", "Triangle" }),
         };
     };
 

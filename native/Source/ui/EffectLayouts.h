@@ -26,7 +26,7 @@ enum class Kind
     legendEnd,
     field,        // a text field bound to `key`
     units,        // the units dropdown bound to `key` (the Unit enum, 0-based)
-    choice,       // a dropdown over `items`, bound to `key` (1-based, as radios are)
+    choice,       // a dropdown over `items`, bound to `key` (1-based, as radios are, or `values`)
     setup,        // the Setup: dropdown (step 6 gives it contents)
     check,        // a checkbox bound to `key`; key "@extend" is the panel's own
     radio,        // one radio of the group `key`, standing for `value`
@@ -57,6 +57,7 @@ struct Cell
     int flags = 0;
     bool small = false;          // a 9 pt label
     std::string gate;            // enabled only while this boolean key is true
+    std::vector<int> values;     // choice: what the key holds for each item, when not 1, 2, 3...
 };
 
 struct Row

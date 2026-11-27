@@ -4,6 +4,9 @@
  * Synthesises into the selection: Length, Frequency (Hz), Amplitude (%), and a
  * Sine / Square / Sawtooth radio.
  *
+ * `[NATIVE]`: Triangle is ours (0.9.2 has none). It is the fourth value, so the
+ * first three keep their meaning in saved setups.
+ *
  * `[INTERPRETED]`: the DITL gives the fields; nothing gives the waveform
  * conventions. Sawtooth's direction and phase, whether the amplitude percentage
  * is of the bit depth's max or of 2^(bps−1) (Dither uses the latter, and is off
@@ -18,7 +21,7 @@ import { ItemType, type SettingsSchema } from "../runtime/schema.js";
 import { fixedToDouble, Unit } from "../units.js";
 import type { EffectModule } from "../runtime/module.js";
 
-export const WaveType = { sine: 1, square: 2, sawtooth: 3 } as const;
+export const WaveType = { sine: 1, square: 2, sawtooth: 3, triangle: 4 } as const;
 
 export interface WaveformSettings {
   /** Bytes. 0 = the whole selection. */
@@ -28,7 +31,7 @@ export interface WaveformSettings {
   frequency: number;
   /** Percent of full scale. */
   amplitude: number;
-  /** 1 = Sine, 2 = Square, 3 = Sawtooth. */
+  /** 1 = Sine, 2 = Square, 3 = Sawtooth, 4 = Triangle. */
   waveType: number;
 }
 
@@ -43,6 +46,9 @@ export function waveSample(waveType: number, p: number): number {
     case WaveType.sawtooth:
       // Rising ramp -1 -> 1, reset. Direction is inference.
       return 2 * p - 1;
+    case WaveType.triangle:
+      // In phase with the sine: from 0 up to 1, down to -1, back to 0.
+      return p < 0.25 ? 4 * p : p < 0.75 ? 2 - 4 * p : 4 * p - 4;
     default:
       return 0;
   }
@@ -70,7 +76,7 @@ export const WaveformGenerator: EffectModule<WaveformSettings> = {
     { type: ItemType.ignore, label: "Hz" },
     { type: ItemType.editFieldNumerical, key: "amplitude", label: "Amplitude:" },
     { type: ItemType.ignore, label: "%" },
-    { type: ItemType.radioButton, key: "waveType", options: ["Sine", "Square", "Sawtooth"] },
+    { type: ItemType.radioButton, key: "waveType", options: ["Sine", "Square", "Sawtooth", "Triangle"] },
   ],
 
   effect(doc, host, prefs) {

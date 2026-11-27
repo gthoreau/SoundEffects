@@ -36,9 +36,10 @@ Cell units (string key, float x, float y, int w = 100, string gate = {})
     return c;
 }
 
-Cell choice (string key, float x, float y, int w, string items)
+Cell choice (string key, float x, float y, int w, string items, std::vector<int> values = {})
 {
     Cell c; c.kind = Kind::choice; c.x = x; c.y = y; c.w = w; c.key = std::move (key); c.text = std::move (items);
+    c.values = std::move (values);
     return c;
 }
 
@@ -328,9 +329,9 @@ std::map<string, Layout> build()
                    [] { Cell c; c.kind = Kind::octavePick; c.x = 114; c.y = 4; c.w = 46; c.key = "frequency"; return c; }(),
                    field ("frequency", 164, 4.5f, 61, {}, kilo), label (229, 7.5f, "kHz") }),
         row (24, { label (0, 7, "Amplitude:"), field ("amplitude", 64, 4, 70), label (138, 7, "%") }),
-        row (20, { label (0, 5, "Wave:"), radio ("waveType", 1, 64, 4, "Sine") }),
-        row (20, { radio ("waveType", 2, 64, 4, "Square") }),
-        row (20, { radio ("waveType", 3, 64, 4, "Sawtooth") }),
+        // 1447:9097's order; the values are the module's (1 Sine ... 4 Triangle).
+        row (25, { label (0, 7.5f, "Wave:"),
+                   choice ("waveType", 64, 4, 98, "Triangle|Sawtooth|Sine|Square", { 4, 3, 1, 2 }) }),
     });
 
     m["Zero Crosser"] = make ("Zero Crosser", {
@@ -426,7 +427,7 @@ const std::map<std::string, std::vector<Preset>>& presetTable()
         t["Resample Rate"] = { { "newRate", 44100, As::fixedHz } };
         t["Upsample Bits"] = { { "newBps", 16, I } };
         t["Waveform Generator"] = { { "length", 1000, D }, { "units", 3, I }, { "frequency", 440.0, R },
-                                    { "amplitude", 50, I }, { "waveType", 1, I } };
+                                    { "amplitude", 50, I }, { "waveType", 4, I } };
         t["Zero Crosser"] = { { "action", 2, I }, { "side", 3, I } };
 
         auto hose = std::vector<Preset> { { "units", 3, I }, { "newLength", 5000, D }, { "stereo", 1, I } };

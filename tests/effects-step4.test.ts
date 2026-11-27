@@ -741,6 +741,9 @@ describe("Waveform Generator", () => {
     expect(waveSample(WaveType.square, 0.75)).toBe(-1);
     expect(waveSample(WaveType.sawtooth, 0)).toBe(-1);
     expect(waveSample(WaveType.sawtooth, 1)).toBeCloseTo(1);
+    expect(
+      [0, 0.125, 0.25, 0.5, 0.75, 0.875].map((p) => waveSample(WaveType.triangle, p)),
+    ).toEqual([0, 0.5, 1, 0, -1, -0.5]);
   });
 
   it("synthesises into the selection at the requested amplitude", () => {
