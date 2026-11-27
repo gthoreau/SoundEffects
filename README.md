@@ -174,7 +174,6 @@ Worth knowing before you spend an evening on a patch:
 - **There is no undo**, and there never will be. That one is deliberate: the
   menu item is there and always greyed. See the original's own alert text in the
   spec.
-- **MIDI Mapping** has been tried in the app, not yet inside a DAW.
 - **The plug-in's MPE** reaches the Audio Unit; the VST3 wrapper has no
   note-expression support yet, so try the AU for a pitch slide from a DAW.
 - **The Magnetophon's tape is not saved**: use **Send** to keep it. Closing a
