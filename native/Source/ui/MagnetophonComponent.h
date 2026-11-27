@@ -8,7 +8,9 @@
 //   - the strip (53 px): the tape's waveform scrolling under a fixed centre playhead,
 //     black behind it and grey ahead, a "Take N" label at each take (it sticks to the
 //     left edge while its take runs off it, and shortens in a narrow one); the take
-//     being recorded is red. Drag it to wind the tape by hand;
+//     being recorded is red. Drag it to wind the tape by hand. The take under the
+//     mouse shows a trash icon that deletes it, audio and all, with no question
+//     asked (greyed while recording);
 //   - the status line (16 px, dark): "From: <source>", the position centred on the
 //     playhead, then rate and bits;
 //   - the transport (44 px): Source, Record, Stop, Previous, Play, Next, Send.
@@ -22,6 +24,7 @@
 #include "engine/Tape.h"
 
 #include <functional>
+#include <optional>
 #include <vector>
 
 class MagnetophonComponent : public juce::Component
@@ -51,6 +54,9 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
 
     // Layout, in content coordinates (Figma's component less its frame and bar).
     static constexpr int kDeckHeight = 137;
@@ -63,6 +69,11 @@ public:
     static constexpr double kPixelsPerSecond = 24.0;
 
 private:
+    /** The delete-take icon of the take under a point: where it is drawn, and where
+        a click on it counts (never outside its take). take -1: no take there. */
+    struct Trash { int take = -1; juce::Rectangle<int> icon, hit; };
+    Trash trashAt (juce::Point<int>) const noexcept;
+    void hover (std::optional<juce::Point<int>>);
     void updateButtons();
     void updatePeaks();
     size_t binFrames() const noexcept;
@@ -96,11 +107,16 @@ private:
     size_t lastPos = 0, lastLen = 0;
     se::Tape::Mode lastMode = se::Tape::Mode::stopped;
     int lastTakes = 0;
+    uint32_t lastCuts = 0, peakCuts = 0;
     float angleL = 0.0f, angleR = 0.0f;   // reel rotations, radians (screen clockwise)
 
     // Winding the tape by hand in the strip.
     bool scrubbing = false;
     size_t scrubFrom = 0;
+    // The mouse over the panel, and a press on a trash icon.
+    std::optional<juce::Point<int>> mouse;
+    Trash pressed;
+    uint32_t lastDelete = 0;   // getMillisecondCounter()
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MagnetophonComponent)
 };

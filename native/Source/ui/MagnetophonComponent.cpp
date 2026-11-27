@@ -187,6 +187,21 @@ void drawTakeLabel (juce::Graphics& g, const juce::String& s, int x, int y, juce
     at (0, 0);
 }
 
+/** "icon_delete-take" 1314:15446: a 7 x 8 pixel trash can on its own white, with its
+    top left at (x, y). */
+void drawTrash (juce::Graphics& g, int x, int y, juce::Colour ink)
+{
+    g.setColour (white);
+    g.fillRect (x, y + 2, 7, 1);
+    g.fillRect (x + 1, y + 3, 5, 4);
+    g.setColour (ink);
+    g.fillRect (x + 2, y, 3, 1);                                   // the handle
+    g.fillRect (x, y + 1, 7, 1);                                   // the lid
+    for (int col : { 0, 6 }) g.fillRect (x + col, y + 3, 1, 5);    // the sides
+    g.fillRect (x, y + 7, 7, 1);                                   // the bottom
+    for (int col : { 2, 4 }) g.fillRect (x + col, y + 3, 1, 3);    // the ribs
+}
+
 } // namespace
 
 MagnetophonComponent::MagnetophonComponent (se::Engine& e, se::TapeDeck& d) : engine (e), deck (d)
@@ -270,10 +285,11 @@ void MagnetophonComponent::updatePeaks()
     size_t from = 0, to = 0;
     bool any = deck.takeWrittenFrames (from, to);
 
-    if (bin != cachedBin || len < lastLen)
+    if (bin != cachedBin || deck.cuts() != peakCuts)
     {
         // A new time scale, or a cleared tape: start over.
         cachedBin = bin;
+        peakCuts = deck.cuts();
         peaks.clear();
         from = 0; to = len; any = len > 0;
     }
@@ -310,7 +326,8 @@ void MagnetophonComponent::refresh()
     const double rate = t.rate() > 0.0 ? t.rate() : engine.sampleRate();
     const bool moving = t.mode() != se::Tape::Mode::stopped || scrubbing || lastMode != se::Tape::Mode::stopped;
     const bool jump = ! scrubbing && std::abs ((double) pos - (double) lastPos) > rate;   // more than a second in a tick
-    if (pos != lastPos && moving && ! jump)
+    const bool cut = deck.cuts() != lastCuts;
+    if (pos != lastPos && moving && ! jump && ! cut)
     {
         const float travel = (float) (((double) pos - (double) lastPos) / rate) * kTapeSpeed;
         constexpr float twoPi = juce::MathConstants<float>::twoPi;
@@ -318,11 +335,12 @@ void MagnetophonComponent::refresh()
         angleR = std::fmod (angleR - travel / kRightPack, twoPi);
     }
 
-    const bool changed = pos != lastPos || len != lastLen || t.mode() != lastMode || t.numTakes() != lastTakes;
+    const bool changed = cut || pos != lastPos || len != lastLen || t.mode() != lastMode || t.numTakes() != lastTakes;
     updatePeaks();
     if (changed)
     {
         repaint (0, 0, getWidth(), kStatusTop + kStatusHeight);
+        lastCuts = deck.cuts();
         lastPos = pos; lastLen = len; lastMode = t.mode(); lastTakes = t.numTakes();
     }
     updateButtons();
@@ -407,7 +425,46 @@ void MagnetophonComponent::paintStrip (juce::Graphics& g) const
 
     g.setColour (black);
     g.fillRect (kPlayheadX - 1, top + 1, 2, kStripHeight - 2);
+
+    // Delete a take: on the take under the mouse, greyed while one is being recorded.
+    if (mouse.has_value() && ! scrubbing)
+    {
+        const auto trash = trashAt (*mouse);
+        const bool rec = t.mode() == se::Tape::Mode::recording || deck.finishing();
+        if (trash.take >= 0)
+            drawTrash (g, trash.icon.getX(), trash.icon.getY(), rec ? gray400 : black);
+    }
 }
+
+MagnetophonComponent::Trash MagnetophonComponent::trashAt (juce::Point<int> p) const noexcept
+{
+    const auto& t = deck.tape();
+    if (p.x < 0 || p.x >= getWidth() || p.y < kStripTop || p.y >= kStripTop + kStripHeight) return {};
+    for (int i = 0; i < t.numTakes(); ++i)
+    {
+        const int start = xOfFrame (t.takeStart (i)), end = xOfFrame (t.takeEnd (i));
+        const int left = std::max (start, 0), right = std::min (end, getWidth());
+        if (p.x < left || p.x >= right) continue;
+        // By the take's start (it stays at the left edge as the take runs off it);
+        // centred in a take too narrow for that.
+        int x = start > 0 ? start + 4 : 5;
+        if (x + 8 > right) x = juce::jlimit (0, getWidth() - 7, (left + right - 7) / 2);
+        const juce::Rectangle<int> icon (x, kStripTop + 41, 7, 8);
+        const auto hit = icon.expanded (3).getIntersection ({ left, kStripTop, right - left, kStripHeight });
+        return { i, icon, hit };
+    }
+    return {};
+}
+
+void MagnetophonComponent::hover (std::optional<juce::Point<int>> p)
+{
+    mouse = p;
+    repaint (0, kStripTop, getWidth(), kStripHeight);
+}
+
+void MagnetophonComponent::mouseEnter (const juce::MouseEvent& e) { hover (e.getPosition()); }
+void MagnetophonComponent::mouseMove (const juce::MouseEvent& e)  { hover (e.getPosition()); }
+void MagnetophonComponent::mouseExit (const juce::MouseEvent&)    { hover (std::nullopt); }
 
 void MagnetophonComponent::paintStatus (juce::Graphics& g) const
 {
@@ -462,6 +519,18 @@ void MagnetophonComponent::mouseDown (const juce::MouseEvent& e)
 {
     // Wind the tape by hand, heard: grab the strip and drag it (a scrub). A playing
     // tape stops while held and plays on from where it is let go.
+    hover (e.getPosition());
+    pressed = trashAt (e.getPosition());
+    if (pressed.take >= 0 && pressed.hit.contains (e.getPosition()))
+    {
+        // The second press of a double click would take the take that slid under it.
+        // Timed from the last delete: the event's click count also goes up for
+        // clicks that deleted nothing.
+        if (juce::Time::getMillisecondCounter() - lastDelete < (uint32_t) juce::MouseEvent::getDoubleClickTimeout())
+            pressed = {};
+        return;
+    }
+    pressed = {};
     scrubbing = e.y >= kStripTop && e.y < kStripTop + kStripHeight && deck.scrubBegin();
     scrubFrom = deck.tape().position();
     if (scrubbing) setMouseCursor (juce::MouseCursor::DraggingHandCursor);
@@ -469,14 +538,20 @@ void MagnetophonComponent::mouseDown (const juce::MouseEvent& e)
 
 void MagnetophonComponent::mouseDrag (const juce::MouseEvent& e)
 {
+    mouse = e.getPosition();
     if (! scrubbing) return;
     const int64_t to = (int64_t) scrubFrom - (int64_t) e.getDistanceFromDragStartX() * (int64_t) std::max<size_t> (1, cachedBin);
     deck.scrubTo ((size_t) std::max<int64_t> (0, to));
     refresh();
 }
 
-void MagnetophonComponent::mouseUp (const juce::MouseEvent&)
+void MagnetophonComponent::mouseUp (const juce::MouseEvent& e)
 {
+    // A button's click: let go where it was pressed (a playing tape may have scrolled
+    // the icon along since).
+    if (pressed.take >= 0 && pressed.hit.contains (e.getPosition()) && deck.deleteTake (pressed.take))
+        lastDelete = juce::Time::getMillisecondCounter();
+    pressed = {};
     if (scrubbing) deck.scrubEnd();
     scrubbing = false;
     setMouseCursor (juce::MouseCursor::NormalCursor);

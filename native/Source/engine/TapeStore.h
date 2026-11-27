@@ -3,7 +3,7 @@
 // thread reads while the tape plays. No JUCE.
 //
 // Threading:
-//   - reserve() / write() / setLength() / release(): message thread only.
+//   - reserve() / write() / setLength() / erase() / release(): message thread only.
 //   - read(): the audio thread (tape playback), or the message thread.
 //   - The chunk table is allocated once, so a chunk pointer never moves; a chunk is
 //     published (release store) before the length that covers it, and the audio
@@ -16,6 +16,8 @@
 //   - release() frees the chunks: only once the audio thread has confirmed it is not
 //     playing (Engine::tapePlaying() false for the latest command), which the
 //     TapeDeck waits for.
+//   - erase() moves frames in place: like release(), only while the audio thread is
+//     not reading (a take deleted under a playing tape stops it first).
 //   - The fade-out of a stop or a jump is copied aside as the command is applied
 //     (Engine::fadeOutTape), so it reads nothing once that command is acknowledged,
 //     and nothing a following take could be writing.
@@ -26,6 +28,7 @@
 #include <atomic>
 #include <cstddef>
 #include <memory>
+#include <vector>
 
 namespace se {
 
@@ -83,6 +86,29 @@ public:
     void setLength (size_t n) noexcept
     {
         len.store (std::min (n, allocated * kChunkFrames), std::memory_order_release);
+    }
+
+    /** Take [from, to) out of the tape: what follows closes up and the chunks no
+        longer needed are freed. See the threading note above. */
+    void erase (size_t from, size_t to)
+    {
+        const size_t end = length();
+        to = std::min (to, end);
+        if (from >= to) return;
+
+        constexpr size_t kBatch = 4096;
+        std::vector<float> l (kBatch), r (kBatch);
+        size_t dst = from;
+        for (size_t src = to; src < end;)
+        {
+            const size_t n = read (src, l.data(), r.data(), kBatch);
+            write (dst, l.data(), r.data(), n);
+            src += n;
+            dst += n;
+        }
+        setLength (dst);
+        for (const size_t need = (dst + kChunkFrames - 1) / kChunkFrames; allocated > need; --allocated)
+            delete[] chunks[allocated - 1].exchange (nullptr, std::memory_order_acq_rel);
     }
 
     /** Free every chunk; the length goes to 0. See the threading note above. */

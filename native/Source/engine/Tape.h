@@ -22,6 +22,10 @@
 //   - Next / Previous jump to take starts. Previous inside a take, past a short
 //     grace, goes back to that take's start first (as a CD player does). During
 //     playback the jump plays on from there; during recording both are refused.
+//   - Delete a take (0.6.0): its audio goes, what follows closes up and the takes
+//     are numbered afresh; no undo. A position inside it moves to where the next take
+//     now starts, and a playing tape plays on from there (after the last take, it
+//     stops). Refused while recording.
 //   - The tape is ephemeral (it lives for the session). Takes not sent to the canvas
 //     yet count as unsent audio, for the close-canvas warning.
 
@@ -83,6 +87,8 @@ public:
     bool previousTake (size_t graceFrames);
     /** Move the position (not while recording); clamped to the tape. */
     bool seek (size_t frame);
+    /** Take `i` and its frames come out of the tape (not while recording). */
+    bool removeTake (int i);
 
     void markSent (int take) noexcept { if (take >= 0 && take < numTakes()) list[(size_t) take].sent = true; }
     void markAllSent() noexcept { for (auto& t : list) t.sent = true; }
@@ -133,6 +139,14 @@ public:
     bool finishing() const noexcept { return stopping; }
     /** Blank the tape (stops it first; the memory goes once the audio thread let go). */
     void clear();
+    /** Delete take `i`, audio and all. A playing tape fades out first and the audio
+        closes up once the audio thread has let go (at once if it is not reading, else
+        in a later service()); it then plays on. Until then erasing() holds and the
+        deck refuses to move. */
+    bool deleteTake (int i);
+    bool erasing() const noexcept { return erasingTake >= 0; }
+    /** Goes up each time audio is taken off the tape (a delete, a clear). */
+    uint32_t cuts() const noexcept { return numCuts; }
 
     /** Message thread, regularly (30 Hz): drain the capture onto the tape, follow
         playback, finish what is finishing. */
@@ -175,6 +189,8 @@ private:
     bool clearPending = false;  // blank the tape once playback has let go
     bool discardOnSettle = false;  // cleared mid-take: throw the last of it away
     bool scrubOn = false, playAfterScrub = false;
+    int erasingTake = -1;       // a delete waits for the audio thread to let go
+    uint32_t numCuts = 0;
     std::vector<float> bufL, bufR;
     size_t dirtyFrom = static_cast<size_t> (-1), dirtyTo = 0;
 };

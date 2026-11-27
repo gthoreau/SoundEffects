@@ -154,6 +154,24 @@ bool Tape::seek (size_t frame)
     return true;
 }
 
+bool Tape::removeTake (int i)
+{
+    if (md == Mode::recording || i < 0 || i >= numTakes()) return false;
+    const size_t from = takeStart (i), to = takeEnd (i), n = to - from;
+
+    list.erase (list.begin() + i);
+    for (auto& t : list)
+        if (t.start >= to) t.start -= n;
+    len -= n;
+
+    if (pos >= to)       pos -= n;
+    else if (pos > from) pos = from;
+
+    if (len == 0) clear();
+    else if (md == Mode::playing && pos >= len) md = Mode::stopped;
+    return true;
+}
+
 void Tape::clear()
 {
     md = Mode::stopped;
@@ -182,12 +200,13 @@ void TapeDeck::followPlayback()
 {
     if (model.mode() != Tape::Mode::playing || engine.tapeAckGen() != gen) return;
     model.played (engine.tapePlayFrame());
+    if (erasing()) return;   // the audio thread stopped because we asked it to
     if (model.mode() == Tape::Mode::playing && ! engine.tapePlaying()) model.stop();
 }
 
 bool TapeDeck::record()
 {
-    if (stopping || clearPending) return false;
+    if (stopping || clearPending || erasing()) return false;
     if (scrubOn) { scrubOn = playAfterScrub = false; engine.tapeScrubEnd (++gen); }
     if (model.mode() == Tape::Mode::recording) return model.record (engine.sampleRate());   // a new take, no gap
     if (model.mode() == Tape::Mode::playing)
@@ -224,7 +243,7 @@ bool TapeDeck::stop()
 
 bool TapeDeck::play()
 {
-    if (stopping || clearPending) return false;
+    if (stopping || clearPending || erasing()) return false;
     if (! model.play()) return false;
     if (! engine.tapePlay (model.position(), ++gen)) { model.stop(); return false; }
     return true;
@@ -239,7 +258,7 @@ bool TapeDeck::jumped (bool wasPlaying)
 
 bool TapeDeck::nextTake()
 {
-    if (stopping) return false;
+    if (stopping || erasing()) return false;
     const bool wasPlaying = model.mode() == Tape::Mode::playing;
     followPlayback();
     if (! model.nextTake()) return false;
@@ -248,7 +267,7 @@ bool TapeDeck::nextTake()
 
 bool TapeDeck::previousTake()
 {
-    if (stopping) return false;
+    if (stopping || erasing()) return false;
     const bool wasPlaying = model.mode() == Tape::Mode::playing;
     followPlayback();
     const double rate = model.rate() > 0.0 ? model.rate() : engine.sampleRate();
@@ -258,7 +277,7 @@ bool TapeDeck::previousTake()
 
 bool TapeDeck::seek (size_t frame)
 {
-    if (stopping) return false;
+    if (stopping || erasing()) return false;
     const bool wasPlaying = model.mode() == Tape::Mode::playing;
     followPlayback();
     if (! model.seek (frame)) return false;
@@ -267,7 +286,7 @@ bool TapeDeck::seek (size_t frame)
 
 bool TapeDeck::scrubBegin()
 {
-    if (scrubOn || stopping || clearPending || model.empty() || model.mode() == Tape::Mode::recording) return false;
+    if (scrubOn || stopping || clearPending || erasing() || model.empty() || model.mode() == Tape::Mode::recording) return false;
     playAfterScrub = model.mode() == Tape::Mode::playing;
     if (playAfterScrub) { followPlayback(); model.stop(); }
     scrubOn = engine.tapeScrub (model.position(), ++gen);
@@ -301,6 +320,8 @@ void TapeDeck::clear()
     }
     if (model.mode() == Tape::Mode::playing) engine.tapeStop (++gen);
     model.clear();
+    erasingTake = -1;
+    ++numCuts;
     // The audio thread may still be fading the playback out: the store keeps its
     // audio until it has let go (service()).
     dirtyFrom = static_cast<size_t> (-1); dirtyTo = 0;
@@ -308,8 +329,35 @@ void TapeDeck::clear()
     service();
 }
 
+bool TapeDeck::deleteTake (int i)
+{
+    if (stopping || clearPending || erasing() || scrubOn) return false;
+    followPlayback();
+    if (model.mode() == Tape::Mode::recording || i < 0 || i >= model.numTakes()) return false;
+
+    erasingTake = i;
+    if (model.mode() == Tape::Mode::playing || engine.tapePlaying()) engine.tapeStop (++gen);
+    service();
+    return true;
+}
+
 void TapeDeck::service()
 {
+    if (erasing())
+    {
+        // The audio moves in place: only once nothing reads it (the fade-out of the
+        // stop was copied aside).
+        if (engine.tapePlaying() || engine.tapeAckGen() != gen) return;
+        followPlayback();   // where the stop found it
+        engine.tapeStore().erase (model.takeStart (erasingTake), model.takeEnd (erasingTake));
+        model.removeTake (erasingTake);
+        erasingTake = -1;
+        ++numCuts;
+        dirtyFrom = static_cast<size_t> (-1); dirtyTo = 0;
+        if (model.mode() == Tape::Mode::playing && ! engine.tapePlay (model.position(), ++gen)) model.stop();
+        return;
+    }
+
     if (clearPending && ! engine.tapePlaying() && engine.tapeAckGen() == gen)
     {
         // The audio thread has let go of the tape: its memory can go.

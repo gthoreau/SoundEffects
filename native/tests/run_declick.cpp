@@ -413,6 +413,25 @@ float tapeGrabbed (Signal s)
     return t.r.across (kToPeak, [&] { t.deck.scrubBegin(); });
 }
 
+// A take deleted under the playing tape: the one being played, or one before it.
+float deleteEvent (Signal s, size_t playFrom, int take)
+{
+    Reel t (s, 48000);
+    auto& model = t.deck.tape();
+    for (size_t at : { (size_t) 20000, (size_t) 20000 + 5 * kPeriod + kPeak })   // three takes
+    {
+        model.seek (at);
+        model.record (48000.0);
+        model.recorded (1);
+        model.stop();
+    }
+    model.seek (playFrom);
+    t.deck.play();
+    return t.r.across (kToPeak, [&] { t.deck.deleteTake (take); t.r.run (kBlock); t.deck.service(); });
+}
+float tapeTakeDeleted (Signal s)    { return deleteEvent (s, 100, 0); }
+float tapeEarlierDeleted (Signal s) { return deleteEvent (s, 30000, 0); }
+
 // A track's L / R speakers, clicked while it plays (as the Window posts them).
 float routeEvent (Signal s, bool startOn, bool left, bool right)
 {
@@ -481,6 +500,8 @@ const Scenario kScenarios[] = {
     { "tape cleared while playing",   tapeCleared },
     { "tape record over playback",    tapePunchIn },
     { "tape grabbed while playing",   tapeGrabbed },
+    { "tape take deleted under head", tapeTakeDeleted },
+    { "tape earlier take deleted",    tapeEarlierDeleted },
 };
 
 // ---- what the fades do ----------------------------------------------------------

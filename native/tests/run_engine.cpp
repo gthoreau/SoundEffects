@@ -3498,6 +3498,154 @@ static void tapeEngineTests()
     }
 }
 
+// Delete a take (0.6.0): the audio closes up, take numbers and the position follow,
+// and a playing tape plays on.
+static void tapeDeleteTests()
+{
+    std::printf ("tape delete\n");
+    constexpr double R = 48000.0;
+    const auto threeTakes = []
+    {
+        se::Tape t;
+        for (int i = 0; i < 3; ++i) { t.record (R); t.recorded (100); t.stop(); }
+        return t;   // takes at 0, 100, 200; length 300
+    };
+    {
+        auto t = threeTakes();
+        t.markSent (2);
+        t.seek (250);
+        check (t.removeTake (0) && starts (t) == std::vector<size_t> { 0, 100 } && t.length() == 200 && t.position() == 150,
+               "first take: the rest closes up, the position stays on its audio");
+        check (! t.takes()[0].sent && t.takes()[1].sent, "...each take keeps its sent mark under its new number");
+    }
+    {
+        auto t = threeTakes();
+        t.seek (150);
+        check (t.removeTake (1) && starts (t) == std::vector<size_t> { 0, 100 } && t.length() == 200 && t.position() == 100,
+               "middle take with the position inside: to the next take's start");
+        t = threeTakes();
+        t.seek (50);
+        check (t.removeTake (1) && t.position() == 50, "a position before the take does not move");
+        t = threeTakes();
+        t.seek (200);
+        check (t.removeTake (1) && t.position() == 100, "a position at the next take's start goes with it");
+    }
+    {
+        auto t = threeTakes();
+        t.seek (250);
+        check (t.removeTake (2) && starts (t) == std::vector<size_t> { 0, 100 } && t.length() == 200 && t.position() == 200,
+               "last take with the position inside: the end of the tape");
+        t.play(); t.seek (150);
+        check (t.removeTake (1) && t.mode() == se::Tape::Mode::stopped && t.position() == 100,
+               "playing in the last take, deleted: stopped at the end");
+        check (t.removeTake (0) && t.empty() && t.numTakes() == 0 && t.rate() <= 0.0 && t.position() == 0 && ! t.hasUnsent(),
+               "the only take: a blank tape, any rate again");
+        check (! t.removeTake (0), "nothing to delete on a blank tape");
+    }
+    {
+        auto t = threeTakes();
+        check (! t.removeTake (-1) && ! t.removeTake (3), "no such take: refused");
+        t.record (R);
+        check (! t.removeTake (0) && t.length() == 300, "refused while recording");
+    }
+    {
+        // Through the deck, the audio with it. Takes of different levels, the middle
+        // one longer than a chunk, so the close-up crosses chunk boundaries.
+        se::Engine e; e.prepare (kRate, kBlock); e.setDeclickMs (0.0);
+        se::TapeDeck d (e);
+        se::TapeSource ext; ext.kind = se::AudioSourceKind::external; ext.stereo = false;
+        d.setSource (ext);
+        std::vector<float> l, r;
+        const int longBlocks = (int) (se::TapeStore::kChunkFrames / (size_t) kBlock) + 3;
+        const auto take = [&] (float level, int blocks)
+        {
+            if (d.tape().mode() != se::Tape::Mode::recording) d.record();
+            else { tapeBlock (e, d, { level }, l, r); d.record(); --blocks; }
+            for (int i = 0; i < blocks; ++i) tapeBlock (e, d, { level }, l, r);
+        };
+        d.record();
+        for (int i = 0; i < 20; ++i) tapeBlock (e, d, { 0.25f }, l, r);
+        d.stop(); tapeSettle (e, d, { 0.25f });
+        take (0.5f, longBlocks);
+        d.stop(); tapeSettle (e, d, { 0.5f });
+        take (0.75f, 30);
+        d.stop(); tapeSettle (e, d, { 0.75f });
+        const size_t a = 20 * (size_t) kBlock, b = (size_t) longBlocks * (size_t) kBlock, c = 30 * (size_t) kBlock;
+        check (starts (d.tape()) == std::vector<size_t> { 0, a, a + b }, "deck: three takes recorded");
+
+        // Delete the first while stopped: done at once.
+        const uint32_t cuts = d.cuts();
+        check (d.deleteTake (0) && ! d.erasing() && d.cuts() != cuts, "deck: a stopped tape cuts at once");
+        check (d.tape().length() == b + c && e.tapeStore().length() == b + c
+               && tapeAt (e, 0) == 0.5f && tapeAt (e, b - 1) == 0.5f && tapeAt (e, b) == 0.75f && tapeAt (e, b + c - 1, true) == 0.75f,
+               "deck: the audio closed up with the takes, across chunks");
+
+        // Playing inside the first of two: it plays on from the next take's start.
+        d.seek (100);
+        d.play();
+        tapeBlock (e, d, {}, l, r);
+        check (d.deleteTake (0) && d.erasing(), "deck: playing, the cut waits for the audio thread");
+        check (! d.deleteTake (1) && ! d.play() && ! d.record() && ! d.nextTake() && ! d.previousTake() && ! d.seek (0) && ! d.scrubBegin(),
+               "deck: everything else refused meanwhile");
+        check (e.tapeStore().length() == b + c && tapeAt (e, 0) == 0.5f, "deck: nothing moved yet");
+        tapeBlock (e, d, {}, l, r);
+        check (! d.erasing() && d.tape().mode() == se::Tape::Mode::playing && d.tape().position() == 0
+               && d.tape().length() == c && e.tapeStore().length() == c && e.tapeStore().reservedFrames() == se::TapeStore::kChunkFrames,
+               "deck: cut, playing on from the next take's start, spare chunks freed");
+        tapeBlock (e, d, {}, l, r);
+        checkClose (l[0], 0.75f, 1e-6f, "deck: ...and it is the next take that is heard");
+
+        // Playing after the deleted take: it keeps its place in the audio.
+        d.stop();
+        d.seek (c);
+        d.record();
+        for (int i = 0; i < 30; ++i) tapeBlock (e, d, { -0.5f }, l, r);
+        d.stop(); tapeSettle (e, d, { -0.5f });
+        d.seek (c + 5 * (size_t) kBlock);
+        d.play();
+        tapeBlock (e, d, {}, l, r);
+        d.deleteTake (0);
+        tapeBlock (e, d, {}, l, r);
+        check (d.tape().mode() == se::Tape::Mode::playing && d.tape().position() == 6 * (size_t) kBlock,
+               "deck: an earlier take deleted, playback keeps its place");
+
+        // Stop pressed while the cut waits: it stays stopped.
+        d.record();   // from the position, over the tail: two takes
+        for (int i = 0; i < 4; ++i) tapeBlock (e, d, { 0.1f }, l, r);
+        d.stop(); tapeSettle (e, d, {});
+        d.seek (0); d.play();
+        tapeBlock (e, d, {}, l, r);
+        const int before = d.tape().numTakes();
+        d.deleteTake (before - 1);
+        d.stop();
+        tapeBlock (e, d, {}, l, r);
+        check (! d.erasing() && d.tape().numTakes() == before - 1 && d.tape().mode() == se::Tape::Mode::stopped && ! e.tapePlaying(),
+               "deck: Stop while the cut waits: cut, and stopped");
+
+        // Playing in the last take, deleted: stops. Then the only one: memory released.
+        d.seek (d.tape().takeStart (d.tape().numTakes() - 1));
+        d.play();
+        tapeBlock (e, d, {}, l, r);
+        d.deleteTake (d.tape().numTakes() - 1);
+        tapeBlock (e, d, {}, l, r);
+        check (d.tape().mode() == se::Tape::Mode::stopped && d.tape().position() == d.tape().length() && ! e.tapePlaying(),
+               "deck: the take being played was the last: stopped at the end");
+        while (d.tape().numTakes() > 0) d.deleteTake (0);
+        check (d.tape().empty() && e.tapeStore().length() == 0 && e.tapeStore().reservedFrames() == 0, "deck: the last take gone, nothing held");
+
+        // A clear overtakes a waiting cut.
+        d.record();
+        for (int i = 0; i < 20; ++i) tapeBlock (e, d, { 0.2f }, l, r);
+        d.stop(); tapeSettle (e, d, {});
+        d.seek (0); d.play();
+        tapeBlock (e, d, {}, l, r);
+        d.deleteTake (0);
+        d.clear();
+        for (int i = 0; i < 4; ++i) tapeBlock (e, d, {}, l, r);
+        check (! d.erasing() && d.tape().empty() && e.tapeStore().reservedFrames() == 0, "deck: clear while a cut waits");
+    }
+}
+
 static void tapeSendTests()
 {
     std::printf ("tape send\n");
@@ -3625,6 +3773,7 @@ static void tapeConcurrencyTests()
             case 5: d.nextTake(); break;
             case 6: d.seek ((size_t) (i * 7)); break;
             case 7: if (i % 90 == 7) d.clear(); else if (i % 3 == 0) { d.scrubBegin(); d.scrubTo ((size_t) i); } else d.scrubEnd(); break;
+            case 1: if (i % 4 == 1) d.deleteTake (d.tape().numTakes() > 0 ? i % d.tape().numTakes() : 0); break;
             case 8: { se::TapeSource s; s.tapWindow = (i % 2) ? a : 0; if (i % 3 == 0) s.kind = se::AudioSourceKind::external; d.setSource (s); } break;
             default: break;
         }
@@ -3927,6 +4076,7 @@ int main()
     metaTests();
     tapeModelTests();
     tapeEngineTests();
+    tapeDeleteTests();
     tapeConcurrencyTests();
     tapeSendTests();
     tapeScrubTests();
