@@ -43,13 +43,6 @@ bool KeyboardVoice::hasTarget() const
     return d != nullptr && d->maxTrackSize() > 0;
 }
 
-bool KeyboardVoice::isRolling() const
-{
-    auto* w = engine.windowById (target());
-    return w != nullptr && w->transport != nullptr
-        && w->transport->uiState() == TransportState::playing;
-}
-
 void KeyboardVoice::strike (int note, double bendSemitones)
 {
     if (note < kLowNote || note > kHighNote) return;
@@ -68,7 +61,7 @@ void KeyboardVoice::strike (int note, double bendSemitones)
     {
         engine.setRateScale (id, rateScale);              // a glissando, not a stutter
     }
-    else if (isRolling())
+    else if (engine.isRolling (id))
     {
         // BORROW a Window the user set playing: re-pitch where it stands.
         engine.setRateScale (id, rateScale);

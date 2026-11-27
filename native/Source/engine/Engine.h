@@ -109,6 +109,12 @@ struct Window
     std::atomic<float> meterLeft  { 0.0f };
     std::atomic<float> meterRight { 0.0f };
 
+    // Play / Stop posted and applied, for Engine::isRolling(): `sent` and `lastPlay`
+    // are the message thread's, `applied` the audio thread's answer.
+    uint32_t playStopSent = 0;
+    bool     lastSentPlay = false;
+    std::atomic<uint32_t> playStopApplied { 0 };
+
     // Audio thread only: removed, kept until its sound has faded out.
     bool leaving = false;
 
@@ -220,6 +226,10 @@ public:
     // --- message thread: transport (applied on the audio thread, in order) ---
     bool play  (uint64_t id, const PlayOptions& opts = {});
     bool stop  (uint64_t id);
+    /** Message thread: is it playing, counting a Play or Stop the audio thread has
+        not applied yet? A key let go and struck again within one block must not take
+        its own stopping Window for a rolling one. */
+    bool isRolling (uint64_t id) noexcept;
     bool pause (uint64_t id);
     bool advance (uint64_t id);
     bool normalSpeed (uint64_t id);
@@ -396,10 +406,11 @@ private:
         int             refTrack = -1;      // RecordJoin
         DocMeta         meta {};            // SetMeta
         TapeSource      tape {};            // TapeCaptureStart
-        uint32_t        gen = 0;            // TapePlay / TapeStop
+        uint32_t        gen = 0;            // TapePlay / TapeStop; Play / Stop
     };
 
     bool post (const Command& c) noexcept { return incoming.push (c); }
+    bool postPlayStop (Command& c, bool isPlay) noexcept;
 
     void drainCommands() noexcept;
     /** Hand the live Window at `index` back to the message thread. Audio thread. */

@@ -9,6 +9,9 @@
 // and handed back at its own rate on release. The pitch is
 //     2 ^ ((note - baseNote + bend) / 12)
 // with `bend` in semitones, so an MPE slide is a continuous rate.
+// Declicking (0.6.0) is the Transport's: a strike fades in, a release fades out, and
+// a key struck again while the last one fades crosses over it. A new key while one
+// is held only changes the speed, which cannot jump.
 
 #pragma once
 
@@ -60,7 +63,6 @@ public:
 
 private:
     const SoundDocument* doc() const;
-    bool isRolling() const;
     double soundingBend() const;
     void retune();
 

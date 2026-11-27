@@ -352,8 +352,8 @@ const Scenario kScenarios[] = {
     { "caret loop, late track",       caretLateTrack,      0.0021f, 0.0131f },
     { "keyboard strike",              keyStrike,           0.0021f, 0.0131f },
     { "keyboard release",             keyRelease,          0.0021f, 0.0099f },
-    { "keyboard retrigger",           keyRetrigger,        0.0021f, 0.0099f },
-    { "MIDI retrigger",               midiRetrigger,       0.0021f, 0.0099f },
+    { "keyboard retrigger",           keyRetrigger,        0.0000f, 0.0131f },
+    { "MIDI retrigger",               midiRetrigger,       0.0000f, 0.0131f },
     { "MIDI glide",                   midiGlide,           0.0000f, 0.0262f },
     { "MPE slide over wraps",         mpeSlide,            0.0000f, 0.0345f },
     { "mute on",                      muteOn,              0.5000f, 0.9999f },
@@ -542,6 +542,41 @@ void wrapShapes()
     }
 }
 
+// ---- the Keyboard, struck again at once ------------------------------------------
+
+void retriggerShapes()
+{
+    for (bool midi : { false, true })
+    {
+        Keys k (Signal::dc);
+        const auto on  = [&] { if (midi) k.voice.midiNoteOn (k.note, k.note, 0.0); else k.voice.strike (k.note); };
+        const auto off = [&] { if (midi) k.voice.midiNoteOff (k.note); else k.voice.release(); };
+        on();
+        off();                       // neither seen by the audio thread yet
+        on();
+        k.r.run (1024);
+        bool ok = std::fabs (k.r.left.back() - 0.5f) < 1.0e-4f;
+        off(); on(); off(); on();    // again, from a rolling voice
+        k.r.run (1024);
+        ok = ok && std::fabs (k.r.left.back() - 0.5f) < 1.0e-4f;
+        off();
+        k.r.run (1024);
+        ok = ok && k.r.left.back() == 0.0f && k.r.engine.windowById (k.id)->transport->uiState() == se::TransportState::stopped;
+        expect (ok, midi ? "MIDI: a key struck again within a block sounds, and its release stops it"
+                         : "mouse: a key struck again within a block sounds, and its release stops it");
+    }
+    {
+        // A Window set playing is still borrowed, even before its Play has landed.
+        Keys k (Signal::dc);
+        k.r.engine.play (k.id, looping());
+        k.voice.strike (k.note + 12);
+        k.voice.release();
+        k.r.run (1024);
+        expect (k.r.engine.windowById (k.id)->transport->uiState() == se::TransportState::playing,
+                "a Window just set playing is borrowed, not stopped by the key's release");
+    }
+}
+
 } // namespace
 
 int declickTests()
@@ -549,6 +584,7 @@ int declickTests()
     std::printf ("declick: largest sample-to-sample jump (full scale = 1)\n");
     fadeShapes();
     wrapShapes();
+    retriggerShapes();
     int failures = 0;
     for (const auto& sc : kScenarios)
         for (Signal s : { Signal::dc, Signal::sine })

@@ -232,9 +232,26 @@ bool Engine::commitMeta (uint64_t id)
 }
 
 bool Engine::play (uint64_t id, const PlayOptions& opts)
-{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Play; c.id=id; c.play=opts; return post (c); }
+{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Play; c.id=id; c.play=opts; return postPlayStop (c, true); }
 bool Engine::stop (uint64_t id)
-{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Stop; c.id=id; return post (c); }
+{ Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Stop; c.id=id; return postPlayStop (c, false); }
+bool Engine::postPlayStop (Command& c, bool isPlay) noexcept
+{
+    auto* w = windowById (c.id);
+    if (w == nullptr) return post (c);
+    c.gen = w->playStopSent + 1;
+    if (! post (c)) return false;
+    w->playStopSent = c.gen;
+    w->lastSentPlay = isPlay;
+    return true;
+}
+bool Engine::isRolling (uint64_t id) noexcept
+{
+    auto* w = windowById (id);
+    if (w == nullptr || w->transport == nullptr) return false;
+    if (w->playStopApplied.load (std::memory_order_acquire) != w->playStopSent) return w->lastSentPlay;
+    return w->transport->uiState() == TransportState::playing;
+}
 bool Engine::pause (uint64_t id)
 { Command c; c.kind=Command::Kind::Transport; c.tx=Command::Tx::Pause; c.id=id; return post (c); }
 bool Engine::advance (uint64_t id)
@@ -492,7 +509,13 @@ void Engine::drainCommands() noexcept
                 break;
 
             case Command::Kind::Transport:
-                if (Window* w = liveById (c.id)) applyTransport (*w, c);
+                if (Window* w = liveById (c.id))
+                {
+                    applyTransport (*w, c);
+                    // After the state it published, so a reader that sees this sees that.
+                    if (c.tx == Command::Tx::Play || c.tx == Command::Tx::Stop)
+                        w->playStopApplied.store (c.gen, std::memory_order_release);
+                }
                 break;
 
             case Command::Kind::CaptureStart:
